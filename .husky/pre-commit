@@ -1,0 +1,6 @@
+pnpm lint-staged
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm format
+git add .
