@@ -49,6 +49,7 @@
         "@smooai/logger": "^1.0.23",
         "@smooai/utils": "^1.0.21",
         "@standard-schema/spec": "^1.0.0",
+        "esm-utils": "^4.3.0",
         "find-up": "^7.0.0",
         "glob": "^11.0.1"
     },

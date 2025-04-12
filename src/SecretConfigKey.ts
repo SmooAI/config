@@ -17,7 +17,6 @@
  * ```
  */
 export const SecretConfigKey = {
-    ENV: 'ENV',
 } as const;
 
 export type SecretConfigKey = (typeof SecretConfigKey)[keyof typeof SecretConfigKey];

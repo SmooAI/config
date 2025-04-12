@@ -13,6 +13,7 @@
  */
 export const PublicConfigKey = {
     ENV: 'ENV',
+    IS_LOCAL: 'IS_LOCAL',
     REGION: 'REGION',
     CLOUD_PROVIDER: 'CLOUD_PROVIDER',
 } as const;
