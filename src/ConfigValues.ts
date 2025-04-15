@@ -119,3 +119,25 @@ export type ConfigValues<Public extends Readonly<Record<string, string>>, Secret
     ReturnType<typeof generateConfigValuesSchema<Public, Secret>>
 >;
 
+type InferStandardOutput<S> =
+  S extends StandardSchemaV1
+    ? StandardSchemaV1.InferOutput<S>
+    : never;
+
+export type InferConfigValuesFromCustomSchemas<Schemas extends Record<string, StandardSchemaV1>> = {
+[K in keyof Schemas]: 
+    K extends keyof Schemas 
+    ? InferStandardOutput<Schemas[K]> 
+    : string;
+};
+
+export type CustomSchemas<Public extends Readonly<Record<string, string>>, Secret extends Readonly<Record<string, string>>> = Partial<Record<keyof Public | keyof Secret, StandardSchemaV1>>;
+
+export function generateConfigValuesTypeWithCustomSchemas<
+  Public extends Readonly<Record<string, string>>,
+  Secret extends Readonly<Record<string, string>>,
+>(
+    customSchemas: CustomSchemas<Public, Secret>
+): CustomSchemas<Public, Secret> {
+    return customSchemas;
+}

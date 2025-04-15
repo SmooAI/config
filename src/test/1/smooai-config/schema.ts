@@ -1,4 +1,5 @@
-import { generateConfigValuesSchema, InferConfigValuesType } from '../../../ConfigValues';
+import { z } from 'zod';
+import { generateConfigValuesSchema, generateConfigValuesTypeWithCustomSchemas, InferConfigValuesType, InferConfigValuesWithCustomSchemasType } from '../../../ConfigValues';
 import { extendPublicConfigKey } from '../../../PublicConfigKey';
 import { extendSecretConfigKey } from '../../../SecretConfigKey';
 
@@ -10,5 +11,12 @@ export const SecretConfigKey = extendSecretConfigKey({
     MY_SECRET_API_KEY: 'MY_SECRET_API_KEY',
 } as const);
 
-export const ConfigValues = generateConfigValuesSchema(PublicConfigKey, SecretConfigKey);
-export type ConfigValues = InferConfigValuesType<typeof PublicConfigKey, typeof SecretConfigKey>;
+export const CustomSchemas = generateConfigValuesTypeWithCustomSchemas<typeof PublicConfigKey, typeof SecretConfigKey>(
+    {
+        MY_PUBLIC_API_KEY: z.object({
+            key: z.string(),
+            secret: z.string()
+        }),
+    }
+);
+export type ConfigValues = InferConfigValuesWithCustomSchemasType<typeof PublicConfigKey, typeof SecretConfigKey, typeof CustomSchemas>;
