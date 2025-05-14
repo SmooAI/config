@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { generateConfigValuesSchema, generateConfigValuesTypeWithCustomSchemas, InferConfigValuesType, InferConfigValuesWithCustomSchemasType } from '../../../ConfigValues';
+import { generateConfigValuesSchema, generateConfigValuesTypeWithCustomSchemas, InferConfigValuesFromCustomSchemas, InferConfigValuesType, InferConfigValuesWithCustomSchemasType } from '../../../ConfigValues';
 import { extendPublicConfigKey } from '../../../PublicConfigKey';
 import { extendSecretConfigKey } from '../../../SecretConfigKey';
 
@@ -19,4 +19,4 @@ export const CustomSchemas = generateConfigValuesTypeWithCustomSchemas<typeof Pu
         }),
     }
 );
-export type ConfigValues = InferConfigValuesWithCustomSchemasType<typeof PublicConfigKey, typeof SecretConfigKey, typeof CustomSchemas>;
+export type ConfigValues = InferConfigValuesFromCustomSchemas<typeof CustomSchemas>;
