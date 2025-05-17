@@ -2,6 +2,7 @@ import { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { PublicConfigKey } from './PublicConfigKey';
 import { SecretConfigKey } from './SecretConfigKey';
+import { FeatureFlagKey } from './FeatureFlagKey';
 import { convertKeyToUpperSnakeCase } from './utils';
 
 /**
@@ -103,20 +104,27 @@ function mapKeysToUpperSnake<T extends Record<string, any>>(obj: T): { [P in key
 }
 
 /**
- * Creates a configuration definition with public and secret configuration schemas.
+ * Creates a configuration definition with public, secret, and feature flag configuration schemas.
  * This function generates type-safe configuration keys and validation schemas.
  *
  * @template Pub - The type of the public configuration schema
  * @template Sec - The type of the secret configuration schema
+ * @template FF - The type of the feature flag configuration schema
  * @param publicConfigSchema - Schema definition for public configuration values
  * @param secretConfigSchema - Schema definition for secret configuration values
+ * @param featureFlagSchema - Schema definition for feature flag configuration values
  * @returns An object containing:
  *   - PublicConfigKeys: Object mapping public configuration keys to their snake_case versions
  *   - SecretConfigKeys: Object mapping secret configuration keys to their snake_case versions
- *   - AllConfigKeys: Combined mapping of all configuration keys
+ *   - FeatureFlagKeys: Object mapping feature flag keys to their snake_case versions
  *   - parseConfig: Function to parse and validate configuration values
  */
-export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema>(publicConfigSchema: Pub, secretConfigSchema: Sec) {
+export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>(
+    publicConfigSchema: Pub,
+    secretConfigSchema: Sec,
+    featureFlagSchema: FF,
+
+) {
     const publicCustomConfigKeys = Object.keys(publicConfigSchema).reduce(
         (acc, key) => {
             acc[convertKeyToUpperSnakeCase(key) as UnionToUpperSnake<keyof Pub | keyof typeof PublicConfigKey>] = key;
@@ -137,14 +145,20 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema>
 
     const SecretConfigKeys = mapKeysToUpperSnake(secretCustomConfigKeys);
 
-    const AllConfigKeys = mapKeysToUpperSnake({
-        ...PublicConfigKeys,
-        ...SecretConfigKeys,
-    });
+    const featureFlagCustomKeys = Object.keys(featureFlagSchema).reduce(
+        (acc, key) => {
+            acc[convertKeyToUpperSnakeCase(key) as UnionToUpperSnake<keyof FF | keyof typeof FeatureFlagKey>] = key;
+            return acc;
+        },
+        {} as Record<UnionToUpperSnake<keyof FF | keyof typeof FeatureFlagKey>, string>,
+    );
+
+    const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagCustomKeys);
 
     const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema({
         ...publicConfigSchema,
         ...secretConfigSchema,
+        ...featureFlagSchema,
     });
 
     const parseConfig = (
@@ -156,34 +170,34 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema>
     return {
         PublicConfigKeys,
         SecretConfigKeys,
-        AllConfigKeys,
+        FeatureFlagKeys,
         parseConfig,
     };
 }
 
 /**
  * Infers the TypeScript types from a configuration definition.
- * This utility type extracts the public keys, secret keys, all keys, and input/output types
+ * This utility type extracts the public keys, secret keys, feature flag keys, and input/output types
  * from a configuration definition created by defineConfig.
  *
  * @template T - The type of the configuration definition
  * @returns An object containing:
  *   - PublicConfigKeys: Type of public configuration keys
  *   - SecretConfigKeys: Type of secret configuration keys
- *   - AllConfigKeys: Type of all configuration keys
+ *   - FeatureFlagKeys: Type of feature flag keys
  *   - ConfigType: Type of the input configuration
  *   - ConfigTypeOutput: Type of the validated output configuration
  */
 export type InferConfigTypes<T> = T extends {
     PublicConfigKeys: infer PK;
     SecretConfigKeys: infer SK;
-    AllConfigKeys: infer AK;
+    FeatureFlagKeys: infer FK;
     parseConfig: (input: infer CI) => infer CO;
 }
     ? {
           PublicConfigKeys: PK;
           SecretConfigKeys: SK;
-          AllConfigKeys: AK;
+          FeatureFlagKeys: FK;
           ConfigType: Partial<CI>;
           ConfigTypeOutput: Partial<CO>;
       }

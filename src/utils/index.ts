@@ -67,3 +67,7 @@ export class SmooaiConfigError extends Error {
         super(`[Smooai Config] ${message}`, options);
     }
 }
+
+export function convertKeyToUpperSnakeCase(key: string): string {
+    return snakecase(key).toUpperCase();
+}
