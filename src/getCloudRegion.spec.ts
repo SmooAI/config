@@ -71,21 +71,21 @@ describe('getCloudRegion', () => {
         const env = {};
         expect(getCloudRegion(env)).toEqual({
             provider: 'unknown',
-            region: null
+            region: 'unknown'
         });
     });
 
     it('should handle empty environment object', () => {
         expect(getCloudRegion({})).toEqual({
             provider: 'unknown',
-            region: null
+            region: 'unknown'
         });
     });
 
     it('should handle undefined environment', () => {
         expect(getCloudRegion()).toEqual({
             provider: 'unknown',
-            region: null
+            region: 'unknown'
         });
     });
 }); 

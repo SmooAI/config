@@ -49,9 +49,8 @@
         "@smooai/logger": "^1.2.2",
         "@smooai/utils": "^1.2.3",
         "@standard-schema/spec": "^1.0.0",
-        "escalade": "^3.2.0",
+        "empathic": "^1.1.0",
         "esm-utils": "^4.3.0",
-        "find-up": "^7.0.0",
         "glob": "^11.0.1",
         "zod-validation-error": "^3.4.1"
     },

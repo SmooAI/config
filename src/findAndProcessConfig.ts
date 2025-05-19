@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
-import { findUpMultiple } from 'find-up';
+import { any as findAny} from 'empathic/find';
 import TTLCache from '@isaacs/ttlcache';
 import { join } from 'path';
 import { glob } from 'glob';
@@ -79,14 +79,14 @@ export async function findConfigDirectory(
         }
     }
 
-    const upDirCandidates = await findUpMultiple(configDirCandidates, {
-        type: 'directory',
-        stopAt: join(cwd, '..', '..', '..', '..', '..'),
+    const upDirFound = await findAny(configDirCandidates, {
+        cwd,
+        stop: join(cwd, '..', '..', '..', '..', '..'),
     });
 
-    if (upDirCandidates?.length ?? 0 > 0) {
-        ENV_CONFIG_DIR_CACHE.set('smooai-config', upDirCandidates[0]);
-        return upDirCandidates[0];
+    if (upDirFound) {
+        ENV_CONFIG_DIR_CACHE.set('smooai-config', upDirFound);
+        return upDirFound;
     }
 
     throw new SmooaiConfigError('Could not find the directory where the config files are located.');

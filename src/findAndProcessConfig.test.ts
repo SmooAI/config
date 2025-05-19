@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
-import * as findUp from 'find-up';
+import { any as findAny} from 'empathic/find';
 import { glob } from 'glob';
 import { join } from 'path';
 
@@ -10,7 +10,7 @@ import { envToUse, directoryExists, importFile } from './utils';
 import { getCloudRegion } from './getCloudRegion';
 
 vi.mock('fs/promises');
-vi.mock('find-up');
+vi.mock('empathic/find');
 vi.mock('glob');
 vi.mock('./utils', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./utils')>();
@@ -32,7 +32,7 @@ describe('config', () => {
         process.env = { ...originalEnv };
         vi.spyOn(process, 'cwd').mockReturnValue('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd');
         vi.mocked(fs.stat).mockReset();
-        vi.mocked(findUp.findUpMultiple).mockReset();
+        vi.mocked(findAny).mockReset();
         vi.mocked(glob).mockReset();
         vi.mocked(envToUse).mockReturnValue({});
         vi.mocked(getCloudRegion).mockResolvedValue({ provider: 'aws', region: 'us-east-1' });
@@ -74,18 +74,18 @@ describe('config', () => {
             expect(result).toBe('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/.smooai-config');
         });
 
-        it('should find directory in parent using find-up when local directories do not exist', async () => {
+        it('should find directory in parent using empathic/find.any when local directories do not exist', async () => {
             vi.mocked(directoryExists).mockResolvedValue(false);
-            vi.mocked(findUp.findUpMultiple).mockResolvedValueOnce(['/parent/path/.smooai-config']);
+            vi.mocked(findAny).mockResolvedValueOnce('/parent/path/.smooai-config');
 
             const result = await findConfigDirectory();
             expect(result).toBe('/parent/path/.smooai-config');
-            expect(findUp.findUpMultiple).toHaveBeenCalledWith(['.smooai-config', 'smooai-config'], expect.any(Object));
+            expect(findAny).toHaveBeenCalledWith(['.smooai-config', 'smooai-config'], expect.any(Object));
         });
 
         it('should throw when no config directory is found', async () => {
             vi.mocked(directoryExists).mockResolvedValue(false);
-            vi.mocked(findUp.findUpMultiple).mockResolvedValueOnce([]);
+            vi.mocked(findAny).mockResolvedValueOnce(undefined);
 
             await expect(findConfigDirectory()).rejects.toThrow('Could not find the directory where the config files are located.');
         });
@@ -118,9 +118,9 @@ describe('config', () => {
 
             await expect(findConfigDirectory()).rejects.toThrow('Could not find the directory where the config files are located.');
 
-            expect(findUp.findUpMultiple).toHaveBeenCalledWith(['.smooai-config', 'smooai-config'], {
-                type: 'directory',
-                stopAt: join('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd', '..', '..', '..', '..', '..'),
+            expect(findAny).toHaveBeenCalledWith(['.smooai-config', 'smooai-config'], {
+                cwd: expect.any(String),
+                stop: join('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd', '..', '..', '..', '..', '..'),
             });
         });
     });
@@ -138,14 +138,14 @@ describe('config', () => {
 
         it('returns empty object if findConfigDirectory fails', async () => {
             vi.mocked(directoryExists).mockRejectedValueOnce(new Error('No directory found'));
-            vi.mocked(findUp.findUpMultiple).mockResolvedValueOnce([]);
+            vi.mocked(findAny).mockResolvedValueOnce(undefined);
 
             await expect(findAndProcessConfig()).rejects.toThrow('Could not find the directory where the config files are located.');
         });
 
         it('throws if default.ts is missing', async () => {
             vi.mocked(directoryExists).mockResolvedValue(true);
-            vi.mocked(findUp.findUpMultiple).mockResolvedValueOnce(['/some/config']);
+            vi.mocked(findAny).mockResolvedValueOnce('/some/config');
             vi.mocked(glob).mockResolvedValue([]);
 
             await expect(findAndProcessConfig()).rejects.toThrow(/Could not find required default config file in/);
@@ -153,7 +153,7 @@ describe('config', () => {
 
         it('throws if importing a config file fails', async () => {
             vi.mocked(directoryExists).mockResolvedValue(true);
-            vi.mocked(findUp.findUpMultiple).mockResolvedValueOnce(['/some/config']);
+            vi.mocked(findAny).mockResolvedValueOnce('/some/config');
             vi.mocked(glob).mockImplementation(async (pattern) => {
                 if (pattern === 'default.ts') return ['/some/config/default.ts'];
                 return [];
@@ -166,7 +166,7 @@ describe('config', () => {
 
         it('merges config files in the correct order (happy path)', async () => {
             vi.mocked(directoryExists).mockResolvedValue(true);
-            vi.mocked(findUp.findUpMultiple).mockResolvedValueOnce(['/some/config']);
+            vi.mocked(findAny).mockResolvedValueOnce('/some/config');
             vi.mocked(envToUse).mockReturnValue({
                 IS_LOCAL: 'true',
                 SMOOAI_CONFIG_ENV: 'development',
