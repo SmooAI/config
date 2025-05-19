@@ -1,9 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { StandardSchemaV1 } from '@standard-schema/spec';
-import { z } from 'zod';
+import { Schema, z } from 'zod';
 import { PublicConfigKey } from './PublicConfigKey';
 import { SecretConfigKey } from './SecretConfigKey';
 import { FeatureFlagKey } from './FeatureFlagKey';
 import { convertKeyToUpperSnakeCase } from './utils';
+import { fromError } from 'zod-validation-error';
 
 /**
  * Symbol used to indicate a string schema type in the configuration.
@@ -22,6 +24,8 @@ type ConfigSchema<K extends string | number | symbol = string> = Record<K, Strin
 
 type OutputType<E> = E extends StringSchema ? string : E extends BooleanSchema ? boolean : E extends NumberSchema ? number : E extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<E> : never;
 
+type InputType<E> = E extends StringSchema ? string : E extends BooleanSchema ? boolean : E extends NumberSchema ? number : E extends StandardSchemaV1 ? StandardSchemaV1.InferInput<E> : never;
+
 type OuputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSchema
     ? string | ((config: SchemaOutput<S>) => string)
     : E extends BooleanSchema
@@ -32,12 +36,38 @@ type OuputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSc
           ? StandardSchemaV1.InferOutput<E> | ((config: SchemaOutput<S>) => StandardSchemaV1.InferOutput<E>)
       : never;
 
+type InputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSchema
+    ? string | ((config: SchemaOutput<S>) => string)
+    : E extends BooleanSchema
+      ? boolean | ((config: SchemaOutput<S>) => boolean)
+      : E extends NumberSchema
+        ? number | ((config: SchemaOutput<S>) => number)
+        : E extends StandardSchemaV1
+          ? StandardSchemaV1.InferInput<E> | ((config: SchemaOutput<S>) => StandardSchemaV1.InferInput<E>)
+      : never;
+
 type SchemaOutput<T extends ConfigSchema> = {
-    [K in keyof T]: OutputType<T[K]>;
+    [K in keyof T]?: OutputType<T[K]>;
+};
+
+type SchemaInput<T extends ConfigSchema> = {
+    [K in keyof T]?: InputType<T[K]>;
 };
 
 type SchemaOutputWithDeferFunctions<T extends ConfigSchema> = {
     [K in keyof T]: OuputTypeWithDeferFunctions<T, T[K]>;
+};
+
+type SchemaInputWithDeferFunctions<T extends ConfigSchema> = {
+    [K in keyof T]: InputTypeWithDeferFunctions<T, T[K]>;
+};
+
+type ZodOutputType<T extends ConfigSchema> = {
+    [K in keyof T]: z.ZodType<OutputType<T[K]>>;
+};
+
+type ZodOutputTypeWithDeferFunctions<T extends ConfigSchema> = {
+    [K in keyof T]: z.ZodType<OuputTypeWithDeferFunctions<T, T[K]>>;
 };
 
 type SnakeCase<S extends string> = S extends `${infer First}${infer Rest}`
@@ -65,32 +95,32 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
     const recordSchema = Object.entries(configSchema).reduce(
         (acc, [key, value]) => {
             if (value === StringSchema) {
-                acc[key] = z.string().optional();
+                (acc as any)[key] = z.string().optional();
             } else if (value === BooleanSchema) {
-                acc[key] = z.boolean().optional();
+                (acc as any)[key] = z.boolean().optional();
             } else if (value === NumberSchema) {
-                acc[key] = z.number().optional();
+                (acc as any)[key] = z.number().optional();
             } else {
-                acc[key] = z
+                (acc as any)[key] = z
                     .custom<StandardSchemaV1.InferOutput<typeof value>>()
                     .transform((val) => (val ? value['~standard'].validate(val) : undefined))
                     .optional();
             }
             return acc;
         },
-        {} as Record<keyof ConfigSchema, z.ZodTypeAny>,
+        {} as ZodOutputType<T>,
     );
 
     const recordSchemaWithDeferFunctions = Object.entries(configSchema).reduce(
         (acc, [key, value]) => {
             if (value === StringSchema) {
-                acc[key] = z.union([z.string(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.string())]).optional();
+                (acc as any)[key] = z.union([z.string(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.string())]).optional();
             } else if (value === BooleanSchema) {
-                acc[key] = z.union([z.boolean(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.boolean())]).optional();
+                (acc as any)[key] = z.union([z.boolean(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.boolean())]).optional();
             } else if (value === NumberSchema) {
-                acc[key] = z.union([z.number(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.number())]).optional();
+                (acc as any)[key] = z.union([z.number(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.number())]).optional();
             } else {
-                acc[key] = z
+                (acc as any)[key] = z
                     .union([
                         z.custom<StandardSchemaV1.InferOutput<typeof value>>().transform((val) => (val ? value['~standard'].validate(val) : undefined)),
                         z.function().args(z.custom<SchemaOutput<T>>()).returns(z.custom<StandardSchemaV1.InferOutput<typeof value>>()),
@@ -99,19 +129,16 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
             }
             return acc;
         },
-        {} as Record<keyof ConfigSchema, z.ZodTypeAny>,
+        {} as ZodOutputTypeWithDeferFunctions<T>,
     );
 
     return {
-        object: z.custom<SchemaOutput<T>>().transform((val) => (val ? z.object(recordSchema).parse(val) : undefined)),
-        objectWithDeferFunctions: z
-            .custom<SchemaOutputWithDeferFunctions<T>>()
-            .transform((val) => (val ? z.object(recordSchemaWithDeferFunctions).parse(val) : undefined)),
+        object: z.object(recordSchema),
+        objectWithDeferFunctions: z.object(recordSchemaWithDeferFunctions)
     };
 }
 
 function mapKeysToUpperSnake<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ok
   const T extends Record<string, any>
 >(obj: T): {
   [K in keyof T as UnionToUpperSnake<K & string>]: K & string
@@ -121,7 +148,6 @@ function mapKeysToUpperSnake<
   };
   for (const key in obj) {
     const snake = convertKeyToUpperSnakeCase(key);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ok
     ;(out as any)[snake] = key;
   }
   return out;
@@ -152,14 +178,18 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
     secretConfigSchema: Sec;
     featureFlagSchema: FF;
 }) {
-    const allPublicConfigSchema = {
-        ...publicConfigSchema,
+    const standardPublicConfigSchema = {
         [PublicConfigKey.ENV]: StringSchema,
         [PublicConfigKey.CLOUD_PROVIDER]: StringSchema,
         [PublicConfigKey.REGION]: StringSchema,
         [PublicConfigKey.IS_LOCAL]: BooleanSchema,
+    }
+
+    const allPublicConfigSchema = {
+        ...standardPublicConfigSchema,
+        ...publicConfigSchema,
     } as ConfigSchema<keyof Pub | keyof typeof PublicConfigKey>;
-    
+
     const PublicConfigKeys = mapKeysToUpperSnake(allPublicConfigSchema);
 
     const SecretConfigKeys = mapKeysToUpperSnake(secretConfigSchema);
@@ -174,10 +204,21 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
 
     const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema(allConfigSchema);
 
+    type StandardPublicConfigSchema = {
+        [PublicConfigKey.ENV]?: string;
+        [PublicConfigKey.CLOUD_PROVIDER]?: string;
+        [PublicConfigKey.REGION]?: string;
+        [PublicConfigKey.IS_LOCAL]?: boolean;
+    }
+
     const parseConfig = (
-        config: StandardSchemaV1.InferInput<typeof allConfigZodSchemaWithDeferFunctions>,
-    ): StandardSchemaV1.InferOutput<typeof allConfigZodSchemaWithDeferFunctions> => {
-        return allConfigZodSchemaWithDeferFunctions.parse(config);
+        config: SchemaInputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema>,
+    ): StandardPublicConfigSchema & SchemaOutputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema> => {
+        try {
+            return allConfigZodSchemaWithDeferFunctions.parse(config) as any;
+        } catch (error) {
+            throw fromError(error);
+        }
     };
 
     return {

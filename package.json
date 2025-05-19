@@ -52,7 +52,8 @@
         "escalade": "^3.2.0",
         "esm-utils": "^4.3.0",
         "find-up": "^7.0.0",
-        "glob": "^11.0.1"
+        "glob": "^11.0.1",
+        "zod-validation-error": "^3.4.1"
     },
     "devDependencies": {
         "@changesets/cli": "^2.28.1",

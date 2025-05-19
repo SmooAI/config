@@ -33,11 +33,10 @@ describe('defineConfig', () => {
         type configTypes = InferConfigTypes<typeof config>;
         type ConfigType = configTypes['ConfigType'];
 
-        const testConfig: ConfigType = <ConfigType>{
-            [PublicConfigKeys.ENV]: 'myPublicApiKey',
+        const testConfig: ConfigType = {
             [PublicConfigKeys.MY_PUBLIC_STRUCTURED_CONFIG]: {
                 key: 'myPublicApiKey',
-                value: 'myPublicApiKey',
+                value: 'myPublicApiKey', 
             },
             [SecretConfigKeys.MY_SECRET_STRUCTURED_CONFIG]: {
                 key: 'mySecretApiKey',
