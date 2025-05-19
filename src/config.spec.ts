@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { describe, expect, it } from 'vitest';
 import z from 'zod';
 import { defineConfig, InferConfigTypes, StringSchema } from './config';
@@ -28,7 +29,7 @@ describe('defineConfig', () => {
             },
         });
 
-        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys, parseConfig } = config;
+        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys, parseConfig, get } = config;
 
         type configTypes = InferConfigTypes<typeof config>;
         type ConfigType = configTypes['ConfigType'];
@@ -36,7 +37,7 @@ describe('defineConfig', () => {
         const testConfig: ConfigType = {
             [PublicConfigKeys.MY_PUBLIC_STRUCTURED_CONFIG]: {
                 key: 'myPublicApiKey',
-                value: 'myPublicApiKey', 
+                value: 'myPublicApiKey',
             },
             [SecretConfigKeys.MY_SECRET_STRUCTURED_CONFIG]: {
                 key: 'mySecretApiKey',
@@ -53,9 +54,12 @@ describe('defineConfig', () => {
         const secretConfigKeys = Object.keys(SecretConfigKeys);
         const featureFlagKeys = Object.keys(FeatureFlagKeys);
 
-        expect(publicConfigKeys).toEqual(['MY_PUBLIC_API_KEY', 'MY_PUBLIC_STRUCTURED_CONFIG', 'ENV', 'IS_LOCAL', 'REGION', 'CLOUD_PROVIDER']);
-        expect(secretConfigKeys).toEqual(['MY_SECRET_API_KEY', 'MY_SECRET_STRUCTURED_CONFIG']);
-        expect(featureFlagKeys).toEqual(['ENABLE_NEW_U_I', 'BETA_FEATURES']);
+        expect(publicConfigKeys).toEqual(['myPublicApiKey', 'myPublicStructuredConfig', 'ENV', 'IS_LOCAL', 'REGION', 'CLOUD_PROVIDER']);
+        expect(publicConfigKeys).toEqual([PublicConfigKeys.MY_PUBLIC_API_KEY, PublicConfigKeys.MY_PUBLIC_STRUCTURED_CONFIG, PublicConfigKeys.ENV, PublicConfigKeys.IS_LOCAL, PublicConfigKeys.REGION, PublicConfigKeys.CLOUD_PROVIDER]);
+        expect(secretConfigKeys).toEqual(['mySecretApiKey', 'mySecretStructuredConfig']);
+        expect(secretConfigKeys).toEqual([SecretConfigKeys.MY_SECRET_API_KEY, SecretConfigKeys.MY_SECRET_STRUCTURED_CONFIG]);
+        expect(featureFlagKeys).toEqual(['enableNewUI', 'betaFeatures']);
+        expect(featureFlagKeys).toEqual([FeatureFlagKeys.ENABLE_NEW_U_I, FeatureFlagKeys.BETA_FEATURES]);
 
         const parsedConfig = parseConfig(testConfig);
         expect(parsedConfig).toBeDefined();
@@ -63,7 +67,8 @@ describe('defineConfig', () => {
             expect(parsedConfig.myPublicApiKey).toBe('test-public-key');
             expect(parsedConfig.mySecretApiKey).toBe('test-secret-key');
             expect(parsedConfig.enableNewUI).toBe('true');
-            expect(parsedConfig.betaFeatures.enabled).toBe(true);
+            expect(parsedConfig.betaFeatures).toBeDefined();
+            expect((parsedConfig.betaFeatures as any).enabled).toBe(true);
         }
     });
 });

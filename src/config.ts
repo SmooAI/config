@@ -37,13 +37,13 @@ type OuputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSc
       : never;
 
 type InputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSchema
-    ? string | ((config: SchemaOutput<S>) => string)
+    ? string | ((config: SchemaInput<S>) => string)
     : E extends BooleanSchema
-      ? boolean | ((config: SchemaOutput<S>) => boolean)
+      ? boolean | ((config: SchemaInput<S>) => boolean)
       : E extends NumberSchema
-        ? number | ((config: SchemaOutput<S>) => number)
+        ? number | ((config: SchemaInput<S>) => number)
         : E extends StandardSchemaV1
-          ? StandardSchemaV1.InferInput<E> | ((config: SchemaOutput<S>) => StandardSchemaV1.InferInput<E>)
+          ? StandardSchemaV1.InferInput<E> | ((config: SchemaInput<S>) => StandardSchemaV1.InferInput<E>)
       : never;
 
 type SchemaOutput<T extends ConfigSchema> = {
@@ -55,11 +55,11 @@ type SchemaInput<T extends ConfigSchema> = {
 };
 
 type SchemaOutputWithDeferFunctions<T extends ConfigSchema> = {
-    [K in keyof T]: OuputTypeWithDeferFunctions<T, T[K]>;
+    [K in keyof T]?: OuputTypeWithDeferFunctions<T, T[K]>;
 };
 
 type SchemaInputWithDeferFunctions<T extends ConfigSchema> = {
-    [K in keyof T]: InputTypeWithDeferFunctions<T, T[K]>;
+    [K in keyof T]?: InputTypeWithDeferFunctions<T, T[K]>;
 };
 
 type ZodOutputType<T extends ConfigSchema> = {
@@ -95,14 +95,14 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
     const recordSchema = Object.entries(configSchema).reduce(
         (acc, [key, value]) => {
             if (value === StringSchema) {
-                (acc as any)[key] = z.string().optional();
+                (acc as any)[key] = z.coerce.string().optional();
             } else if (value === BooleanSchema) {
-                (acc as any)[key] = z.boolean().optional();
+                (acc as any)[key] = z.coerce.boolean().optional();
             } else if (value === NumberSchema) {
-                (acc as any)[key] = z.number().optional();
+                (acc as any)[key] = z.coerce.number().optional();
             } else {
                 (acc as any)[key] = z
-                    .custom<StandardSchemaV1.InferOutput<typeof value>>()
+                    .custom<StandardSchemaV1.InferInput<typeof value>>()
                     .transform((val) => (val ? value['~standard'].validate(val) : undefined))
                     .optional();
             }
@@ -114,16 +114,16 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
     const recordSchemaWithDeferFunctions = Object.entries(configSchema).reduce(
         (acc, [key, value]) => {
             if (value === StringSchema) {
-                (acc as any)[key] = z.union([z.string(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.string())]).optional();
+                (acc as any)[key] = z.union([z.coerce.string(), z.function().args(z.custom<SchemaInput<T>>()).returns(z.string())]).optional();
             } else if (value === BooleanSchema) {
-                (acc as any)[key] = z.union([z.boolean(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.boolean())]).optional();
+                (acc as any)[key] = z.union([z.coerce.boolean(), z.function().args(z.custom<SchemaInput<T>>()).returns(z.boolean())]).optional();
             } else if (value === NumberSchema) {
-                (acc as any)[key] = z.union([z.number(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.number())]).optional();
+                (acc as any)[key] = z.union([z.coerce.number(), z.function().args(z.custom<SchemaInput<T>>()).returns(z.number())]).optional();
             } else {
                 (acc as any)[key] = z
                     .union([
                         z.custom<StandardSchemaV1.InferOutput<typeof value>>().transform((val) => (val ? value['~standard'].validate(val) : undefined)),
-                        z.function().args(z.custom<SchemaOutput<T>>()).returns(z.custom<StandardSchemaV1.InferOutput<typeof value>>()),
+                        z.function().args(z.custom<SchemaInput<T>>()).returns(z.custom<StandardSchemaV1.InferOutput<typeof value>>()),
                     ])
                     .optional();
             }
@@ -204,16 +204,9 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
 
     const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema(allConfigSchema);
 
-    type StandardPublicConfigSchema = {
-        [PublicConfigKey.ENV]?: string;
-        [PublicConfigKey.CLOUD_PROVIDER]?: string;
-        [PublicConfigKey.REGION]?: string;
-        [PublicConfigKey.IS_LOCAL]?: boolean;
-    }
-
     const parseConfig = (
         config: SchemaInputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema>,
-    ): StandardPublicConfigSchema & SchemaOutputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema> => {
+    ): SchemaOutputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema> => {
         try {
             return allConfigZodSchemaWithDeferFunctions.parse(config) as any;
         } catch (error) {
@@ -221,11 +214,21 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
         }
     };
 
+    const get = <K extends keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey>(
+        _key: K,
+    ): SchemaOutput<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema>[K] => {
+        throw new Error('Not implemented');
+    }
+
+    const _configType: SchemaOutput<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema> = {} as any;
+
     return {
         PublicConfigKeys,
         SecretConfigKeys,
         FeatureFlagKeys,
         parseConfig,
+        get,
+        _configType,
     };
 }
 
@@ -247,12 +250,15 @@ export type InferConfigTypes<T> = T extends {
     SecretConfigKeys: infer SK;
     FeatureFlagKeys: infer FK;
     parseConfig: (input: infer CI) => infer CO;
+    get: (key: infer _K) => infer V;
+    _configType: infer CT;
 }
     ? {
           PublicConfigKeys: PK;
           SecretConfigKeys: SK;
           FeatureFlagKeys: FK;
-          ConfigType: Partial<CI>;
-          ConfigTypeOutput: Partial<CO>;
+          ConfigType: CI;
+          ConfigTypeOutput: CO;
+          ConfigTypeComputed: CT;
       }
     : never;

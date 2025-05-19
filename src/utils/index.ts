@@ -2,6 +2,7 @@
 import { stat, access } from "fs/promises";
 import createEsmUtils from 'esm-utils';
 import { constants } from 'fs';
+import snakecase from 'lodash.snakecase';
 
 /**
  * Initialize global __dirname and __filename if not already set.
