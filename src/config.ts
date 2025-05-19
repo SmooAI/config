@@ -12,14 +12,24 @@ import { convertKeyToUpperSnakeCase } from './utils';
 export const StringSchema: unique symbol = Symbol('String');
 export type StringSchema = typeof StringSchema;
 
-type ConfigSchema = Record<string, StringSchema | StandardSchemaV1>;
+export const BooleanSchema: unique symbol = Symbol('Boolean');
+export type BooleanSchema = typeof BooleanSchema;
 
-type OutputType<E> = E extends StringSchema ? string : E extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<E> : never;
+export const NumberSchema: unique symbol = Symbol('Number');
+export type NumberSchema = typeof NumberSchema;
+
+type ConfigSchema<K extends string | number | symbol = string> = Record<K, StringSchema | StandardSchemaV1 | BooleanSchema | NumberSchema>;
+
+type OutputType<E> = E extends StringSchema ? string : E extends BooleanSchema ? boolean : E extends NumberSchema ? number : E extends StandardSchemaV1 ? StandardSchemaV1.InferOutput<E> : never;
 
 type OuputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSchema
     ? string | ((config: SchemaOutput<S>) => string)
-    : E extends StandardSchemaV1
-      ? StandardSchemaV1.InferOutput<E> | ((config: SchemaOutput<S>) => StandardSchemaV1.InferOutput<E>)
+    : E extends BooleanSchema
+      ? boolean | ((config: SchemaOutput<S>) => boolean)
+      : E extends NumberSchema
+        ? number | ((config: SchemaOutput<S>) => number)
+        : E extends StandardSchemaV1
+          ? StandardSchemaV1.InferOutput<E> | ((config: SchemaOutput<S>) => StandardSchemaV1.InferOutput<E>)
       : never;
 
 type SchemaOutput<T extends ConfigSchema> = {
@@ -56,6 +66,10 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
         (acc, [key, value]) => {
             if (value === StringSchema) {
                 acc[key] = z.string().optional();
+            } else if (value === BooleanSchema) {
+                acc[key] = z.boolean().optional();
+            } else if (value === NumberSchema) {
+                acc[key] = z.number().optional();
             } else {
                 acc[key] = z
                     .custom<StandardSchemaV1.InferOutput<typeof value>>()
@@ -71,6 +85,10 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
         (acc, [key, value]) => {
             if (value === StringSchema) {
                 acc[key] = z.union([z.string(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.string())]).optional();
+            } else if (value === BooleanSchema) {
+                acc[key] = z.union([z.boolean(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.boolean())]).optional();
+            } else if (value === NumberSchema) {
+                acc[key] = z.union([z.number(), z.function().args(z.custom<SchemaOutput<T>>()).returns(z.number())]).optional();
             } else {
                 acc[key] = z
                     .union([
@@ -92,15 +110,21 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
     };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapKeysToUpperSnake<T extends Record<string, any>>(obj: T): { [P in keyof T as UnionToUpperSnake<P & string>]: T[P] } {
-    const result = {} as { [P in keyof T as UnionToUpperSnake<P & string>]: T[P] };
-    for (const key in obj) {
-        const snake = convertKeyToUpperSnakeCase(key);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (result as any)[snake] = obj[key];
-    }
-    return result;
+function mapKeysToUpperSnake<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ok
+  const T extends Record<string, any>
+>(obj: T): {
+  [K in keyof T as UnionToUpperSnake<K & string>]: K & string
+} {
+  const out = {} as {
+    [K in keyof T as UnionToUpperSnake<K & string>]: K & string
+  };
+  for (const key in obj) {
+    const snake = convertKeyToUpperSnakeCase(key);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ok
+    ;(out as any)[snake] = key;
+  }
+  return out;
 }
 
 /**
@@ -119,47 +143,36 @@ function mapKeysToUpperSnake<T extends Record<string, any>>(obj: T): { [P in key
  *   - FeatureFlagKeys: Object mapping feature flag keys to their snake_case versions
  *   - parseConfig: Function to parse and validate configuration values
  */
-export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>(
-    publicConfigSchema: Pub,
-    secretConfigSchema: Sec,
-    featureFlagSchema: FF,
-
-) {
-    const publicCustomConfigKeys = Object.keys(publicConfigSchema).reduce(
-        (acc, key) => {
-            acc[convertKeyToUpperSnakeCase(key) as UnionToUpperSnake<keyof Pub | keyof typeof PublicConfigKey>] = key;
-            return acc;
-        },
-        {} as Record<UnionToUpperSnake<keyof Pub | keyof typeof PublicConfigKey>, string>,
-    );
-
-    const PublicConfigKeys = mapKeysToUpperSnake(publicCustomConfigKeys);
-
-    const secretCustomConfigKeys = Object.keys(secretConfigSchema).reduce(
-        (acc, key) => {
-            acc[convertKeyToUpperSnakeCase(key) as UnionToUpperSnake<keyof Sec | keyof typeof SecretConfigKey>] = key;
-            return acc;
-        },
-        {} as Record<UnionToUpperSnake<keyof Sec | keyof typeof SecretConfigKey>, string>,
-    );
-
-    const SecretConfigKeys = mapKeysToUpperSnake(secretCustomConfigKeys);
-
-    const featureFlagCustomKeys = Object.keys(featureFlagSchema).reduce(
-        (acc, key) => {
-            acc[convertKeyToUpperSnakeCase(key) as UnionToUpperSnake<keyof FF | keyof typeof FeatureFlagKey>] = key;
-            return acc;
-        },
-        {} as Record<UnionToUpperSnake<keyof FF | keyof typeof FeatureFlagKey>, string>,
-    );
-
-    const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagCustomKeys);
-
-    const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema({
+export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>({
+    publicConfigSchema,
+    secretConfigSchema,
+    featureFlagSchema,
+}: {
+    publicConfigSchema: Pub;
+    secretConfigSchema: Sec;
+    featureFlagSchema: FF;
+}) {
+    const allPublicConfigSchema = {
         ...publicConfigSchema,
+        [PublicConfigKey.ENV]: StringSchema,
+        [PublicConfigKey.CLOUD_PROVIDER]: StringSchema,
+        [PublicConfigKey.REGION]: StringSchema,
+        [PublicConfigKey.IS_LOCAL]: BooleanSchema,
+    } as ConfigSchema<keyof Pub | keyof typeof PublicConfigKey>;
+    
+    const PublicConfigKeys = mapKeysToUpperSnake(allPublicConfigSchema);
+
+    const SecretConfigKeys = mapKeysToUpperSnake(secretConfigSchema);
+
+    const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagSchema);
+
+    const allConfigSchema: ConfigSchema<keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey> = {
+        ...allPublicConfigSchema,
         ...secretConfigSchema,
         ...featureFlagSchema,
-    });
+    };
+
+    const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema(allConfigSchema);
 
     const parseConfig = (
         config: StandardSchemaV1.InferInput<typeof allConfigZodSchemaWithDeferFunctions>,
