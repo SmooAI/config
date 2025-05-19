@@ -174,9 +174,9 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
     secretConfigSchema,
     featureFlagSchema,
 }: {
-    publicConfigSchema: Pub;
-    secretConfigSchema: Sec;
-    featureFlagSchema: FF;
+    publicConfigSchema?: Pub | undefined;
+    secretConfigSchema?: Sec | undefined;
+    featureFlagSchema?: FF | undefined;
 }) {
     const standardPublicConfigSchema = {
         [PublicConfigKey.ENV]: StringSchema,
@@ -187,26 +187,26 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
 
     const allPublicConfigSchema = {
         ...standardPublicConfigSchema,
-        ...publicConfigSchema,
+        ...publicConfigSchema ?? {} as Pub,
     } as ConfigSchema<keyof Pub | keyof typeof PublicConfigKey>;
 
     const PublicConfigKeys = mapKeysToUpperSnake(allPublicConfigSchema);
 
-    const SecretConfigKeys = mapKeysToUpperSnake(secretConfigSchema);
+    const SecretConfigKeys = mapKeysToUpperSnake(secretConfigSchema ?? {} as Sec);
 
-    const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagSchema);
+    const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagSchema ?? {} as FF);
 
     const allConfigSchema: ConfigSchema<keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey> = {
         ...allPublicConfigSchema,
-        ...secretConfigSchema,
-        ...featureFlagSchema,
+        ...secretConfigSchema ?? {} as Sec,
+        ...featureFlagSchema ?? {} as FF,
     };
 
     const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema(allConfigSchema);
 
     const parseConfig = (
-        config: SchemaInputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema>,
-    ): SchemaOutputWithDeferFunctions<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema> => {
+        config: SchemaInputWithDeferFunctions<Pub & Sec & FF>,
+    ): SchemaOutputWithDeferFunctions<Pub & Sec & FF> => {
         try {
             return allConfigZodSchemaWithDeferFunctions.parse(config) as any;
         } catch (error) {
@@ -216,11 +216,11 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
 
     const get = <K extends keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey>(
         _key: K,
-    ): SchemaOutput<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema>[K] => {
+    ): SchemaOutput<Pub & Sec & FF>[K] => {
         throw new Error('Not implemented');
     }
 
-    const _configType: SchemaOutput<typeof publicConfigSchema & typeof secretConfigSchema & typeof featureFlagSchema> = {} as any;
+    const _configType: SchemaOutput<Pub & Sec & FF> = {} as any;
 
     return {
         PublicConfigKeys,
