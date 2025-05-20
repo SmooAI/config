@@ -47,7 +47,7 @@
         "@isaacs/ttlcache": "^1.4.1",
         "@smooai/fetch": "^1.5.0",
         "@smooai/logger": "^1.2.2",
-        "@smooai/utils": "^1.2.3",
+        "@smooai/utils": "^1.2.4",
         "@standard-schema/spec": "^1.0.0",
         "empathic": "^1.1.0",
         "esm-utils": "^4.3.0",

@@ -1,6 +1,12 @@
-import { ConfigValues, PublicConfigKey, SecretConfigKey } from './schema';
+import config from './config';
+import type { InferConfigTypes } from '../../../config';
 
-export const defaultConfigValues: ConfigValues = {
-    [PublicConfigKey.MY_PUBLIC_API_KEY]: 'public',
-    [SecretConfigKey.MY_SECRET_API_KEY]: 'secret',
-};
+type configTypes = InferConfigTypes<typeof config>;
+type ConfigType = configTypes['ConfigType'];
+
+const { PublicConfigKeys, SecretConfigKeys } = config;
+
+export default {
+    [PublicConfigKeys.MY_PUBLIC_API_KEY]: 'public',
+    [SecretConfigKeys.MY_SECRET_API_KEY]: 'secret',
+} as ConfigType;

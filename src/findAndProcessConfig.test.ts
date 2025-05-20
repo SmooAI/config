@@ -8,6 +8,8 @@ import { join } from 'path';
 import { findConfigDirectory, findAndProcessConfig } from './findAndProcessConfig';
 import { envToUse, directoryExists, importFile } from './utils';
 import { getCloudRegion } from './getCloudRegion';
+import { defineConfig, StringSchema } from './config';
+import { z } from 'zod';
 
 vi.mock('fs/promises');
 vi.mock('empathic/find');
@@ -24,7 +26,7 @@ vi.mock('./utils', async (importOriginal) => {
 vi.mock('./getCloudRegion');
 vi.mock('@smooai/logger/Logger');
 
-describe('config', () => {
+describe('findAndProcessConfig', () => {
     const originalEnv = process.env;
     const originalCwd = process.cwd;
 
@@ -35,6 +37,7 @@ describe('config', () => {
         vi.mocked(findAny).mockReset();
         vi.mocked(glob).mockReset();
         vi.mocked(envToUse).mockReturnValue({});
+        vi.mocked(directoryExists).mockReset();
         vi.mocked(getCloudRegion).mockResolvedValue({ provider: 'aws', region: 'us-east-1' });
     });
 
@@ -75,7 +78,12 @@ describe('config', () => {
         });
 
         it('should find directory in parent using empathic/find.any when local directories do not exist', async () => {
-            vi.mocked(directoryExists).mockResolvedValue(false);
+            vi.mocked(directoryExists).mockImplementation((path) => {
+                if (path === '/parent/path/.smooai-config') {
+                    return Promise.resolve(true);
+                }
+                return Promise.resolve(false);
+            });
             vi.mocked(findAny).mockResolvedValueOnce('/parent/path/.smooai-config');
 
             const result = await findConfigDirectory();
@@ -148,7 +156,14 @@ describe('config', () => {
             vi.mocked(findAny).mockResolvedValueOnce('/some/config');
             vi.mocked(glob).mockResolvedValue([]);
 
-            await expect(findAndProcessConfig()).rejects.toThrow(/Could not find required default config file in/);
+            vi.mocked(importFile).mockImplementation(async (filePath: string) => {
+                const configs: Record<string, any> = {
+                    'config.ts': { name: 'config', arr: [1, 2], nested: { x: 10 } },
+                };
+                return configs[filePath.split('/').pop()!];
+            });
+
+            await expect(findAndProcessConfig()).rejects.toThrow(/The config.ts file must have a default export that is the result of/);
         });
 
         it('throws if importing a config file fails', async () => {
@@ -174,6 +189,8 @@ describe('config', () => {
 
             vi.mocked(glob).mockImplementation(async (pattern) => {
                 switch (pattern) {
+                    case 'config.ts':
+                        return ['/some/config/config.ts'];
                     case 'default.ts':
                         return ['/some/config/default.ts'];
                     case 'local.ts':
@@ -191,11 +208,21 @@ describe('config', () => {
 
             vi.mocked(importFile).mockImplementation(async (filePath: string) => {
                 const configs: Record<string, any> = {
+                    'config.ts': { default: defineConfig({
+                        publicConfigSchema: {
+                            name: StringSchema,
+                            arr: z.array(z.number()),
+                            nested: z.object({
+                                x: z.number().optional(),
+                                y: z.number().optional(),
+                            }),
+                        }
+                    }) },
                     'default.ts': { name: 'default', arr: [1, 2], nested: { x: 10 } },
                     'local.ts': { name: 'local', arr: [100], localFlag: true },
-                    'development.ts': { env: 'dev', arr: [200] },
-                    'development.aws.ts': { provider: 'aws', arr: [300], nested: { y: 20 } },
-                    'development.aws.us-east-1.ts': { region: 'us-east-1', arr: [999], nested: { x: 999 } },
+                    'development.ts': { arr: [200] },
+                    'development.aws.ts': { arr: [300], nested: { y: 20 } },
+                    'development.aws.us-east-1.ts': { arr: [999], nested: { x: 999 } },
                 };
                 return configs[filePath.split('/').pop()!];
             });
@@ -204,10 +231,10 @@ describe('config', () => {
             expect(finalConfig).toEqual({
                 name: 'local',
                 arr: [999],
-                localFlag: true,
-                env: 'dev',
-                provider: 'aws',
-                region: 'us-east-1',
+                IS_LOCAL: true,
+                ENV: 'development',
+                CLOUD_PROVIDER: 'aws',
+                REGION: 'us-east-1',
                 nested: {
                     x: 999,
                     y: 20,

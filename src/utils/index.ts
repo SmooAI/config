@@ -60,7 +60,12 @@ export async function importFile(path: string, errorMessage?: string) {
         throw new SmooaiConfigError(errorMessage ?? `Unable to read file ${path}`, { cause: e });
     }
     const imported = await import(path);
-    return imported.default ?? imported;
+
+    if (!imported.default) {
+        throw new SmooaiConfigError(`The config file ${path} must have a default export.`);
+    }
+
+    return imported.default;
 }
 
 export class SmooaiConfigError extends Error {

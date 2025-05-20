@@ -1,17 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { any as findAny} from 'empathic/find';
+import { stat } from 'fs/promises';
 import TTLCache from '@isaacs/ttlcache';
 import { join } from 'path';
 import { glob } from 'glob';
 import { getCloudRegion } from './getCloudRegion';
 import Logger from '@smooai/logger/Logger';
-import { directoryExists, initEsmUtils, importFile, SmooaiConfigError } from './utils';
+import { directoryExists, initEsmUtils, importFile, SmooaiConfigError, envToUse } from './utils';
 import { mergeReplaceArrays } from './utils/mergeReplaceArrays';
 import { z } from 'zod';
 import { access } from 'fs/promises';
 import { constants } from 'fs';
 import { PublicConfigKey } from './PublicConfigKey';
 import { StandardSchemaV1 } from '@standard-schema/spec';
+import { defineConfig, ParsedConfigGeneric } from './config';
 initEsmUtils();
 
 const logger = new Logger({
@@ -43,7 +45,7 @@ export async function findConfigDirectory(
 ): Promise<string> {
     ignoreCache = ignoreCache ?? false;
 
-    const configDir = process.env.SMOOAI_ENV_CONFIG_DIR;
+    const configDir = envToUse().SMOOAI_ENV_CONFIG_DIR;
     if (configDir) {
         if (await directoryExists(configDir)) {
             return configDir;
@@ -79,34 +81,39 @@ export async function findConfigDirectory(
         }
     }
 
+    const levelsUpLimit = parseInt(envToUse().SMOOAI_CONFIG_LEVELS_UP_LIMIT ?? '5', 10) || 5;
+
     const upDirFound = await findAny(configDirCandidates, {
         cwd,
-        stop: join(cwd, '..', '..', '..', '..', '..'),
+        stop: join(cwd, ...Array(levelsUpLimit).fill('..')),
     });
 
     if (upDirFound) {
+        if (!(await directoryExists(upDirFound))) {
+            throw new SmooaiConfigError(`The directory specified in the "SMOOAI_ENV_CONFIG_DIR" environment variable is not a directory: ${configDir}`);
+        }
         ENV_CONFIG_DIR_CACHE.set('smooai-config', upDirFound);
         return upDirFound;
     }
 
-    throw new SmooaiConfigError('Could not find the directory where the config files are located.');
+    throw new SmooaiConfigError(`Could not find the directory where the config files are located. Tried ${levelsUpLimit} levels up from ${cwd}.`);
 }
 
 /**
  * Checks the two prerequisites for the config files and returns the config values schema.
  * 
  * Prerequisites:
- * 1. The config directory must contain a `default.ts` file.
- * 2. The config directory must contain a `schema.ts` file that exports the `ConfigValues` schema.
+ * 1. The config directory must contain a `default.ts` file that exports a default config object of the type `ConfigType`.
+ * 2. The config directory must contain a `config.ts` file that exports a default result of `defineConfig`.
  * 
  * @param configDir - The directory where the config files are located.
  * @returns The config values schema.
  */
-async function checkPrerequisitesAndGetConfigValuesSchema(configDir: string): Promise<z.AnyZodObject> {
-    const configValuesSchema = await importFile(join(configDir, 'schema.ts'), `Missing required config values schema file (schema.ts) in config directory: ${configDir}`);
+async function checkPrerequisitesAndGetConfigSchema(configDir: string): Promise<ReturnType<typeof defineConfig>> {
+    const configSchema = await importFile(join(configDir, 'config.ts'), `Missing required config values schema file (config.ts) in config directory: ${configDir}`);
 
-    if (!configValuesSchema.ConfigValues) {
-        throw new SmooaiConfigError('The config values schema file must export "ConfigValues".');
+    if (!configSchema.default || !configSchema.default.parseConfig) {
+        throw new SmooaiConfigError('The config.ts file must have a default export that is the result of `defineConfig`.');
     }
 
     try {
@@ -115,30 +122,27 @@ async function checkPrerequisitesAndGetConfigValuesSchema(configDir: string): Pr
         throw new SmooaiConfigError(`Missing required default config file (default.ts) in config directory: ${configDir}`, { cause: err });
     }
 
-    return configValuesSchema.ConfigValues;
+    return configSchema.default;
 }
 
-async function processConfigFileFeatures(currentConfig: any, config: Record<string, 
-    string |
-    ((obj: any) => string | any) |
-    {
-        _schema: StandardSchemaV1,
-        value: any
-    } |
-    any
->) {
+async function processConfigFileFeatures(configSchema: ReturnType<typeof defineConfig>, currentConfig: any, config: ParsedConfigGeneric) {
+    const finalConfig: Record<string, any> = {};
+    
     for (const key in config) {
         const value = config[key];
         if (typeof value === 'function') {
-            config[key] = value(currentConfig);
-        } else if ('_schema' in value) {
-            config[key] = await value._schema['~standard'].validate(value.value);
+            // We need to parse the value because it might be a function that returns a value that is not valid.
+            config[key] = configSchema.parseConfigKey(key, value(currentConfig));
+            finalConfig[key] = config[key];
         } else {
             config[key] = value;
+            finalConfig[key] = value;
         }
     }
+
+    return finalConfig;
 }
-function setBuiltInConfigValues(config: Record<string, any>, {
+function setBuiltInConfig(config: Record<string, any>, {
     env,
     region,
     provider,
@@ -176,11 +180,11 @@ export async function findAndProcessConfig(): Promise<Record<string, any>> {
     try {
         const configDir = await findConfigDirectory();
 
-        const isLocal = Boolean(process.env.IS_LOCAL);
-        const env = process.env.SMOOAI_CONFIG_ENV ?? 'development';
+        const isLocal = Boolean(envToUse().IS_LOCAL);
+        const env = envToUse().SMOOAI_CONFIG_ENV ?? 'development';
         const { provider, region } = await getCloudRegion();
 
-        const configValuesSchema = await checkPrerequisitesAndGetConfigValuesSchema(configDir);
+        const configSchema = await checkPrerequisitesAndGetConfigSchema(configDir);
 
         // We define the possible config files in the order to load them.
         const configFiles: string[] = ['default.ts']; // required
@@ -216,8 +220,8 @@ export async function findAndProcessConfig(): Promise<Record<string, any>> {
             for (const filePath of matchedPaths) {
                 try {
                     // Attempt to import. If `export default` is used, use that, else use entire import.
-                    const configModule = await configValuesSchema.parseAsync(await importFile(filePath));
-                    const processedConfig = await processConfigFileFeatures(finalConfig, configModule);
+                    const configModule = await configSchema.parseConfig(await importFile(filePath));
+                    const processedConfig = await processConfigFileFeatures(configSchema, finalConfig, configModule);
                     finalConfig = mergeReplaceArrays(finalConfig, processedConfig);
                 } catch (err) {
                     logger.error(`Error importing config file "${filePath}":`, err);
@@ -226,7 +230,7 @@ export async function findAndProcessConfig(): Promise<Record<string, any>> {
             }
         }
 
-        finalConfig = setBuiltInConfigValues(finalConfig, {
+        finalConfig = setBuiltInConfig(finalConfig, {
             env,
             region,
             provider,
