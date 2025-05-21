@@ -35,7 +35,7 @@ importers:
         version: 11.0.1
       zod-validation-error:
         specifier: ^3.4.1
-        version: 3.4.1(zod@3.24.2)
+        version: 3.4.1(zod@3.25.8)
     devDependencies:
       '@changesets/cli':
         specifier: ^2.28.1
@@ -89,8 +89,8 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1(@types/node@22.13.10)(yaml@2.7.0)
       zod:
-        specifier: ^3.24.2
-        version: 3.24.2
+        specifier: ^3.25.8
+        version: 3.25.8
 
 packages:
 
@@ -3913,8 +3913,8 @@ packages:
     peerDependencies:
       zod: ^3.24.4
 
-  zod@3.24.2:
-    resolution: {integrity: sha512-lY7CDW43ECgW9u1TcT3IoXHflywfVqDYze4waEz812jR/bZ8FHDsl7pFQoSZTz5N+2NqRXs8GBwnAwo3ZNxqhQ==}
+  zod@3.25.8:
+    resolution: {integrity: sha512-iJPWX8HoZ2VE21VrhHGU9jVo/kVDUQyqM9vF0MxDhW/fp2sAl1eVwGJgiYZdHGiMwQJImXIW80lKk0MnfDxqiQ==}
 
 snapshots:
 
@@ -5383,8 +5383,8 @@ snapshots:
       hono: 4.7.10
       http-status-codes: 2.3.0
       libphonenumber-js: 1.12.8
-      zod: 3.24.2
-      zod-validation-error: 3.4.1(zod@3.24.2)
+      zod: 3.25.8
+      zod-validation-error: 3.4.1(zod@3.25.8)
     transitivePeerDependencies:
       - '@swc/core'
       - '@swc/wasm'
@@ -8288,8 +8288,8 @@ snapshots:
 
   yocto-queue@1.2.1: {}
 
-  zod-validation-error@3.4.1(zod@3.24.2):
+  zod-validation-error@3.4.1(zod@3.25.8):
     dependencies:
-      zod: 3.24.2
+      zod: 3.25.8
 
-  zod@3.24.2: {}
+  zod@3.25.8: {}
