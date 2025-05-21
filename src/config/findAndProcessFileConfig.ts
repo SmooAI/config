@@ -1,19 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { any as findAny } from 'empathic/find';
-import { stat } from 'fs/promises';
 import TTLCache from '@isaacs/ttlcache';
 import { join } from 'path';
 import { glob } from 'glob';
 import { getCloudRegion } from './getCloudRegion';
 import Logger from '@smooai/logger/Logger';
-import { directoryExists, initEsmUtils, importFile, SmooaiConfigError, envToUse } from './utils';
-import { mergeReplaceArrays } from './utils/mergeReplaceArrays';
-import { z } from 'zod';
-import { access } from 'fs/promises';
-import { constants } from 'fs';
-import { PublicConfigKey } from './PublicConfigKey';
-import { StandardSchemaV1 } from '@standard-schema/spec';
-import { defineConfig, ParsedConfigGeneric } from './config';
+import { initEsmUtils, SmooaiConfigError, envToUse } from '@/utils';
+import { directoryExists, importFile } from '@/utils/fs';
+import { mergeReplaceArrays } from '@/utils/mergeReplaceArrays';
+import { PublicConfigKey } from '@/config/PublicConfigKey';
+import { defineConfig, ParsedConfigGeneric, InferConfigTypes } from './config';
 initEsmUtils();
 
 const logger = new Logger({
@@ -99,35 +95,6 @@ export async function findConfigDirectory(
     throw new SmooaiConfigError(`Could not find the directory where the config files are located. Tried ${levelsUpLimit} levels up from ${cwd}.`);
 }
 
-/**
- * Checks the two prerequisites for the config files and returns the config values schema.
- *
- * Prerequisites:
- * 1. The config directory must contain a `default.ts` file that exports a default config object of the type `ConfigType`.
- * 2. The config directory must contain a `config.ts` file that exports a default result of `defineConfig`.
- *
- * @param configDir - The directory where the config files are located.
- * @returns The config values schema.
- */
-async function checkPrerequisitesAndGetConfigSchema(configDir: string): Promise<ReturnType<typeof defineConfig>> {
-    const configSchema = await importFile(
-        join(configDir, 'config.ts'),
-        `Missing required config values schema file (config.ts) in config directory: ${configDir}`,
-    );
-
-    if (!configSchema.default || !configSchema.default.parseConfig) {
-        throw new SmooaiConfigError('The config.ts file must have a default export that is the result of `defineConfig`.');
-    }
-
-    try {
-        await access(join(configDir, 'default.ts'), constants.R_OK);
-    } catch (err) {
-        throw new SmooaiConfigError(`Missing required default config file (default.ts) in config directory: ${configDir}`, { cause: err });
-    }
-
-    return configSchema.default;
-}
-
 async function processConfigFileFeatures(configSchema: ReturnType<typeof defineConfig>, currentConfig: any, config: ParsedConfigGeneric) {
     const finalConfig: Record<string, any> = {};
 
@@ -180,16 +147,18 @@ function setBuiltInConfig(
  *
  * Returns the merged config object.
  */
-export async function findAndProcessConfig(): Promise<Record<string, any>> {
+export async function findAndProcessFileConfig<Schema extends ReturnType<typeof defineConfig>>(
+    configSchema: Schema,
+): Promise<{
+    config: InferConfigTypes<Schema>['ConfigTypeComputed'];
+}> {
     let finalConfig: Record<string, any> = {};
     try {
         const configDir = await findConfigDirectory();
 
         const isLocal = Boolean(envToUse().IS_LOCAL);
         const env = envToUse().SMOOAI_CONFIG_ENV ?? 'development';
-        const { provider, region } = await getCloudRegion();
-
-        const configSchema = await checkPrerequisitesAndGetConfigSchema(configDir);
+        const { provider, region } = getCloudRegion();
 
         // We define the possible config files in the order to load them.
         const configFiles: string[] = ['default.ts']; // required
@@ -246,5 +215,7 @@ export async function findAndProcessConfig(): Promise<Record<string, any>> {
         throw err;
     }
 
-    return finalConfig;
+    return {
+        config: finalConfig,
+    };
 }

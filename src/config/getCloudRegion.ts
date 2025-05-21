@@ -1,11 +1,13 @@
+import { isRunningInBrowser } from '@smooai/utils/env/env';
+import { envToUse } from '@/utils';
 type CloudProvider = 'aws' | 'azure' | 'gcp' | 'unknown';
 
 interface CloudRegionResult {
-    provider: CloudProvider | string;
+    provider: CloudProvider | 'browser' | string;
     region: string;
 }
 
-export function getCloudRegion(env = process?.env ?? {}): CloudRegionResult {
+export function getCloudRegion(env = envToUse()): CloudRegionResult {
     if (env.SMOOAI_CONFIG_CLOUD_REGION || env.SMOOAI_CONFIG_CLOUD_PROVIDER) {
         return {
             provider: env.SMOOAI_CONFIG_CLOUD_PROVIDER ?? 'unknown',
@@ -33,6 +35,13 @@ export function getCloudRegion(env = process?.env ?? {}): CloudRegionResult {
         return {
             provider: 'gcp',
             region: env.GOOGLE_CLOUD_REGION ?? env.CLOUDSDK_COMPUTE_REGION ?? 'unknown',
+        };
+    }
+
+    if (isRunningInBrowser()) {
+        return {
+            provider: 'browser',
+            region: 'unknown',
         };
     }
 

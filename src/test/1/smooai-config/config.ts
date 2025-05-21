@@ -1,4 +1,4 @@
-import { defineConfig, StringSchema } from '../../../config';
+import { defineConfig, StringSchema } from '@/config/config';
 
 export default defineConfig({
     publicConfigSchema: {

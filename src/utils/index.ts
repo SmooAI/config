@@ -1,7 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
-import { stat, access } from 'fs/promises';
 import createEsmUtils from 'esm-utils';
-import { constants } from 'fs';
 
 /**
  * Initialize global __dirname and __filename if not already set.
@@ -33,38 +31,11 @@ function isEmpty(obj: any): boolean {
  */
 export const envToUse = (): NodeJS.ProcessEnv => (!isEmpty(process?.env) ? process.env : (import.meta as unknown as { env: NodeJS.ProcessEnv }).env);
 
-export async function directoryExists(path: string): Promise<boolean> {
-    try {
-        const stats = await stat(path);
-        return stats.isDirectory();
-    } catch {
-        return false;
-    }
-}
-
 /**
  * Minimal utility to detect an object (excludes arrays).
  */
 export function isPlainObject(obj: unknown): obj is Record<string, unknown> {
     return !!obj && typeof obj === 'object' && !Array.isArray(obj);
-}
-
-/**
- * Import a file. - Used to help mock imports.
- */
-export async function importFile(path: string, errorMessage?: string) {
-    try {
-        await access(path, constants.R_OK);
-    } catch (e) {
-        throw new SmooaiConfigError(errorMessage ?? `Unable to read file ${path}`, { cause: e });
-    }
-    const imported = await import(path);
-
-    if (!imported.default) {
-        throw new SmooaiConfigError(`The config file ${path} must have a default export.`);
-    }
-
-    return imported.default;
 }
 
 export class SmooaiConfigError extends Error {

@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
-import { PublicConfigKey } from './PublicConfigKey';
-import { SecretConfigKey } from './SecretConfigKey';
-import { FeatureFlagKey } from './FeatureFlagKey';
-import { convertKeyToUpperSnakeCase, SmooaiConfigError, UnionToUpperSnake } from './utils';
+import { PublicConfigKey } from '@/config/PublicConfigKey';
+import { SecretConfigKey } from '@/config/SecretConfigKey';
+import { FeatureFlagKey } from '@/config/FeatureFlagKey';
+import { convertKeyToUpperSnakeCase, SmooaiConfigError, UnionToUpperSnake } from '@/utils';
 import { handleSchemaValidationSync } from '@smooai/utils/validation/standardSchema';
 
 /**
@@ -86,7 +86,7 @@ type ZodOutputTypeWithDeferFunctions<T extends ConfigSchema> = {
     [K in keyof T]: z.ZodType<OuputTypeWithDeferFunctions<T, T[K]>>;
 };
 
-function handleStandardSchemaValidation(schema: StandardSchemaV1): (val: any, ctx: z.RefinementCtx) => any {
+function handleStandardSchemaValidation(key: string, schema: StandardSchemaV1): (val: any, ctx: z.RefinementCtx) => any {
     return (val, ctx) => {
         if (val) {
             const result = schema['~standard'].validate(val);
@@ -94,7 +94,11 @@ function handleStandardSchemaValidation(schema: StandardSchemaV1): (val: any, ct
                 ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Standard schema validation is async' });
             } else if (result.issues) {
                 result.issues.forEach((issue) => {
-                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue.message, path: Array.isArray(issue.path) ? issue.path : [issue.path] });
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: issue.message,
+                        path: [key, ...(Array.isArray(issue.path) ? issue.path : [issue.path])],
+                    });
                 });
             } else {
                 return result.value;
@@ -103,16 +107,29 @@ function handleStandardSchemaValidation(schema: StandardSchemaV1): (val: any, ct
     };
 }
 
+const coerceBooleanSchema = z.union([z.boolean(), z.string(), z.number()]).transform((val) => {
+    if (val === null || val === undefined) {
+        return val;
+    }
+
+    if (typeof val === 'string') {
+        return val.toLowerCase() === 'true' || val === '1';
+    } else if (typeof val === 'number') {
+        return val !== 0;
+    }
+    return val;
+});
+
 function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
     const recordSchema = Object.entries(configSchema).reduce((acc, [key, value]) => {
         if (value === StringSchema) {
             (acc as any)[key] = z.coerce.string().optional();
         } else if (value === BooleanSchema) {
-            (acc as any)[key] = z.coerce.boolean().optional();
+            (acc as any)[key] = coerceBooleanSchema.optional();
         } else if (value === NumberSchema) {
             (acc as any)[key] = z.coerce.number().optional();
         } else {
-            (acc as any)[key] = z.custom<StandardSchemaV1.InferInput<typeof value>>().superRefine(handleStandardSchemaValidation(value)).optional();
+            (acc as any)[key] = z.custom<StandardSchemaV1.InferInput<typeof value>>().superRefine(handleStandardSchemaValidation(key, value)).optional();
         }
         return acc;
     }, {} as ZodOutputType<T>);
@@ -121,14 +138,14 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
         if (value === StringSchema) {
             (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.string()), z.coerce.string()]).optional();
         } else if (value === BooleanSchema) {
-            (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.boolean()), z.coerce.boolean()]).optional();
+            (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.boolean()), coerceBooleanSchema]).optional();
         } else if (value === NumberSchema) {
             (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.number()), z.coerce.number()]).optional();
         } else {
             (acc as any)[key] = z
                 .union([
                     z.function().args(z.custom<SchemaInput<T>>()).returns(z.custom<StandardSchemaV1.InferOutput<typeof value>>()),
-                    z.custom<StandardSchemaV1.InferOutput<typeof value>>().superRefine(handleStandardSchemaValidation(value)),
+                    z.custom<StandardSchemaV1.InferOutput<typeof value>>().superRefine(handleStandardSchemaValidation(key, value)),
                 ])
                 .optional();
         }
@@ -270,6 +287,12 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
 
     const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagSchema ?? ({} as FF));
 
+    const AllConfigKeys = mapKeysToUpperSnake({
+        ...allPublicConfigSchema,
+        ...(secretConfigSchema ?? ({} as Sec)),
+        ...(featureFlagSchema ?? ({} as FF)),
+    });
+
     const allConfigSchema: ConfigSchema<
         keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey
     > = {
@@ -278,7 +301,7 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
         ...(featureFlagSchema ?? ({} as FF)),
     };
 
-    const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions } = generateConfigSchema(allConfigSchema);
+    const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions, object: allConfigZodSchema } = generateConfigSchema(allConfigSchema);
 
     const parseConfig = (config: SchemaInputWithDeferFunctions<Pub & Sec & FF>): SchemaOutputWithDeferFunctions<Pub & Sec & FF> => {
         return handleSchemaValidationSync(allConfigZodSchemaWithDeferFunctions, config as any) as any;
@@ -290,7 +313,7 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
         key: K,
         value: any,
     ): SchemaOutput<Pub & Sec & FF>[K] => {
-        const schema = allConfigSchema[key];
+        const schema = allConfigZodSchema.shape[key];
         if (typeof schema === 'object' && '~standard' in schema) {
             return handleSchemaValidationSync(schema, value) as any;
         } else {
@@ -307,6 +330,7 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
     const _configType: SchemaOutput<Pub & Sec & FF> = {} as any;
 
     return {
+        AllConfigKeys,
         PublicConfigKeys,
         SecretConfigKeys,
         FeatureFlagKeys,
@@ -407,14 +431,16 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
  * // }
  */
 export type InferConfigTypes<T> = T extends {
+    AllConfigKeys: infer AK;
     PublicConfigKeys: infer PK;
     SecretConfigKeys: infer SK;
     FeatureFlagKeys: infer FK;
     parseConfig: (input: infer CI) => infer CO;
-    get: (key: infer _K) => infer V;
+    get: (key: infer _K) => infer _V;
     _configType: infer CT;
 }
     ? {
+          AllConfigKeys: AK;
           PublicConfigKeys: PK;
           SecretConfigKeys: SK;
           FeatureFlagKeys: FK;

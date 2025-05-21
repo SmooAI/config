@@ -5,7 +5,10 @@
         "outDir": "./dist",
         "types": ["node"],
         "target": "ES2022",
-        "baseUrl": "./"
+        "baseUrl": "./",
+        "paths": {
+            "@/*": ["./src/*"]
+        }
     },
     "include": ["./src/**/*.ts", "./src/**/*.tsx", "tsup.config.ts"],
     "exclude": ["dist", "node_modules", "*.js", "../../node_modules"]
