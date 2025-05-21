@@ -2,9 +2,9 @@ import { defineConfig, StringSchema } from '../../../config';
 
 export default defineConfig({
     publicConfigSchema: {
-        'myPublicApiKey': StringSchema,
+        myPublicApiKey: StringSchema,
     },
     secretConfigSchema: {
-        'mySecretApiKey': StringSchema,
-    }
+        mySecretApiKey: StringSchema,
+    },
 });

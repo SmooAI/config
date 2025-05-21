@@ -18,7 +18,6 @@
  * export type MyFeatureFlagKey = InferFeatureFlagKeyType<typeof MyFeatureFlagKey>;
  * ```
  */
-export const FeatureFlagKey = {
-} as const;
+export const FeatureFlagKey = {} as const;
 
 export type FeatureFlagKey = (typeof FeatureFlagKey)[keyof typeof FeatureFlagKey];

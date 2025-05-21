@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
-import { any as findAny} from 'empathic/find';
+import { any as findAny } from 'empathic/find';
 import { stat } from 'fs/promises';
 import TTLCache from '@isaacs/ttlcache';
 import { join } from 'path';
@@ -101,16 +101,19 @@ export async function findConfigDirectory(
 
 /**
  * Checks the two prerequisites for the config files and returns the config values schema.
- * 
+ *
  * Prerequisites:
  * 1. The config directory must contain a `default.ts` file that exports a default config object of the type `ConfigType`.
  * 2. The config directory must contain a `config.ts` file that exports a default result of `defineConfig`.
- * 
+ *
  * @param configDir - The directory where the config files are located.
  * @returns The config values schema.
  */
 async function checkPrerequisitesAndGetConfigSchema(configDir: string): Promise<ReturnType<typeof defineConfig>> {
-    const configSchema = await importFile(join(configDir, 'config.ts'), `Missing required config values schema file (config.ts) in config directory: ${configDir}`);
+    const configSchema = await importFile(
+        join(configDir, 'config.ts'),
+        `Missing required config values schema file (config.ts) in config directory: ${configDir}`,
+    );
 
     if (!configSchema.default || !configSchema.default.parseConfig) {
         throw new SmooaiConfigError('The config.ts file must have a default export that is the result of `defineConfig`.');
@@ -127,7 +130,7 @@ async function checkPrerequisitesAndGetConfigSchema(configDir: string): Promise<
 
 async function processConfigFileFeatures(configSchema: ReturnType<typeof defineConfig>, currentConfig: any, config: ParsedConfigGeneric) {
     const finalConfig: Record<string, any> = {};
-    
+
     for (const key in config) {
         const value = config[key];
         if (typeof value === 'function') {
@@ -142,17 +145,20 @@ async function processConfigFileFeatures(configSchema: ReturnType<typeof defineC
 
     return finalConfig;
 }
-function setBuiltInConfig(config: Record<string, any>, {
-    env,
-    region,
-    provider,
-    isLocal,
-}: {
-    env: string;
-    region: string;
-    provider: string;
-    isLocal: boolean;
-}) {
+function setBuiltInConfig(
+    config: Record<string, any>,
+    {
+        env,
+        region,
+        provider,
+        isLocal,
+    }: {
+        env: string;
+        region: string;
+        provider: string;
+        isLocal: boolean;
+    },
+) {
     config[PublicConfigKey.ENV] = env;
     config[PublicConfigKey.REGION] = region;
     config[PublicConfigKey.CLOUD_PROVIDER] = provider;
@@ -160,7 +166,6 @@ function setBuiltInConfig(config: Record<string, any>, {
 
     return config;
 }
-
 
 /**
  * Find and process the config files in the found directory.

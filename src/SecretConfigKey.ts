@@ -16,7 +16,6 @@
  * export type MySecretConfigKey = InferSecretConfigKeyType<typeof MySecretConfigKey>;
  * ```
  */
-export const SecretConfigKey = {
-} as const;
+export const SecretConfigKey = {} as const;
 
 export type SecretConfigKey = (typeof SecretConfigKey)[keyof typeof SecretConfigKey];

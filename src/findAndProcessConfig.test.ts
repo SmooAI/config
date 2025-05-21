@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
-import { any as findAny} from 'empathic/find';
+import { any as findAny } from 'empathic/find';
 import { glob } from 'glob';
 import { join } from 'path';
 
@@ -69,9 +69,7 @@ describe('findAndProcessConfig', () => {
         });
 
         it('should find local .smooai-config directory', async () => {
-            vi.mocked(directoryExists).mockImplementation(
-                async (path) => path === '/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/.smooai-config',
-            );
+            vi.mocked(directoryExists).mockImplementation(async (path) => path === '/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/.smooai-config');
 
             const result = await findConfigDirectory();
             expect(result).toBe('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/.smooai-config');
@@ -113,9 +111,7 @@ describe('findAndProcessConfig', () => {
             expect(cachedResult).toBe('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/.smooai-config');
 
             // Third call with ignoreCache = true (should bypass cache)
-            vi.mocked(directoryExists).mockImplementation(
-                async (path) => path === '/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/smooai-config',
-            );
+            vi.mocked(directoryExists).mockImplementation(async (path) => path === '/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/smooai-config');
 
             const uncachedResult = await findConfigDirectory({ ignoreCache: true });
             expect(uncachedResult).toBe('/parent6/parent5/parent4/parent3/parent2/parent1/fake/cwd/smooai-config');
@@ -208,16 +204,18 @@ describe('findAndProcessConfig', () => {
 
             vi.mocked(importFile).mockImplementation(async (filePath: string) => {
                 const configs: Record<string, any> = {
-                    'config.ts': { default: defineConfig({
-                        publicConfigSchema: {
-                            name: StringSchema,
-                            arr: z.array(z.number()),
-                            nested: z.object({
-                                x: z.number().optional(),
-                                y: z.number().optional(),
-                            }),
-                        }
-                    }) },
+                    'config.ts': {
+                        default: defineConfig({
+                            publicConfigSchema: {
+                                name: StringSchema,
+                                arr: z.array(z.number()),
+                                nested: z.object({
+                                    x: z.number().optional(),
+                                    y: z.number().optional(),
+                                }),
+                            },
+                        }),
+                    },
                     'default.ts': { name: 'default', arr: [1, 2], nested: { x: 10 } },
                     'local.ts': { name: 'local', arr: [100], localFlag: true },
                     'development.ts': { arr: [200] },
