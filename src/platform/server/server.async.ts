@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { findAndProcessFileConfig } from '@/config/findAndProcessFileConfig';
 import { findAndProcessEnvConfig } from '@/config/findAndProcessEnvConfig';
 import { InferConfigTypes, defineConfig } from '@/config/config';
@@ -17,6 +18,12 @@ const IS_INITIALIZED_CACHE = new LRUCache<string, boolean>({
     max: 1,
 });
 const IS_INITIALIZED_CACHE_KEY = 'isInitialized';
+
+const PUBLIC_CONFIG_CACHE = new LRUCache<string, any>({} as any);
+
+const SECRET_CONFIG_CACHE = new LRUCache<string, any>({} as any);
+
+const FEATURE_FLAG_CACHE = new LRUCache<string, any>({} as any);
 
 async function loadFileConfig<Schema extends ReturnType<typeof defineConfig>>(configSchema: Schema) {
     let fileConfig = FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY);
@@ -59,36 +66,57 @@ export default function buildConfigObject<Schema extends ReturnType<typeof defin
     type FeatureFlagKey = Extract<FeatureFlagKeys[keyof FeatureFlagKeys], keyof ConfigType>;
 
     async function getPublicConfig<K extends PublicConfigKey>(key: K): Promise<ConfigType[K] | undefined> {
+        const cachedValue = PUBLIC_CONFIG_CACHE.get(key as string);
+        if (cachedValue) {
+            return cachedValue;
+        }
+
         await initialize(configSchema);
 
         if (FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key] !== undefined) {
+            PUBLIC_CONFIG_CACHE.set(key as string, FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key]);
             return FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key];
         }
         if (ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key] !== undefined) {
+            PUBLIC_CONFIG_CACHE.set(key as string, ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key]);
             return ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key];
         }
         return undefined;
     }
 
     async function getSecretConfig<K extends SecretConfigKey>(key: K): Promise<ConfigType[K] | undefined> {
+        const cachedValue = SECRET_CONFIG_CACHE.get(key as string);
+        if (cachedValue) {
+            return cachedValue;
+        }
+
         await initialize(configSchema);
 
         if (FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key] !== undefined) {
+            SECRET_CONFIG_CACHE.set(key as string, FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key]);
             return FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key];
         }
         if (ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key] !== undefined) {
+            SECRET_CONFIG_CACHE.set(key as string, ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key]);
             return ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key];
         }
         return undefined;
     }
 
     async function getFeatureFlag<K extends FeatureFlagKey>(key: K): Promise<ConfigType[K] | undefined> {
+        const cachedValue = FEATURE_FLAG_CACHE.get(key as string);
+        if (cachedValue) {
+            return cachedValue;
+        }
+
         await initialize(configSchema);
 
         if (FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key] !== undefined) {
+            FEATURE_FLAG_CACHE.set(key as string, FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key]);
             return FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY)?.[key];
         }
         if (ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key] !== undefined) {
+            FEATURE_FLAG_CACHE.set(key as string, ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key]);
             return ENV_CONFIG_CACHE.get(ENV_CONFIG_CACHE_KEY)?.[key];
         }
         return undefined;

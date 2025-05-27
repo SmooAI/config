@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { runAsWorker } from 'synckit';
 import buildConfigObject from './server.async';
 import { defineConfig } from '@/config/config';
