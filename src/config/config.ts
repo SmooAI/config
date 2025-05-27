@@ -5,8 +5,8 @@ import { PublicConfigKey } from '@/config/PublicConfigKey';
 import { SecretConfigKey } from '@/config/SecretConfigKey';
 import { FeatureFlagKey } from '@/config/FeatureFlagKey';
 import { convertKeyToUpperSnakeCase, SmooaiConfigError, UnionToUpperSnake } from '@/utils';
-import { handleSchemaValidationSync } from '@smooai/utils/validation/standardSchema';
-
+import { jsonSchemaToZod } from 'json-schema-to-zod';
+import { standardSchemaToJson } from './standardSchemaToJson';
 /**
  * Symbol used to indicate a string schema type in the configuration.
  * This is used to distinguish between string configurations and structured configurations.
@@ -78,13 +78,17 @@ type SchemaInputWithDeferFunctions<T extends ConfigSchema> = {
     [K in keyof T]?: InputTypeWithDeferFunctions<T, T[K]>;
 };
 
-type ZodOutputType<T extends ConfigSchema> = {
+type ZodOutputTypeRecord<T extends ConfigSchema> = {
     [K in keyof T]: z.ZodType<OutputType<T[K]>>;
 };
 
-type ZodOutputTypeWithDeferFunctions<T extends ConfigSchema> = {
+type ZodOutputType<T extends ConfigSchema> = z.ZodObject<ZodOutputTypeRecord<T>>;
+
+type ZodOutputTypeWithDeferFunctionsRecord<T extends ConfigSchema> = {
     [K in keyof T]: z.ZodType<OuputTypeWithDeferFunctions<T, T[K]>>;
 };
+
+type ZodOutputTypeWithDeferFunctions<T extends ConfigSchema> = z.ZodObject<ZodOutputTypeWithDeferFunctionsRecord<T>>;
 
 function handleStandardSchemaValidation(key: string, schema: StandardSchemaV1): (val: any, ctx: z.RefinementCtx) => any {
     return (val, ctx) => {
@@ -120,7 +124,43 @@ const coerceBooleanSchema = z.union([z.boolean(), z.string(), z.number()]).trans
     return val;
 });
 
-function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
+type SeralizedConfigSchema<K extends string | number | symbol = string> = Record<K, 'stringSchema' | 'booleanSchema' | 'numberSchema' | any>;
+
+export function serializeConfigSchema<T extends ConfigSchema>(configSchema: T) {
+    return Object.entries(configSchema).reduce((acc, [key, value]) => {
+        if (value === StringSchema) {
+            (acc as any)[key] = 'stringSchema';
+        } else if (value === BooleanSchema) {
+            (acc as any)[key] = 'booleanSchema';
+        } else if (value === NumberSchema) {
+            (acc as any)[key] = 'numberSchema';
+        } else if (value['~standard']) {
+            (acc as any)[key] = standardSchemaToJson(value);
+        }
+        return acc;
+    }, {} as ZodOutputType<T>);
+}
+
+export function deserializeConfigSchema<T extends SeralizedConfigSchema>(configSchema: T) {
+    return Object.entries(configSchema).reduce((acc, [key, value]) => {
+        if (value === 'stringSchema') {
+            (acc as any)[key] = StringSchema;
+        } else if (value === 'booleanSchema') {
+            (acc as any)[key] = BooleanSchema;
+        } else if (value === 'numberSchema') {
+            (acc as any)[key] = NumberSchema;
+        } else {
+            try {
+                (acc as any)[key] = jsonSchemaToZod(value);
+            } catch (e) {
+                throw new SmooaiConfigError(`Failed to deserialize config schema for key ${key}: ${e}`);
+            }
+        }
+        return acc;
+    }, {} as ConfigSchema);
+}
+
+export function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
     const recordSchema = Object.entries(configSchema).reduce((acc, [key, value]) => {
         if (value === StringSchema) {
             (acc as any)[key] = z.coerce.string().optional();
@@ -132,7 +172,7 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
             (acc as any)[key] = z.custom<StandardSchemaV1.InferInput<typeof value>>().superRefine(handleStandardSchemaValidation(key, value)).optional();
         }
         return acc;
-    }, {} as ZodOutputType<T>);
+    }, {} as ZodOutputTypeRecord<T>);
 
     const recordSchemaWithDeferFunctions = Object.entries(configSchema).reduce((acc, [key, value]) => {
         if (value === StringSchema) {
@@ -150,7 +190,7 @@ function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
                 .optional();
         }
         return acc;
-    }, {} as ZodOutputTypeWithDeferFunctions<T>);
+    }, {} as ZodOutputTypeWithDeferFunctionsRecord<T>);
 
     return {
         object: z.object(recordSchema),
@@ -185,7 +225,7 @@ export type ParsedConfigGeneric = Record<
     | ((config: Record<string, any>) => StandardSchemaV1.InferOutput<StandardSchemaV1>)
 >;
 
-/**
+export /**
  * Creates a configuration definition with public, secret, and feature flag configuration schemas.
  * This function generates type-safe configuration keys and validation schemas.
  *
@@ -256,7 +296,7 @@ export type ParsedConfigGeneric = Record<
  *   }
  * });
  */
-export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>({
+function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>({
     publicConfigSchema,
     secretConfigSchema,
     featureFlagSchema,
@@ -269,7 +309,14 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
         throw new SmooaiConfigError('At least one of publicConfigSchema, secretConfigSchema, or featureFlagSchema must be provided');
     }
 
-    const standardPublicConfigSchema = {
+    type StandardPublicConfigSchema = {
+        [PublicConfigKey.ENV]: StringSchema;
+        [PublicConfigKey.CLOUD_PROVIDER]: StringSchema;
+        [PublicConfigKey.REGION]: StringSchema;
+        [PublicConfigKey.IS_LOCAL]: BooleanSchema;
+    };
+
+    const standardPublicConfigSchema: StandardPublicConfigSchema = {
         [PublicConfigKey.ENV]: StringSchema,
         [PublicConfigKey.CLOUD_PROVIDER]: StringSchema,
         [PublicConfigKey.REGION]: StringSchema,
@@ -301,43 +348,47 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
         ...(featureFlagSchema ?? ({} as FF)),
     };
 
-    const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions, object: allConfigZodSchema } = generateConfigSchema(allConfigSchema);
+    const serializedAllConfigSchema = serializeConfigSchema(allConfigSchema);
 
-    const parseConfig = (config: SchemaInputWithDeferFunctions<Pub & Sec & FF>): SchemaOutputWithDeferFunctions<Pub & Sec & FF> => {
-        return handleSchemaValidationSync(allConfigZodSchemaWithDeferFunctions, config as any) as any;
-    };
+    // const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions, object: allConfigZodSchema } = generateConfigSchema(allConfigSchema);
 
-    const parseConfigKey = <
-        K extends keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey,
-    >(
-        key: K,
-        value: any,
-    ): SchemaOutput<Pub & Sec & FF>[K] => {
-        const schema = allConfigZodSchema.shape[key];
-        if (typeof schema === 'object' && '~standard' in schema) {
-            return handleSchemaValidationSync(schema, value) as any;
-        } else {
-            return value;
-        }
-    };
+    // const parseConfig = (
+    //     config: SchemaInputWithDeferFunctions<Pub & Sec & FF>,
+    // ): SchemaOutputWithDeferFunctions<StandardPublicConfigSchema & Pub & Sec & FF> => {
+    //     return handleSchemaValidationSync(allConfigZodSchemaWithDeferFunctions, config as any) as any;
+    // };
 
-    const get = <K extends keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey>(
-        _key: K,
-    ): SchemaOutput<Pub & Sec & FF>[K] => {
-        throw new SmooaiConfigError('Not implemented');
-    };
+    // const parseConfigKey = <
+    //     K extends keyof Pub | keyof typeof PublicConfigKey | keyof Sec | keyof typeof SecretConfigKey | keyof FF | keyof typeof FeatureFlagKey,
+    // >(
+    //     key: K,
+    //     value: any,
+    // ): SchemaOutputWithDeferFunctions<StandardPublicConfigSchema & Pub & Sec & FF>[K] => {
+    //     const schema = allConfigZodSchema.shape[key];
+    //     if (typeof schema === 'object' && '~standard' in schema) {
+    //         return handleSchemaValidationSync(schema, value) as any;
+    //     } else {
+    //         return value;
+    //     }
+    // };
 
-    const _configType: SchemaOutput<Pub & Sec & FF> = {} as any;
+    const _configTypeInput: SchemaInputWithDeferFunctions<Pub & Sec & FF> = {} as any;
+    const _configTypeOutput: SchemaOutputWithDeferFunctions<StandardPublicConfigSchema & Pub & Sec & FF> = {} as any;
+    const _configType: SchemaOutput<StandardPublicConfigSchema & Pub & Sec & FF> = {} as any;
+    const _zodOutputType: ZodOutputType<StandardPublicConfigSchema & Pub & Sec & FF> = {} as any;
+    const _zodOutputTypeWithDeferFunctions: ZodOutputTypeWithDeferFunctions<StandardPublicConfigSchema & Pub & Sec & FF> = {} as any;
 
     return {
         AllConfigKeys,
         PublicConfigKeys,
         SecretConfigKeys,
         FeatureFlagKeys,
-        parseConfig,
-        parseConfigKey,
-        get,
+        serializedAllConfigSchema,
+        _configTypeInput,
+        _configTypeOutput,
         _configType,
+        _zodOutputType,
+        _zodOutputTypeWithDeferFunctions,
     };
 }
 
@@ -350,7 +401,7 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
  *   - PublicConfigKeys: Type of public configuration keys
  *   - SecretConfigKeys: Type of secret configuration keys
  *   - FeatureFlagKeys: Type of feature flag keys
- *   - ConfigType: Type of the input configuration
+ *   - ConfigTypeInput: Type of the input configuration
  *   - ConfigTypeOutput: Type of the validated output configuration
  *
  * @example
@@ -377,7 +428,7 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
  * type FeatureFlags = ConfigTypes['FeatureFlagKeys']; // { ENABLE_NEW_UI: 'enableNewUI' }
  *
  * // Input type for parseConfig
- * type InputConfig = ConfigTypes['ConfigType'];
+ * type InputConfig = ConfigTypes['ConfigTypeInput'];
  * // {
  * //   apiUrl?: string | ((config: Record<string, any>) => string);
  * //   debugMode?: boolean | ((config: Record<string, any>) => boolean);
@@ -410,7 +461,7 @@ export function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema,
  * type ConfigTypes = InferConfigTypes<typeof config>;
  *
  * // Input type includes both direct values and functions
- * type InputConfig = ConfigTypes['ConfigType'];
+ * type InputConfig = ConfigTypes['ConfigTypeInput'];
  * // {
  * //   database?: {
  * //     host: string;
@@ -435,17 +486,22 @@ export type InferConfigTypes<T> = T extends {
     PublicConfigKeys: infer PK;
     SecretConfigKeys: infer SK;
     FeatureFlagKeys: infer FK;
-    parseConfig: (input: infer CI) => infer CO;
-    get: (key: infer _K) => infer _V;
+    serializedAllConfigSchema: infer _SACS;
     _configType: infer CT;
+    _configTypeInput: infer CIT;
+    _configTypeOutput: infer COT;
+    _zodOutputType: infer ZOT;
+    _zodOutputTypeWithDeferFunctions: infer ZOTDF;
 }
     ? {
           AllConfigKeys: AK;
           PublicConfigKeys: PK;
           SecretConfigKeys: SK;
           FeatureFlagKeys: FK;
-          ConfigType: CI;
-          ConfigTypeOutput: CO;
-          ConfigTypeComputed: CT;
+          ConfigTypeInput: CIT;
+          ConfigTypeOutput: COT;
+          ConfigType: CT;
+          ZodOutputType: ZOT;
+          ZodOutputTypeWithDeferFunctions: ZOTDF;
       }
     : never;

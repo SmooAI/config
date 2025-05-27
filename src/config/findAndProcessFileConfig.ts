@@ -10,6 +10,7 @@ import { directoryExists, importFile } from '@/utils/fs';
 import { mergeReplaceArrays } from '@/utils/mergeReplaceArrays';
 import { PublicConfigKey } from '@/config/PublicConfigKey';
 import { defineConfig, ParsedConfigGeneric, InferConfigTypes } from './config';
+import { parseConfig, parseConfigKey, generateZodSchemas } from './parseConfigSchema';
 initEsmUtils();
 
 const logger = new Logger({
@@ -95,14 +96,18 @@ export async function findConfigDirectory(
     throw new SmooaiConfigError(`Could not find the directory where the config files are located. Tried ${levelsUpLimit} levels up from ${cwd}.`);
 }
 
-async function processConfigFileFeatures(configSchema: ReturnType<typeof defineConfig>, currentConfig: any, config: ParsedConfigGeneric) {
+async function processConfigFileFeatures(
+    zodSchema: InferConfigTypes<ReturnType<typeof defineConfig>>['ZodOutputType'],
+    currentConfig: any,
+    config: ParsedConfigGeneric,
+) {
     const finalConfig: Record<string, any> = {};
 
     for (const key in config) {
         const value = config[key];
         if (typeof value === 'function') {
             // We need to parse the value because it might be a function that returns a value that is not valid.
-            config[key] = configSchema.parseConfigKey(key, value(currentConfig));
+            config[key] = parseConfigKey(zodSchema, key, value(currentConfig));
             finalConfig[key] = config[key];
         } else {
             config[key] = value;
@@ -150,7 +155,7 @@ function setBuiltInConfig(
 export async function findAndProcessFileConfig<Schema extends ReturnType<typeof defineConfig>>(
     configSchema: Schema,
 ): Promise<{
-    config: InferConfigTypes<Schema>['ConfigTypeComputed'];
+    config: InferConfigTypes<Schema>['ConfigType'];
 }> {
     let finalConfig: Record<string, any> = {};
     try {
@@ -175,6 +180,8 @@ export async function findAndProcessFileConfig<Schema extends ReturnType<typeof 
             }
         }
 
+        const { allConfigZodSchemaWithDeferFunctions, allConfigZodSchema } = generateZodSchemas(configSchema);
+
         // The final merged config
 
         // Go through each possible file in order, see if it exists, merge
@@ -194,8 +201,8 @@ export async function findAndProcessFileConfig<Schema extends ReturnType<typeof 
             for (const filePath of matchedPaths) {
                 try {
                     // Attempt to import. If `export default` is used, use that, else use entire import.
-                    const configModule = await configSchema.parseConfig(await importFile(filePath));
-                    const processedConfig = await processConfigFileFeatures(configSchema, finalConfig, configModule);
+                    const configModule = await parseConfig(allConfigZodSchemaWithDeferFunctions, await importFile(filePath));
+                    const processedConfig = await processConfigFileFeatures(allConfigZodSchema, finalConfig, configModule);
                     finalConfig = mergeReplaceArrays(finalConfig, processedConfig);
                 } catch (err) {
                     logger.error(`Error importing config file "${filePath}":`, err);

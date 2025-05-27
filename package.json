@@ -54,9 +54,18 @@
         "@smooai/logger": "^1.2.2",
         "@smooai/utils": "^1.2.4",
         "@standard-schema/spec": "^1.0.0",
+        "@valibot/to-json-schema": "^1.2.0",
+        "arktype": "^2.1.20",
+        "effect": "^3.15.4",
         "empathic": "^1.1.0",
         "esm-utils": "^4.3.0",
         "glob": "^11.0.1",
+        "json-schema-to-zod": "^2.6.1",
+        "lru-cache": "^11.1.0",
+        "synckit": "^0.11.6",
+        "tsx": "^4.19.4",
+        "valibot": "^1.1.0",
+        "zod-to-json-schema": "^3.24.5",
         "zod-validation-error": "^3.4.1"
     },
     "devDependencies": {

@@ -29,12 +29,13 @@ describe('defineConfig', () => {
             },
         });
 
-        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys, parseConfig, get } = config;
+        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys, parseConfig } = config;
 
         type configTypes = InferConfigTypes<typeof config>;
+        type ConfigTypeInput = configTypes['ConfigTypeInput'];
         type ConfigType = configTypes['ConfigType'];
 
-        const testConfig: ConfigType = {
+        const testConfig: ConfigTypeInput = {
             [PublicConfigKeys.MY_PUBLIC_API_KEY]: 'test-public-key',
             [PublicConfigKeys.MY_PUBLIC_STRUCTURED_CONFIG]: {
                 key: 'myPublicApiKey',

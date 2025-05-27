@@ -5,7 +5,7 @@ import { envToUse } from '@/utils';
 import { getCloudRegion } from './getCloudRegion';
 import { PublicConfigKey } from '@/config/PublicConfigKey';
 import { defineConfig, InferConfigTypes } from './config';
-
+import { parseConfigKey, generateZodSchemas } from './parseConfigSchema';
 initEsmUtils();
 
 const logger = new Logger({
@@ -23,7 +23,7 @@ export function findAndProcessEnvConfig<Schema extends ReturnType<typeof defineC
     configSchema: Schema,
     prefix: string = '',
 ): {
-    config: InferConfigTypes<Schema>['ConfigTypeComputed'];
+    config: InferConfigTypes<Schema>['ConfigType'];
 } {
     let finalConfig: Record<string, any> = {};
     try {
@@ -32,6 +32,8 @@ export function findAndProcessEnvConfig<Schema extends ReturnType<typeof defineC
         const { provider, region } = getCloudRegion();
 
         const allConfigKeysValuesSet = new Set(Object.values(configSchema.AllConfigKeys));
+
+        const { allConfigZodSchema } = generateZodSchemas(configSchema);
 
         // Process all environment variables
         for (const [key, value] of Object.entries(env)) {
@@ -43,7 +45,7 @@ export function findAndProcessEnvConfig<Schema extends ReturnType<typeof defineC
 
             try {
                 // Try to parse the value according to the schema
-                finalConfig[keyToUse] = configSchema.parseConfigKey(keyToUse, value);
+                finalConfig[keyToUse] = parseConfigKey(allConfigZodSchema, keyToUse, value);
             } catch (err) {
                 logger.warn(`Failed to parse environment variable ${key}:`, err);
             }
