@@ -1,10 +1,10 @@
-import { defineConfig, defaultExclude } from 'vitest/config';
+import { defineConfig } from 'vitest/config';
 import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
     plugins: [tsconfigPaths()],
     test: {
         passWithNoTests: true,
-        exclude: [...defaultExclude, 'src/**/*.integration.test.ts'],
+        include: ['src/**/*.integration.test.ts'],
     },
 });

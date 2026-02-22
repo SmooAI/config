@@ -7,6 +7,13 @@ import { FeatureFlagKey } from '@/config/FeatureFlagKey';
 import { convertKeyToUpperSnakeCase, SmooaiConfigError, UnionToUpperSnake } from '@/utils';
 import { jsonSchemaToZod } from 'json-schema-to-zod';
 import { standardSchemaToJson } from './standardSchemaToJson';
+
+type DeepPartial<T> = T extends object
+    ? {
+          [P in keyof T]?: DeepPartial<T[P]>;
+      }
+    : T;
+
 /**
  * Symbol used to indicate a string schema type in the configuration.
  * This is used to distinguish between string configurations and structured configurations.
@@ -20,7 +27,7 @@ export type BooleanSchema = typeof BooleanSchema;
 export const NumberSchema: unique symbol = Symbol('Number');
 export type NumberSchema = typeof NumberSchema;
 
-type ConfigSchema<K extends string | number | symbol = string> = Record<K, StringSchema | StandardSchemaV1 | BooleanSchema | NumberSchema>;
+type ConfigSchema<K extends string | number | symbol = string> = Record<K, StringSchema | BooleanSchema | NumberSchema | StandardSchemaV1>;
 
 type OutputType<E> = E extends StringSchema
     ? string
@@ -49,7 +56,7 @@ type OuputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSc
       : E extends NumberSchema
         ? number | ((config: SchemaOutput<S>) => number)
         : E extends StandardSchemaV1
-          ? StandardSchemaV1.InferOutput<E> | ((config: SchemaOutput<S>) => StandardSchemaV1.InferOutput<E>)
+          ? StandardSchemaV1.InferInput<E> | ((config: SchemaOutput<S>) => DeepPartial<StandardSchemaV1.InferInput<E>>)
           : never;
 
 type InputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSchema
@@ -59,7 +66,7 @@ type InputTypeWithDeferFunctions<S extends ConfigSchema, E> = E extends StringSc
       : E extends NumberSchema
         ? number | ((config: SchemaInput<S>) => number)
         : E extends StandardSchemaV1
-          ? StandardSchemaV1.InferInput<E> | ((config: SchemaInput<S>) => StandardSchemaV1.InferInput<E>)
+          ? StandardSchemaV1.InferInput<E> | ((config: SchemaInput<S>) => DeepPartial<StandardSchemaV1.InferInput<E>>)
           : never;
 
 type SchemaOutput<T extends ConfigSchema> = {
@@ -92,14 +99,17 @@ type ZodOutputTypeWithDeferFunctions<T extends ConfigSchema> = z.ZodObject<ZodOu
 
 function handleStandardSchemaValidation(key: string, schema: StandardSchemaV1): (val: any, ctx: z.RefinementCtx) => any {
     return (val, ctx) => {
-        if (val) {
+        if (val && schema && typeof schema === 'object' && '~standard' in schema) {
             const result = schema['~standard'].validate(val);
             if (result instanceof Promise) {
-                ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Standard schema validation is async' });
+                ctx.addIssue({
+                    code: 'custom',
+                    message: 'Asynchronous validation is not supported, please use a validation library that supports synchronous validation.',
+                });
             } else if (result.issues) {
                 result.issues.forEach((issue) => {
                     ctx.addIssue({
-                        code: z.ZodIssueCode.custom,
+                        code: 'custom',
                         message: issue.message,
                         path: [key, ...(Array.isArray(issue.path) ? issue.path : [issue.path])],
                     });
@@ -108,6 +118,7 @@ function handleStandardSchemaValidation(key: string, schema: StandardSchemaV1): 
                 return result.value;
             }
         }
+        return val;
     };
 }
 
@@ -176,17 +187,14 @@ export function generateConfigSchema<T extends ConfigSchema>(configSchema: T) {
 
     const recordSchemaWithDeferFunctions = Object.entries(configSchema).reduce((acc, [key, value]) => {
         if (value === StringSchema) {
-            (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.string()), z.coerce.string()]).optional();
+            (acc as any)[key] = z.union([z.function(), z.coerce.string()]).optional();
         } else if (value === BooleanSchema) {
-            (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.boolean()), coerceBooleanSchema]).optional();
+            (acc as any)[key] = z.union([z.function(), coerceBooleanSchema]).optional();
         } else if (value === NumberSchema) {
-            (acc as any)[key] = z.union([z.function().args(z.custom<SchemaInput<T>>()).returns(z.number()), z.coerce.number()]).optional();
+            (acc as any)[key] = z.union([z.function(), z.coerce.number()]).optional();
         } else {
             (acc as any)[key] = z
-                .union([
-                    z.function().args(z.custom<SchemaInput<T>>()).returns(z.custom<StandardSchemaV1.InferOutput<typeof value>>()),
-                    z.custom<StandardSchemaV1.InferOutput<typeof value>>().superRefine(handleStandardSchemaValidation(key, value)),
-                ])
+                .union([z.function(), z.custom<StandardSchemaV1.InferInput<typeof value>>().superRefine(handleStandardSchemaValidation(key, value))])
                 .optional();
         }
         return acc;
@@ -233,10 +241,16 @@ export /**
  * @param secretConfigSchema - Schema definition for secret configuration values
  * @param featureFlagSchema - Schema definition for feature flag configuration values
  * @returns An object containing:
+ *   - AllConfigKeys: Object mapping all configuration keys to their snake_case versions
  *   - PublicConfigKeys: Object mapping public configuration keys to their snake_case versions
  *   - SecretConfigKeys: Object mapping secret configuration keys to their snake_case versions
  *   - FeatureFlagKeys: Object mapping feature flag keys to their snake_case versions
- *   - parseConfig: Function to parse and validate configuration values
+ *   - serializedAllConfigSchema: Serialized version of the complete configuration schema
+ *   - _configTypeInput: Type helper for input configuration
+ *   - _configTypeOutput: Type helper for output configuration
+ *   - _configType: Type helper for configuration
+ *   - _zodOutputType: Type helper for Zod output
+ *   - _zodOutputTypeWithDeferFunctions: Type helper for Zod output with defer functions
  *
  * @example
  * // Basic usage with string and boolean configurations
@@ -256,16 +270,16 @@ export /**
  *   }
  * });
  *
- * // Parse configuration values
- * const parsedConfig = config.parseConfig({
- *   apiUrl: 'https://api.example.com',
- *   debugMode: true,
- *   maxRetries: 3,
- *   apiKey: 'secret-key',
- *   jwtSecret: 'jwt-secret',
- *   enableNewUI: true,
- *   betaFeatures: false
- * });
+ * // Access configuration keys
+ * const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys } = config;
+ *
+ * // Use in configuration files
+ * export default {
+ *   [PublicConfigKeys.API_URL]: 'https://api.example.com',
+ *   [PublicConfigKeys.DEBUG_MODE]: true,
+ *   [SecretConfigKeys.API_KEY]: 'secret-key',
+ *   [FeatureFlagKeys.ENABLE_NEW_UI]: true
+ * };
  *
  * @example
  * // Using with StandardSchema for structured configuration
@@ -284,17 +298,17 @@ export /**
  *   }
  * });
  *
- * // Parse structured configuration
- * const parsedConfig = config.parseConfig({
- *   database: {
+ * // Use in configuration files with defer functions
+ * export default {
+ *   [PublicConfigKeys.DATABASE]: (config) => ({
  *     host: 'localhost',
  *     port: 5432,
  *     credentials: {
  *       username: 'admin',
  *       password: 'secret'
  *     }
- *   }
- * });
+ *   })
+ * };
  */
 function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>({
     publicConfigSchema,
@@ -394,15 +408,18 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
 
 /**
  * Infers the TypeScript types from a configuration definition.
- * This utility type extracts the public keys, secret keys, feature flag keys, and input/output types
- * from a configuration definition created by defineConfig.
+ * This utility type extracts the configuration keys and type helpers from a configuration definition created by defineConfig.
  *
  * @returns An object containing:
+ *   - AllConfigKeys: Type of all configuration keys
  *   - PublicConfigKeys: Type of public configuration keys
  *   - SecretConfigKeys: Type of secret configuration keys
  *   - FeatureFlagKeys: Type of feature flag keys
- *   - ConfigTypeInput: Type of the input configuration
- *   - ConfigTypeOutput: Type of the validated output configuration
+ *   - ConfigTypeInput: Type helper for input configuration
+ *   - ConfigTypeOutput: Type helper for output configuration
+ *   - ConfigType: Type helper for configuration
+ *   - ZodOutputType: Type helper for Zod output
+ *   - ZodOutputTypeWithDeferFunctions: Type helper for Zod output with defer functions
  *
  * @example
  * // Define a configuration
@@ -423,27 +440,17 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
  * type ConfigTypes = InferConfigTypes<typeof config>;
  *
  * // Now you can use the inferred types:
+ * type AllKeys = ConfigTypes['AllConfigKeys'];  // { API_URL: 'apiUrl', DEBUG_MODE: 'debugMode', API_KEY: 'apiKey', ENABLE_NEW_UI: 'enableNewUI' }
  * type PublicKeys = ConfigTypes['PublicConfigKeys'];  // { API_URL: 'apiUrl', DEBUG_MODE: 'debugMode' }
  * type SecretKeys = ConfigTypes['SecretConfigKeys'];  // { API_KEY: 'apiKey' }
  * type FeatureFlags = ConfigTypes['FeatureFlagKeys']; // { ENABLE_NEW_UI: 'enableNewUI' }
  *
- * // Input type for parseConfig
+ * // Type helpers for configuration
  * type InputConfig = ConfigTypes['ConfigTypeInput'];
- * // {
- * //   apiUrl?: string | ((config: Record<string, any>) => string);
- * //   debugMode?: boolean | ((config: Record<string, any>) => boolean);
- * //   apiKey?: string | ((config: Record<string, any>) => string);
- * //   enableNewUI?: boolean | ((config: Record<string, any>) => boolean);
- * // }
- *
- * // Output type after parsing
  * type OutputConfig = ConfigTypes['ConfigTypeOutput'];
- * // {
- * //   apiUrl?: string;
- * //   debugMode?: boolean;
- * //   apiKey?: string;
- * //   enableNewUI?: boolean;
- * // }
+ * type ConfigType = ConfigTypes['ConfigType'];
+ * type ZodOutput = ConfigTypes['ZodOutputType'];
+ * type ZodOutputWithDefer = ConfigTypes['ZodOutputTypeWithDeferFunctions'];
  *
  * @example
  * // Using with structured configuration
@@ -460,26 +467,12 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
  *
  * type ConfigTypes = InferConfigTypes<typeof config>;
  *
- * // Input type includes both direct values and functions
+ * // Type helpers for structured configuration
  * type InputConfig = ConfigTypes['ConfigTypeInput'];
- * // {
- * //   database?: {
- * //     host: string;
- * //     port: number;
- * //   } | ((config: Record<string, any>) => {
- * //     host: string;
- * //     port: number;
- * //   })
- * // }
- *
- * // Output type only includes the final values
  * type OutputConfig = ConfigTypes['ConfigTypeOutput'];
- * // {
- * //   database?: {
- * //     host: string;
- * //     port: number;
- * //   }
- * // }
+ * type ConfigType = ConfigTypes['ConfigType'];
+ * type ZodOutput = ConfigTypes['ZodOutputType'];
+ * type ZodOutputWithDefer = ConfigTypes['ZodOutputTypeWithDeferFunctions'];
  */
 export type InferConfigTypes<T> = T extends {
     AllConfigKeys: infer AK;

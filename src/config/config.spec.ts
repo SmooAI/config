@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import z from 'zod';
 import { defineConfig, InferConfigTypes, StringSchema, NumberSchema, BooleanSchema } from './config';
+import { generateZodSchemas, parseConfig } from './parseConfigSchema';
 
 describe('defineConfig', () => {
     it('should define config', () => {
@@ -29,7 +30,8 @@ describe('defineConfig', () => {
             },
         });
 
-        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys, parseConfig } = config;
+        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys } = config;
+        const { allConfigZodSchemaWithDeferFunctions } = generateZodSchemas(config);
 
         type configTypes = InferConfigTypes<typeof config>;
         type ConfigTypeInput = configTypes['ConfigTypeInput'];
@@ -86,7 +88,7 @@ describe('defineConfig', () => {
         expect(featureFlagValues).toEqual(expect.arrayContaining([FeatureFlagKeys.ENABLE_NEW_UI, FeatureFlagKeys.BETA_FEATURES]));
         expect(featureFlagValues).toEqual(expect.arrayContaining(['enableNewUI', 'betaFeatures']));
 
-        const parsedConfig = parseConfig(testConfig);
+        const parsedConfig = parseConfig(allConfigZodSchemaWithDeferFunctions, testConfig);
         expect(parsedConfig).toBeDefined();
         if (parsedConfig) {
             expect(parsedConfig.myPublicApiKey).toBe('test-public-key');
@@ -149,7 +151,8 @@ describe('defineConfig', () => {
             },
         });
 
-        const { PublicConfigKeys, FeatureFlagKeys, parseConfig } = config;
+        const { PublicConfigKeys, FeatureFlagKeys } = config;
+        const { allConfigZodSchemaWithDeferFunctions } = generateZodSchemas(config);
 
         const testConfig = {
             [PublicConfigKeys.BASE_URL]: 'https://api.example.com',
@@ -165,7 +168,7 @@ describe('defineConfig', () => {
             }),
         };
 
-        const parsedConfig = parseConfig(testConfig);
+        const parsedConfig = parseConfig(allConfigZodSchemaWithDeferFunctions, testConfig);
         expect(parsedConfig).toBeDefined();
         if (parsedConfig) {
             expect(parsedConfig.baseUrl).toBe('https://api.example.com');
@@ -194,7 +197,8 @@ describe('defineConfig', () => {
             },
         });
 
-        const { PublicConfigKeys, parseConfig } = config;
+        const { PublicConfigKeys } = config;
+        const { allConfigZodSchemaWithDeferFunctions } = generateZodSchemas(config);
 
         const testConfig = {
             [PublicConfigKeys.DATABASE]: {
@@ -209,7 +213,7 @@ describe('defineConfig', () => {
                 `postgresql://${config.database.credentials.username}:${config.database.credentials.password}@${config.database.host}:${config.database.port}`,
         };
 
-        const parsedConfig = parseConfig(testConfig);
+        const parsedConfig = parseConfig(allConfigZodSchemaWithDeferFunctions, testConfig);
         expect(parsedConfig).toBeDefined();
         if (parsedConfig) {
             expect(parsedConfig.database).toEqual({
@@ -244,7 +248,8 @@ describe('defineConfig', () => {
             },
         });
 
-        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys, parseConfig } = config;
+        const { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys } = config;
+        const { allConfigZodSchemaWithDeferFunctions } = generateZodSchemas(config);
 
         const testConfig = {
             [PublicConfigKeys.IS_PRODUCTION]: true,
@@ -259,7 +264,7 @@ describe('defineConfig', () => {
             }),
         };
 
-        const parsedConfig = parseConfig(testConfig);
+        const parsedConfig = parseConfig(allConfigZodSchemaWithDeferFunctions, testConfig);
         expect(parsedConfig).toBeDefined();
         if (parsedConfig) {
             expect(parsedConfig.isProduction).toBe(true);

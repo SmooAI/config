@@ -2,7 +2,7 @@
 import { any as findAny } from 'empathic/find';
 import TTLCache from '@isaacs/ttlcache';
 import { join } from 'path';
-import { glob } from 'glob';
+import { glob } from 'tinyglobby';
 import { getCloudRegion } from './getCloudRegion';
 import Logger from '@smooai/logger/Logger';
 import { initEsmUtils, SmooaiConfigError, envToUse } from '@/utils';
@@ -201,7 +201,7 @@ export async function findAndProcessFileConfig<Schema extends ReturnType<typeof 
             for (const filePath of matchedPaths) {
                 try {
                     // Attempt to import. If `export default` is used, use that, else use entire import.
-                    const configModule = await parseConfig(allConfigZodSchemaWithDeferFunctions, await importFile(filePath));
+                    const configModule = parseConfig(allConfigZodSchemaWithDeferFunctions, await importFile(filePath));
                     const processedConfig = await processConfigFileFeatures(allConfigZodSchema, finalConfig, configModule);
                     finalConfig = mergeReplaceArrays(finalConfig, processedConfig);
                 } catch (err) {

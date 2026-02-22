@@ -3,6 +3,7 @@ import { findAndProcessFileConfig } from '@/config/findAndProcessFileConfig';
 import { findAndProcessEnvConfig } from '@/config/findAndProcessEnvConfig';
 import { InferConfigTypes, defineConfig } from '@/config/config';
 import { LRUCache } from 'lru-cache';
+import TTLCache from '@isaacs/ttlcache';
 
 const FILE_CONFIG_CACHE = new LRUCache<string, Awaited<ReturnType<typeof findAndProcessFileConfig>>>({
     max: 1,
@@ -19,11 +20,17 @@ const IS_INITIALIZED_CACHE = new LRUCache<string, boolean>({
 });
 const IS_INITIALIZED_CACHE_KEY = 'isInitialized';
 
-const PUBLIC_CONFIG_CACHE = new LRUCache<string, any>({} as any);
+const PUBLIC_CONFIG_CACHE = new TTLCache<string, any>({
+    ttl: 1000 * 60 * 60 * 24,
+});
 
-const SECRET_CONFIG_CACHE = new LRUCache<string, any>({} as any);
+const SECRET_CONFIG_CACHE = new TTLCache<string, any>({
+    ttl: 1000 * 60 * 60 * 24,
+});
 
-const FEATURE_FLAG_CACHE = new LRUCache<string, any>({} as any);
+const FEATURE_FLAG_CACHE = new TTLCache<string, any>({
+    ttl: 1000 * 60 * 60 * 24,
+});
 
 async function loadFileConfig<Schema extends ReturnType<typeof defineConfig>>(configSchema: Schema) {
     let fileConfig = FILE_CONFIG_CACHE.get(FILE_CONFIG_CACHE_KEY);

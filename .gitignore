@@ -44,3 +44,15 @@ yarn.lock
 package-lock.json
 
 .vscode
+
+# Python
+python/.venv
+python/dist
+__pycache__
+*.pyc
+
+# Rust
+rust/config/target
+
+# Go
+go/config/config

@@ -1,4 +1,4 @@
-import { isRunningInBrowser } from '@smooai/utils/env/env';
+import { isRunningInBrowser } from '@smooai/utils/env/index';
 import { envToUse } from '@/utils';
 type CloudProvider = 'aws' | 'azure' | 'gcp' | 'unknown';
 

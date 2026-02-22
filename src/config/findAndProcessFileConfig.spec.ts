@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import { any as findAny } from 'empathic/find';
-import { glob } from 'glob';
+import { glob } from 'tinyglobby';
 import { join } from 'path';
 
 import { findConfigDirectory, findAndProcessFileConfig } from './findAndProcessFileConfig';
@@ -13,7 +13,7 @@ import { z } from 'zod';
 
 vi.mock('fs/promises');
 vi.mock('empathic/find');
-vi.mock('glob');
+vi.mock('tinyglobby');
 vi.mock('@/utils', async (importOriginal) => {
     const actual = await importOriginal<typeof import('@/utils')>();
     return {
@@ -181,7 +181,7 @@ describe('findAndProcessConfig', () => {
         vi.mocked(directoryExists).mockResolvedValue(true);
         vi.mocked(findAny).mockResolvedValueOnce('/some/config');
         vi.mocked(glob).mockImplementation(async (pattern) => {
-            if (pattern === 'default.ts') return ['/some/config/default.ts'];
+            if ((pattern as any) === 'default.ts') return ['/some/config/default.ts'];
             return [];
         });
 
@@ -199,7 +199,7 @@ describe('findAndProcessConfig', () => {
         });
 
         vi.mocked(glob).mockImplementation(async (pattern) => {
-            switch (pattern) {
+            switch (pattern as any) {
                 case 'config.ts':
                     return ['/some/config/config.ts'];
                 case 'default.ts':
