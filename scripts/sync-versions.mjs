@@ -30,7 +30,7 @@ const files = [
         pattern: /^version = ".*"$/m,
         replacement: `version = "${version}"`,
     },
-]
+];
 
 // Go doesn't have a version file in go.mod, but we can add a version.go constant
 const goVersionFile = join(rootDir, 'go', 'config', 'version.go');

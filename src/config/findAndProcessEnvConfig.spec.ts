@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { findAndProcessEnvConfig } from './findAndProcessEnvConfig';
-import { defineConfig, StringSchema, NumberSchema, BooleanSchema } from './config';
-import { PublicConfigKey } from './PublicConfigKey';
 import { envToUse } from '@/utils';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { defineConfig, StringSchema, NumberSchema, BooleanSchema } from './config';
+import { findAndProcessEnvConfig } from './findAndProcessEnvConfig';
 import { getCloudRegion } from './getCloudRegion';
+import { PublicConfigKey } from './PublicConfigKey';
 
 // Mock dependencies
 vi.mock('@/utils', async (importOriginal) => {

@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import buildConfigObject from '@/platform/server';
-import config from './smooai-config/config';
-import { PublicConfigKey } from '@/config/PublicConfigKey';
 import path from 'path';
+import { PublicConfigKey } from '@/config/PublicConfigKey';
+import buildConfigObject from '@/platform/server';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import config from './smooai-config/config';
 
 describe('Server Config Integration Tests', () => {
     const originalConfigDir = process.env.SMOOAI_ENV_CONFIG_DIR;

@@ -82,8 +82,8 @@ describe('getCloudRegion', () => {
         });
     });
 
-    it('should handle undefined environment', () => {
-        expect(getCloudRegion()).toEqual({
+    it('should handle empty environment (no args)', () => {
+        expect(getCloudRegion({})).toEqual({
             provider: 'unknown',
             region: 'unknown',
         });

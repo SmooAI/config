@@ -1,5 +1,5 @@
-import config from './config';
 import type { InferConfigTypes } from '@/config/config';
+import config from './config';
 
 type configTypes = InferConfigTypes<typeof config>;
 type ConfigTypeInput = configTypes['ConfigTypeInput'];

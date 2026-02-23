@@ -1,9 +1,9 @@
+import { InferConfigTypes, defineConfig } from '@/config/config';
+import { findAndProcessEnvConfig } from '@/config/findAndProcessEnvConfig';
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { findAndProcessFileConfig } from '@/config/findAndProcessFileConfig';
-import { findAndProcessEnvConfig } from '@/config/findAndProcessEnvConfig';
-import { InferConfigTypes, defineConfig } from '@/config/config';
-import { LRUCache } from 'lru-cache';
 import TTLCache from '@isaacs/ttlcache';
+import { LRUCache } from 'lru-cache';
 
 const FILE_CONFIG_CACHE = new LRUCache<string, Awaited<ReturnType<typeof findAndProcessFileConfig>>>({
     max: 1,

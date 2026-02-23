@@ -1,11 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
-import { StandardSchemaV1 } from '@standard-schema/spec';
-import { z } from 'zod';
+import { FeatureFlagKey } from '@/config/FeatureFlagKey';
 import { PublicConfigKey } from '@/config/PublicConfigKey';
 import { SecretConfigKey } from '@/config/SecretConfigKey';
-import { FeatureFlagKey } from '@/config/FeatureFlagKey';
 import { convertKeyToUpperSnakeCase, SmooaiConfigError, UnionToUpperSnake } from '@/utils';
+/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
+import { StandardSchemaV1 } from '@standard-schema/spec';
 import { jsonSchemaToZod } from 'json-schema-to-zod';
+import { z } from 'zod';
 import { standardSchemaToJson } from './standardSchemaToJson';
 
 type DeepPartial<T> = T extends object

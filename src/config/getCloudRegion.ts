@@ -1,5 +1,5 @@
-import { isRunningInBrowser } from '@smooai/utils/env/index';
 import { envToUse } from '@/utils';
+import { isRunningInBrowser } from '@smooai/utils/env/index';
 type CloudProvider = 'aws' | 'azure' | 'gcp' | 'unknown';
 
 interface CloudRegionResult {

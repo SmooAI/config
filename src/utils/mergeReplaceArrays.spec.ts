@@ -1,5 +1,5 @@
-import { mergeReplaceArrays } from './mergeReplaceArrays';
 import { describe, it, expect } from 'vitest';
+import { mergeReplaceArrays } from './mergeReplaceArrays';
 
 describe('mergeReplaceArrays', () => {
     it('should replace arrays instead of concatenating', () => {

@@ -7,16 +7,22 @@
     "bugs": {
         "url": "https://github.com/SmooAI/config/issues"
     },
-    "repository": {
-        "type": "git",
-        "url": "https://github.com/SmooAI/config.git"
-    },
     "license": "MIT",
     "author": {
         "name": "SmooAI",
         "email": "brent@smooai.com",
         "url": "https://smooai.com"
     },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/SmooAI/config.git"
+    },
+    "files": [
+        "dist/**"
+    ],
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
@@ -30,19 +36,13 @@
             "require": "./dist/*.js"
         }
     },
-    "main": "./dist/index.js",
-    "module": "./dist/index.mjs",
-    "types": "./dist/index.d.ts",
-    "files": [
-        "dist/**"
-    ],
     "scripts": {
         "build": "pnpm create-entry-points -i \"src/**/*.ts\" && pnpm tsup && pnpm run python:build && pnpm run rust:build && pnpm run go:build",
         "check-all": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run python:typecheck && pnpm run python:lint && pnpm run python:format:check && pnpm run rust:fmt:check && pnpm run rust:lint && pnpm run rust:test && pnpm run go:fmt:check && pnpm run go:lint && pnpm run go:test && pnpm run build",
         "ci:publish": "pnpm build && pnpm changeset publish && pnpm run version:sync",
         "format": "oxfmt --write . && pnpm run python:format && pnpm run rust:fmt && pnpm run go:fmt",
         "lint": "oxlint . && pnpm run python:lint && pnpm run rust:lint && pnpm run go:lint",
-        "lint:fix": "eslint src/ --fix",
+        "lint:fix": "oxlint --fix .",
         "pre-commit-check": "(zsh .husky/pre-commit)",
         "prepare": "husky",
         "test": "vitest run --passWithNoTests && pnpm run python:test && pnpm run rust:test && pnpm run go:test",
@@ -98,14 +98,14 @@
         "husky": "^9.1.7",
         "lint-staged": "^15.4.3",
         "lodash.snakecase": "^4.1.1",
+        "oxfmt": "^0.28.0",
+        "oxlint": "^0.16.0",
         "tsup": "^8.4.0",
         "vite": "^6.2.4",
         "vite-node": "^3.1.1",
         "vite-tsconfig-paths": "^5.1.4",
         "vitest": "^3.1.1",
-        "zod": "^4.0.0",
-        "oxlint": "^0.16.0",
-        "oxfmt": "^0.28.0"
+        "zod": "^4.0.0"
     },
     "packageManager": "pnpm@10.6.1+sha512.40ee09af407fa9fbb5fbfb8e1cb40fbb74c0af0c3e10e9224d7b53c7658528615b2c92450e74cfad91e3a2dcafe3ce4050d80bda71d757756d2ce2b66213e9a3"
 }

@@ -1,77 +1,69 @@
 name: PR Checks
 
 on:
-  pull_request:
-    branches: [ main ]
-    types: [ opened, synchronize ]
+    pull_request:
+        branches: [main]
+        types: [opened, synchronize]
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    validate:
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
 
-    steps:
-      - uses: actions/checkout@v4
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10
-          run_install: false
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: 'pnpm'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: 'pnpm'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.13'
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v3
 
-      - name: Setup Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          components: rustfmt, clippy
-          override: true
+            - name: Setup Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            rust/config -> rust/config/target
-          cache-on-failure: true
+            - name: Cache Rust build artifacts
+              uses: Swatinem/rust-cache@v2
+              with:
+                  workspaces: |
+                      rust/config -> rust/config/target
+                  cache-on-failure: true
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache-dependency-path: go/config/go.sum
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: '1.23'
+                  cache-dependency-path: go/config/go.sum
 
-      - name: Install dependencies
-        run: pnpm install
+            - name: Install dependencies
+              run: pnpm install
 
-      - name: Sync Python dependencies
-        run: uv sync --group dev
-        working-directory: python
+            - name: Sync Python dependencies
+              run: uv sync --group dev
+              working-directory: python
 
-      - name: Typecheck
-        run: pnpm typecheck
+            - name: Typecheck
+              run: pnpm typecheck
 
-      - name: Lint
-        run: pnpm lint
+            - name: Lint
+              run: pnpm lint
 
-      - name: Format check
-        run: pnpm format:check && pnpm python:format:check && pnpm rust:fmt:check && pnpm go:fmt:check
+            - name: Format check
+              run: pnpm format:check && pnpm python:format:check && pnpm rust:fmt:check && pnpm go:fmt:check
 
-      - name: Test
-        run: pnpm test
+            - name: Test
+              run: pnpm test
 
-      - name: Build
-        run: pnpm build
+            - name: Build
+              run: pnpm build

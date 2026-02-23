@@ -1,7 +1,7 @@
-import { defineConfig, InferConfigTypes } from '@/config/config';
-import buildConfigObjectAsync from './server/server.async';
-import { createSyncFn } from 'synckit';
 import path from 'path';
+import { defineConfig, InferConfigTypes } from '@/config/config';
+import { createSyncFn } from 'synckit';
+import buildConfigObjectAsync from './server/server.async';
 
 export default function buildConfigObject<Schema extends ReturnType<typeof defineConfig>>(configSchema: Schema) {
     type ConfigType = InferConfigTypes<Schema>['ConfigType'];

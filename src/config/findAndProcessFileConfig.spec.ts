@@ -1,15 +1,14 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
-import { any as findAny } from 'empathic/find';
-import { glob } from 'tinyglobby';
 import { join } from 'path';
-
-import { findConfigDirectory, findAndProcessFileConfig } from './findAndProcessFileConfig';
 import { envToUse } from '@/utils';
 import { directoryExists, importFile } from '@/utils/fs';
-import { defineConfig, StringSchema } from './config';
+import { any as findAny } from 'empathic/find';
+import { glob } from 'tinyglobby';
+/* eslint-disable @typescript-eslint/no-explicit-any -- ok */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
+import { defineConfig, StringSchema } from './config';
+import { findConfigDirectory, findAndProcessFileConfig } from './findAndProcessFileConfig';
 
 vi.mock('fs/promises');
 vi.mock('empathic/find');

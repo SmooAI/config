@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import buildConfigObject from './server';
 import { defineConfig } from '@/config/config';
-import { z } from 'zod';
-import { findAndProcessFileConfig } from '@/config/findAndProcessFileConfig';
 import { findAndProcessEnvConfig } from '@/config/findAndProcessEnvConfig';
+import { findAndProcessFileConfig } from '@/config/findAndProcessFileConfig';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { z } from 'zod';
+import buildConfigObject from './server';
 
 // Mock dependencies
 vi.mock('@/config/findAndProcessFileConfig', () => ({

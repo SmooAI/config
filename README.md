@@ -186,11 +186,11 @@ allValues, err := client.GetAllValues("production")
 
 ## Configuration Tiers
 
-| Tier | Purpose | Examples |
-|------|---------|----------|
-| **Public** | Client-visible settings | API URLs, feature toggles, UI config |
-| **Secret** | Server-side only | Database URLs, API keys, JWT secrets |
-| **Feature Flags** | Runtime toggles | A/B tests, gradual rollouts, beta access |
+| Tier              | Purpose                 | Examples                                 |
+| ----------------- | ----------------------- | ---------------------------------------- |
+| **Public**        | Client-visible settings | API URLs, feature toggles, UI config     |
+| **Secret**        | Server-side only        | Database URLs, API keys, JWT secrets     |
+| **Feature Flags** | Runtime toggles         | A/B tests, gradual rollouts, beta access |
 
 Each tier gets its own schema, validation, and JSON Schema output for cross-language consumption.
 
@@ -240,7 +240,6 @@ Contributions are welcome! This project uses [changesets](https://github.com/cha
     ```
 
     This will prompt you to:
-
     - Choose the type of version bump (patch, minor, or major)
     - Provide a description of the changes
 

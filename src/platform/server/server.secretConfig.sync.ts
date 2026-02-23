@@ -1,7 +1,7 @@
+import { defineConfig } from '@/config/config';
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { runAsWorker } from 'synckit';
 import buildConfigObject from './server.async';
-import { defineConfig } from '@/config/config';
 
 runAsWorker(async function getSecretConfigSync<Schema extends ReturnType<typeof defineConfig>>(...args: any[]) {
     const configSchema = args[0];

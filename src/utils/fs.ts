@@ -1,5 +1,5 @@
-import { stat, access } from 'fs/promises';
 import { constants } from 'fs';
+import { stat, access } from 'fs/promises';
 import { SmooaiConfigError } from '.';
 
 /**

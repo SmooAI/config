@@ -1,6 +1,6 @@
+import { handleSchemaValidationSync } from '@smooai/utils/validation/standardSchema';
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { defineConfig, deserializeConfigSchema, generateConfigSchema, InferConfigTypes } from './config';
-import { handleSchemaValidationSync } from '@smooai/utils/validation/standardSchema';
 
 export function generateZodSchemas<Schema extends ReturnType<typeof defineConfig>>(
     configSchema: Schema,

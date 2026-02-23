@@ -1,126 +1,125 @@
 name: Release (Changesets 🦋)
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+    workflow_dispatch:
+    push:
+        branches:
+            - main
 
 env:
-  CI: true
+    CI: true
 
 jobs:
-  version:
-    timeout-minutes: 30
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
-      actions: write
-    steps:
-      - name: Checkout code repository
-        uses: actions/checkout@v4
+    version:
+        timeout-minutes: 30
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            pull-requests: write
+            id-token: write
+            actions: write
+        steps:
+            - name: Checkout code repository
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GH_PAT }}
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: 10
-          run_install: false
+            - name: Setup pnpm
+              uses: pnpm/action-setup@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'pnpm'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: 'pnpm'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.13'
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v3
+            - name: Setup uv
+              uses: astral-sh/setup-uv@v3
 
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+            - name: Setup Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            rust/config -> rust/config/target
-          cache-on-failure: true
+            - name: Cache Rust build artifacts
+              uses: Swatinem/rust-cache@v2
+              with:
+                  workspaces: |
+                      rust/config -> rust/config/target
+                  cache-on-failure: true
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache-dependency-path: go/config/go.sum
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: '1.23'
+                  cache-dependency-path: go/config/go.sum
 
-      - name: Install dependencies
-        run: pnpm install
+            - name: Install dependencies
+              run: pnpm install
 
-      - name: Sync Python dependencies
-        run: uv sync --group dev
-        working-directory: python
+            - name: Sync Python dependencies
+              run: uv sync --group dev
+              working-directory: python
 
-      - name: Typecheck
-        run: pnpm typecheck
+            - name: Typecheck
+              run: pnpm typecheck
 
-      - name: Lint
-        run: pnpm lint
+            - name: Lint
+              run: pnpm lint
 
-      - name: Test
-        run: pnpm test
+            - name: Test
+              run: pnpm test
 
-      - name: Build
-        run: pnpm build
+            - name: Build
+              run: pnpm build
 
-      - name: Format
-        run: pnpm format
+            - name: Format
+              run: pnpm format
 
-      - name: Version Update 🦋
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          commit: "🦋 New version release"
-          title: "🦋 New version release"
-          publish: pnpm ci:publish
-          createGithubReleases: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.SMOOAI_NPM_TOKEN }}
+            - name: Version Update 🦋
+              id: changesets
+              uses: changesets/action@v1
+              with:
+                  commit: '🦋 New version release'
+                  title: '🦋 New version release'
+                  publish: pnpm ci:publish
+                  createGithubReleases: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+                  NPM_TOKEN: ${{ secrets.SMOOAI_NPM_TOKEN }}
 
-      - name: Publish smooai-config to PyPI
-        if: steps.changesets.outputs.published == 'true'
-        run: uv run poe publish
-        working-directory: python
-        env:
-          UV_PUBLISH_TOKEN: ${{ secrets.SMOOAI_PYPI_TOKEN }}
+            - name: Publish smooai-config to PyPI
+              if: steps.changesets.outputs.published == 'true'
+              run: uv run poe publish
+              working-directory: python
+              env:
+                  UV_PUBLISH_TOKEN: ${{ secrets.SMOOAI_PYPI_TOKEN }}
 
-      - name: Publish smooai-config to crates.io
-        if: steps.changesets.outputs.published == 'true'
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: --locked --manifest-path rust/config/Cargo.toml
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.SMOOAI_CARGO_REGISTRY_TOKEN }}
+            - name: Publish smooai-config to crates.io
+              if: steps.changesets.outputs.published == 'true'
+              uses: actions-rs/cargo@v1
+              with:
+                  command: publish
+                  args: --locked --manifest-path rust/config/Cargo.toml
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ secrets.SMOOAI_CARGO_REGISTRY_TOKEN }}
 
-      - name: Auto-Merge Changeset PR
-        run: |
-          PR_NUMBER=$(gh pr list --state open --head changeset-release/main --json number --jq '.[0].number')
+            - name: Auto-Merge Changeset PR
+              run: |
+                  PR_NUMBER=$(gh pr list --state open --head changeset-release/main --json number --jq '.[0].number')
 
-          if [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "null" ]]; then
-            echo "Found Changeset PR #$PR_NUMBER, attempting to auto-merge..."
-            gh pr merge "$PR_NUMBER" --auto --squash
+                  if [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "null" ]]; then
+                    echo "Found Changeset PR #$PR_NUMBER, attempting to auto-merge..."
+                    gh pr merge "$PR_NUMBER" --auto --squash
 
-            # Re-trigger the Release workflow
-            echo "Re-triggering the release workflow..."
-            gh workflow run release.yml
-          else
-            echo "No open Changeset PR found, skipping merge."
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                    # Re-trigger the Release workflow
+                    echo "Re-triggering the release workflow..."
+                    gh workflow run release.yml
+                  else
+                    echo "No open Changeset PR found, skipping merge."
+                  fi
+              env:
+                  GH_TOKEN: ${{ secrets.GH_PAT }}
