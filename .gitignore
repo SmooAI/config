@@ -56,3 +56,6 @@ rust/config/target
 
 # Go
 go/config/config
+
+# Smoo AI logs
+.smooai-logs
