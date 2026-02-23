@@ -2,7 +2,7 @@ import zodToJsonSchema from 'zod-to-json-schema';
 import { toJsonSchema as valibotToJsonSchema } from '@valibot/to-json-schema';
 import type { Type as ArkType } from 'arktype';
 import { Schema as EffectSchema } from 'effect';
-import EffectJSONSchema from 'effect/JSONSchema';
+import * as EffectJSONSchema from 'effect/JSONSchema';
 import { StandardSchemaV1 } from '@standard-schema/spec';
 import type { ZodType } from 'zod';
 import type { BaseIssue, BaseSchema } from 'valibot';

@@ -22,6 +22,7 @@
         "typescript/no-extraneous-class": "off",
         "import/no-unassigned-import": "off",
         "import/no-named-as-default": "off",
+        "import/no-named-as-default-member": "off",
         "import/no-duplicates": "off"
     },
     "ignorePatterns": ["**/node_modules/**", "**/dist/**"]
