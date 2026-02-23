@@ -2,7 +2,7 @@
     "name": "@smooai/config",
     "version": "1.0.7",
     "private": true,
-    "description": "SmooAI Library Template",
+    "description": "Type-safe multi-language configuration management with schema validation, three-tier config (public, secret, feature flags), and runtime client support for TypeScript, Python, Rust, and Go.",
     "homepage": "https://github.com/SmooAI/config#readme",
     "bugs": {
         "url": "https://github.com/SmooAI/config/issues"

@@ -2,23 +2,6 @@
 
 <a name="readme-top"></a>
 
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
-
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
-
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
@@ -35,52 +18,211 @@ SmooAI is an AI-powered platform for helping businesses multiply their customer,
 
 Learn more on [smoo.ai](https://smoo.ai)
 
-## About @smooai/library-template
+## SmooAI Packages
 
-A template repository for creating new SmooAI libraries with standardized tooling, configuration, and best practices.
+Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-source)
 
-![GitHub License](https://img.shields.io/github/license/SmooAI/library-template?style=for-the-badge)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/SmooAI/library-template/release.yml?style=for-the-badge)
-![GitHub Repo stars](https://img.shields.io/github/stars/SmooAI/library-template?style=for-the-badge)
+## About @smooai/config
 
-### Key Features
+**Type-safe configuration management for every layer of your stack** - Define configuration schemas once, validate everywhere, and manage public settings, secrets, and feature flags across TypeScript, Python, Rust, and Go.
 
-- 📦 Preconfigured development environment with TypeScript, ESLint, and Prettier
-- 🧪 Testing setup with Vitest
-- 🔄 Changesets for version management
-- 📚 Integration with SmooAI core utilities
+![NPM Version](https://img.shields.io/npm/v/%40smooai%2Fconfig?style=for-the-badge)
+![NPM Downloads](https://img.shields.io/npm/dw/%40smooai%2Fconfig?style=for-the-badge)
+![NPM Last Update](https://img.shields.io/npm/last-update/%40smooai%2Fconfig?style=for-the-badge)
 
-### Dependencies
+![GitHub License](https://img.shields.io/github/license/SmooAI/config?style=for-the-badge)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/SmooAI/config/release.yml?style=for-the-badge)
+![GitHub Repo stars](https://img.shields.io/github/stars/SmooAI/config?style=for-the-badge)
 
-This template comes pre-configured with essential SmooAI packages:
+### Why @smooai/config?
 
-#### @smooai/logger
+Ever scattered configuration values across environment variables, JSON files, and hardcoded strings? Or struggled to keep configuration consistent across microservices written in different languages? Traditional config management gives you the values, but not the safety.
 
-A structured logging utility for SmooAI applications that provides:
+**@smooai/config provides:**
 
-- Standardized log formatting
-- Log level management
-- Integration with SmooAI's logging infrastructure
+- **Three configuration tiers** - Separate public config, secrets, and feature flags with distinct schemas
+- **Schema-agnostic validation** - Works with Zod, Valibot, ArkType, Effect Schema, or any StandardSchema-compliant library
+- **Type-safe keys** - Automatic camelCase-to-UPPER_SNAKE_CASE mapping with full TypeScript inference
+- **JSON Schema serialization** - Convert any schema to JSON Schema for cross-language interoperability
+- **Runtime client** - Fetch configuration from a centralized config server with local caching
+- **Multi-language support** - Native implementations in TypeScript, Python, Rust, and Go
 
-#### @smooai/utils
+### Install
 
-Common utility functions and helpers used across SmooAI applications.
-
-### Development Setup
-
-1. Clone the repository
-2. Install dependencies:
+#### TypeScript / JavaScript
 
 ```sh
-pnpm install
+pnpm add @smooai/config
 ```
 
-### Available Scripts
+#### Python
 
-- `pnpm test` - Run tests using Vitest
-- `pnpm build` - Build the library using tsup
-- `pnpm lint` - Run ESLint
-- `pnpm format` - Format code with Prettier
+```sh
+pip install smooai-config
+```
+
+or with [uv](https://docs.astral.sh/uv/):
+
+```sh
+uv add smooai-config
+```
+
+#### Rust
+
+```toml
+[dependencies]
+smooai-config = { git = "https://github.com/SmooAI/config", package = "smooai-config" }
+```
+
+#### Go
+
+```sh
+go get github.com/SmooAI/config/go/config
+```
+
+## Usage
+
+### TypeScript - Define Configuration Schemas
+
+Use any StandardSchema-compliant validation library to define your configuration:
+
+```typescript
+import { defineConfig, StringSchema, BooleanSchema, NumberSchema } from '@smooai/config';
+import { z } from 'zod';
+
+const config = defineConfig({
+    publicConfigSchema: {
+        apiUrl: z.string().url(),
+        maxRetries: NumberSchema,
+        enableDebug: BooleanSchema,
+    },
+    secretConfigSchema: {
+        databaseUrl: z.string().url(),
+        apiKey: StringSchema,
+    },
+    featureFlagSchema: {
+        enableNewUI: BooleanSchema,
+        betaFeatures: BooleanSchema,
+    },
+});
+```
+
+Supports Zod, Valibot, ArkType, Effect Schema, and built-in schema types - see [SCHEMA_USAGE.md](SCHEMA_USAGE.md) for examples with each library.
+
+### Python - Define and Fetch Configuration
+
+```python
+from pydantic import BaseModel
+from smooai_config import define_config, ConfigTier
+from smooai_config.client import ConfigClient
+
+# Define schemas using Pydantic models
+class PublicConfig(BaseModel):
+    api_url: str = "https://api.example.com"
+    max_retries: int = 3
+
+class SecretConfig(BaseModel):
+    database_url: str
+    api_key: str
+
+config = define_config(
+    public=PublicConfig,
+    secret=SecretConfig,
+)
+
+# Fetch values at runtime
+with ConfigClient(
+    base_url="https://config.smooai.dev",
+    api_key="your-api-key",
+    org_id="your-org-id",
+) as client:
+    value = client.get_value("API_URL", environment="production")
+    all_values = client.get_all_values(environment="production")
+```
+
+### Rust - Define and Fetch Configuration
+
+```rust
+use smooai_config::{define_config, ConfigTier};
+use smooai_config::client::ConfigClient;
+
+// Define configuration tiers
+let config = define_config(
+    Some(vec![("api_url", "https://api.example.com")]),
+    Some(vec![("database_url", "postgres://...")]),
+    None,
+);
+
+// Fetch values at runtime
+let client = ConfigClient::new(
+    "https://config.smooai.dev",
+    "your-api-key",
+    "your-org-id",
+);
+let value = client.get_value("API_URL", "production").await?;
+```
+
+### Go - Define and Fetch Configuration
+
+```go
+import "github.com/SmooAI/config/go/config"
+
+// Define configuration
+cfg := config.DefineConfig(
+    map[string]interface{}{"apiUrl": "https://api.example.com"},
+    map[string]interface{}{"databaseUrl": "postgres://..."},
+    nil,
+)
+
+// Fetch values at runtime
+client := config.NewClient(
+    "https://config.smooai.dev",
+    "your-api-key",
+    "your-org-id",
+)
+value, err := client.GetValue("API_URL", "production")
+allValues, err := client.GetAllValues("production")
+```
+
+## Configuration Tiers
+
+| Tier | Purpose | Examples |
+|------|---------|----------|
+| **Public** | Client-visible settings | API URLs, feature toggles, UI config |
+| **Secret** | Server-side only | Database URLs, API keys, JWT secrets |
+| **Feature Flags** | Runtime toggles | A/B tests, gradual rollouts, beta access |
+
+Each tier gets its own schema, validation, and JSON Schema output for cross-language consumption.
+
+## Development
+
+### Prerequisites
+
+- Node.js 22+, pnpm 10+
+- Python 3.13+ with uv
+- Rust toolchain (rustup)
+- Go 1.22+
+
+### Commands
+
+```sh
+pnpm install               # Install dependencies
+pnpm build                 # Build all packages (TS, Python, Rust, Go)
+pnpm test                  # Run all tests (Vitest, pytest, cargo test, go test)
+pnpm lint                  # Lint all code (oxlint, ruff, clippy, go vet)
+pnpm format                # Format all code (oxfmt, ruff, cargo fmt, gofmt)
+pnpm typecheck             # Type check (tsc, basedpyright, cargo check)
+pnpm check-all             # Full CI parity check
+```
+
+### Built With
+
+- **TypeScript** - Core implementation with StandardSchema support
+- **Python** - Pydantic-based schemas with httpx runtime client
+- **Rust** - Serde-based schemas with reqwest async client
+- **Go** - Native schemas with net/http client and local caching
+- [StandardSchema](https://github.com/standard-schema/standard-schema) - Schema-agnostic validation
+- [Zod](https://zod.dev/), [Valibot](https://valibot.dev/), [ArkType](https://arktype.io/), [Effect](https://effect.website/) - Supported validation libraries
 
 ## Contributing
 
@@ -129,26 +271,3 @@ Brent Rager
 Smoo Github: [https://github.com/SmooAI](https://github.com/SmooAI)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-
-[sst.dev-url]: https://reactjs.org/
-[sst]: https://img.shields.io/badge/sst-EDE1DA?style=for-the-badge&logo=sst&logoColor=E27152
-[sst-url]: https://sst.dev/
-[next]: https://img.shields.io/badge/next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white
-[next-url]: https://nextjs.org/
-[aws]: https://img.shields.io/badge/aws-232F3E?style=for-the-badge&logo=amazonaws&logoColor=white
-[aws-url]: https://tailwindcss.com/
-[tailwindcss]: https://img.shields.io/badge/tailwind%20css-0B1120?style=for-the-badge&logo=tailwindcss&logoColor=#06B6D4
-[tailwindcss-url]: https://tailwindcss.com/
-[zod]: https://img.shields.io/badge/zod-3E67B1?style=for-the-badge&logoColor=3E67B1
-[zod-url]: https://zod.dev/
-[sanity]: https://img.shields.io/badge/sanity-F36458?style=for-the-badge
-[sanity-url]: https://www.sanity.io/
-[vitest]: https://img.shields.io/badge/vitest-1E1E20?style=for-the-badge&logo=vitest&logoColor=#6E9F18
-[vitest-url]: https://vitest.dev/
-[pnpm]: https://img.shields.io/badge/pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white
-[pnpm-url]: https://pnpm.io/
-[turborepo]: https://img.shields.io/badge/turborepo-000000?style=for-the-badge&logo=turborepo&logoColor=#EF4444
-[turborepo-url]: https://turbo.build/
