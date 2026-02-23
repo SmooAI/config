@@ -1,8 +1,8 @@
 //! Runtime configuration client for fetching values from the Smoo AI server.
 
-use std::collections::HashMap;
 use reqwest::Client;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 /// Client for reading configuration values from the Smoo AI config server.
 pub struct ConfigClient {
@@ -31,10 +31,7 @@ impl ConfigClient {
             format!("Bearer {}", api_key).parse().unwrap(),
         );
 
-        let client = Client::builder()
-            .default_headers(headers)
-            .build()
-            .unwrap();
+        let client = Client::builder().default_headers(headers).build().unwrap();
 
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -51,7 +48,8 @@ impl ConfigClient {
             return Ok(value.clone());
         }
 
-        let response: ValueResponse = self.client
+        let response: ValueResponse = self
+            .client
             .get(format!(
                 "{}/organizations/{}/config/values/{}",
                 self.base_url, self.org_id, key
@@ -67,12 +65,13 @@ impl ConfigClient {
     }
 
     /// Get all config values for an environment.
-    pub async fn get_all_values(&mut self, environment: &str) -> Result<HashMap<String, serde_json::Value>, reqwest::Error> {
-        let response: ValuesResponse = self.client
-            .get(format!(
-                "{}/organizations/{}/config/values",
-                self.base_url, self.org_id
-            ))
+    pub async fn get_all_values(
+        &mut self,
+        environment: &str,
+    ) -> Result<HashMap<String, serde_json::Value>, reqwest::Error> {
+        let response: ValuesResponse = self
+            .client
+            .get(format!("{}/organizations/{}/config/values", self.base_url, self.org_id))
             .query(&[("environment", environment)])
             .send()
             .await?

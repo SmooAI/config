@@ -108,10 +108,7 @@ mod tests {
         assert_eq!(result.secret_schema, secret);
         assert_eq!(result.json_schema["properties"]["secret"], secret);
         // Public should be empty default
-        assert_eq!(
-            result.json_schema["properties"]["public"]["type"],
-            "object"
-        );
+        assert_eq!(result.json_schema["properties"]["public"]["type"], "object");
     }
 
     #[test]
@@ -134,11 +131,7 @@ mod tests {
         let secret = serde_json::json!({"type": "object", "properties": {"key": {"type": "string"}}});
         let flags = serde_json::json!({"type": "object", "properties": {"beta": {"type": "boolean"}}});
 
-        let result = define_config(
-            Some(public.clone()),
-            Some(secret.clone()),
-            Some(flags.clone()),
-        );
+        let result = define_config(Some(public.clone()), Some(secret.clone()), Some(flags.clone()));
         assert_eq!(result.public_schema, public);
         assert_eq!(result.secret_schema, secret);
         assert_eq!(result.feature_flag_schema, flags);

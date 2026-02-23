@@ -8,21 +8,58 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+          run_install: false
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-      
-      - uses: pnpm/action-setup@v2
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          version: 10
-          
+          python-version: '3.13'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+          override: true
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust/config -> rust/config/target
+          cache-on-failure: true
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: go/config/go.sum
+
       - name: Install dependencies
         run: pnpm install
+
+      - name: Sync Python dependencies
+        run: uv sync --group dev
+        working-directory: python
 
       - name: Typecheck
         run: pnpm typecheck
@@ -30,13 +67,11 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Format check
+        run: pnpm format:check && pnpm python:format:check && pnpm rust:fmt:check && pnpm go:fmt:check
+
       - name: Test
         run: pnpm test
 
       - name: Build
         run: pnpm build
-
-      # - name: Require changesets
-      #   run: pnpm changeset status --since=main
-          
-          
