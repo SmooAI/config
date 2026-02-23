@@ -1,12 +1,12 @@
 """Configuration schema definition using Pydantic."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
 
 
-class ConfigTier(str, Enum):
+class ConfigTier(StrEnum):
     """Configuration value tiers."""
 
     PUBLIC = "public"
