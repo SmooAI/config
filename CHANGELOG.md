@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 1.0.8
+
+### Patch Changes
+
+- 8e7f8b1: Rewrite README from library-template placeholder to comprehensive documentation covering multi-language support (TypeScript, Python, Rust, Go), StandardSchema validation, three-tier configuration, usage examples, and development commands. Update package.json description.
+
 ## 1.0.7
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
     "name": "@smooai/config",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "private": true,
     "description": "Type-safe multi-language configuration management with schema validation, three-tier config (public, secret, feature flags), and runtime client support for TypeScript, Python, Rust, and Go.",
     "homepage": "https://github.com/SmooAI/config#readme",
