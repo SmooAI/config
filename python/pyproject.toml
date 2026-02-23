@@ -26,10 +26,7 @@ build = "uv build --wheel --sdist"
 "install-dev" = "uv sync"
 
 [tool.poe.tasks.publish]
-sequence = [
-  { cmd = "uv build --wheel --sdist" },
-  { cmd = "uv publish" },
-]
+sequence = [{ cmd = "uv build --wheel --sdist" }, { cmd = "uv publish" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
