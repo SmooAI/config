@@ -224,3 +224,89 @@ func TestGetValue_SetsAuthorizationHeader(t *testing.T) {
 	_, err := client.GetValue("KEY", "prod")
 	require.NoError(t, err)
 }
+
+func TestNewConfigClient_FallsBackToEnvVars(t *testing.T) {
+	t.Setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
+	t.Setenv("SMOOAI_CONFIG_API_KEY", "env-key")
+	t.Setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
+	t.Setenv("SMOOAI_CONFIG_ENV", "staging")
+
+	client := NewConfigClient("", "", "")
+	defer client.Close()
+
+	assert.Equal(t, "https://env.example.com", client.baseURL)
+	assert.Equal(t, "env-org", client.orgID)
+	assert.Equal(t, "staging", client.defaultEnvironment)
+}
+
+func TestNewConfigClient_ExplicitOverridesEnv(t *testing.T) {
+	t.Setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
+	t.Setenv("SMOOAI_CONFIG_API_KEY", "env-key")
+	t.Setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
+
+	client := NewConfigClient("https://explicit.example.com", "explicit-key", "explicit-org")
+	defer client.Close()
+
+	assert.Equal(t, "https://explicit.example.com", client.baseURL)
+	assert.Equal(t, "explicit-org", client.orgID)
+}
+
+func TestNewConfigClientFromEnv(t *testing.T) {
+	t.Setenv("SMOOAI_CONFIG_API_URL", "https://from-env.example.com")
+	t.Setenv("SMOOAI_CONFIG_API_KEY", "from-env-key")
+	t.Setenv("SMOOAI_CONFIG_ORG_ID", "from-env-org")
+	t.Setenv("SMOOAI_CONFIG_ENV", "production")
+
+	client := NewConfigClientFromEnv()
+	defer client.Close()
+
+	assert.Equal(t, "https://from-env.example.com", client.baseURL)
+	assert.Equal(t, "from-env-org", client.orgID)
+	assert.Equal(t, "production", client.defaultEnvironment)
+}
+
+func TestNewConfigClient_DefaultEnvironment(t *testing.T) {
+	// Without SMOOAI_CONFIG_ENV set, default should be "development"
+	t.Setenv("SMOOAI_CONFIG_ENV", "")
+
+	client := NewConfigClient("https://example.com", "key", "org")
+	defer client.Close()
+
+	assert.Equal(t, "development", client.defaultEnvironment)
+}
+
+func TestGetValue_UsesDefaultEnvironment(t *testing.T) {
+	t.Setenv("SMOOAI_CONFIG_ENV", "staging")
+
+	server := newTestServer(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "staging", r.URL.Query().Get("environment"))
+		json.NewEncoder(w).Encode(valueResponse{Value: "staging-value"})
+	})
+	defer server.Close()
+
+	client := NewConfigClient(server.URL, "key", "org")
+	defer client.Close()
+
+	val, err := client.GetValue("KEY", "")
+	require.NoError(t, err)
+	assert.Equal(t, "staging-value", val)
+}
+
+func TestGetAllValues_UsesDefaultEnvironment(t *testing.T) {
+	t.Setenv("SMOOAI_CONFIG_ENV", "production")
+
+	server := newTestServer(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "production", r.URL.Query().Get("environment"))
+		json.NewEncoder(w).Encode(valuesResponse{
+			Values: map[string]any{"KEY": "val"},
+		})
+	})
+	defer server.Close()
+
+	client := NewConfigClient(server.URL, "key", "org")
+	defer client.Close()
+
+	vals, err := client.GetAllValues("")
+	require.NoError(t, err)
+	assert.Equal(t, "val", vals["KEY"])
+}

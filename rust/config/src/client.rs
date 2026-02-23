@@ -1,13 +1,23 @@
 //! Runtime configuration client for fetching values from the Smoo AI server.
+//!
+//! # Environment Variables
+//!
+//! The client can be configured via environment variables when using [`ConfigClient::from_env`]:
+//! - `SMOOAI_CONFIG_API_URL` — Base URL of the config API
+//! - `SMOOAI_CONFIG_API_KEY` — Bearer token for authentication
+//! - `SMOOAI_CONFIG_ORG_ID` — Organization ID
+//! - `SMOOAI_CONFIG_ENV` — Default environment name (e.g. "production")
 
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::env;
 
 /// Client for reading configuration values from the Smoo AI config server.
 pub struct ConfigClient {
     base_url: String,
     org_id: String,
+    default_environment: String,
     client: Client,
     cache: HashMap<String, serde_json::Value>,
 }
@@ -23,8 +33,14 @@ struct ValuesResponse {
 }
 
 impl ConfigClient {
-    /// Create a new config client.
+    /// Create a new config client with explicit parameters.
     pub fn new(base_url: &str, api_key: &str, org_id: &str) -> Self {
+        let default_env = env::var("SMOOAI_CONFIG_ENV").unwrap_or_else(|_| "development".to_string());
+        Self::with_environment(base_url, api_key, org_id, &default_env)
+    }
+
+    /// Create a new config client with an explicit default environment.
+    pub fn with_environment(base_url: &str, api_key: &str, org_id: &str, environment: &str) -> Self {
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             reqwest::header::AUTHORIZATION,
@@ -36,14 +52,43 @@ impl ConfigClient {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             org_id: org_id.to_string(),
+            default_environment: environment.to_string(),
             client,
             cache: HashMap::new(),
         }
     }
 
+    /// Create a config client from environment variables.
+    ///
+    /// Reads `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_API_KEY`, `SMOOAI_CONFIG_ORG_ID`,
+    /// and optionally `SMOOAI_CONFIG_ENV` (defaults to "development").
+    ///
+    /// # Panics
+    /// Panics if any required environment variable is missing.
+    pub fn from_env() -> Self {
+        let base_url = env::var("SMOOAI_CONFIG_API_URL").expect("SMOOAI_CONFIG_API_URL must be set");
+        let api_key = env::var("SMOOAI_CONFIG_API_KEY").expect("SMOOAI_CONFIG_API_KEY must be set");
+        let org_id = env::var("SMOOAI_CONFIG_ORG_ID").expect("SMOOAI_CONFIG_ORG_ID must be set");
+
+        Self::new(&base_url, &api_key, &org_id)
+    }
+
+    fn resolve_env<'a>(&'a self, environment: Option<&'a str>) -> &'a str {
+        match environment {
+            Some(e) if !e.is_empty() => e,
+            _ => &self.default_environment,
+        }
+    }
+
     /// Get a single config value.
-    pub async fn get_value(&mut self, key: &str, environment: &str) -> Result<serde_json::Value, reqwest::Error> {
-        let cache_key = format!("{}:{}", environment, key);
+    /// Pass `None` for environment to use the default.
+    pub async fn get_value(
+        &mut self,
+        key: &str,
+        environment: Option<&str>,
+    ) -> Result<serde_json::Value, reqwest::Error> {
+        let env = self.resolve_env(environment).to_string();
+        let cache_key = format!("{}:{}", env, key);
         if let Some(value) = self.cache.get(&cache_key) {
             return Ok(value.clone());
         }
@@ -54,7 +99,7 @@ impl ConfigClient {
                 "{}/organizations/{}/config/values/{}",
                 self.base_url, self.org_id, key
             ))
-            .query(&[("environment", environment)])
+            .query(&[("environment", &env)])
             .send()
             .await?
             .json()
@@ -65,21 +110,24 @@ impl ConfigClient {
     }
 
     /// Get all config values for an environment.
+    /// Pass `None` for environment to use the default.
     pub async fn get_all_values(
         &mut self,
-        environment: &str,
+        environment: Option<&str>,
     ) -> Result<HashMap<String, serde_json::Value>, reqwest::Error> {
+        let env = self.resolve_env(environment).to_string();
+
         let response: ValuesResponse = self
             .client
             .get(format!("{}/organizations/{}/config/values", self.base_url, self.org_id))
-            .query(&[("environment", environment)])
+            .query(&[("environment", &env)])
             .send()
             .await?
             .json()
             .await?;
 
         for (key, value) in &response.values {
-            self.cache.insert(format!("{}:{}", environment, key), value.clone());
+            self.cache.insert(format!("{}:{}", env, key), value.clone());
         }
 
         Ok(response.values)
@@ -166,5 +214,11 @@ mod tests {
         let json = r#"{"values": {}}"#;
         let resp: ValuesResponse = serde_json::from_str(json).unwrap();
         assert!(resp.values.is_empty());
+    }
+
+    #[test]
+    fn test_default_environment() {
+        let client = ConfigClient::with_environment("https://api.example.com", "key", "org", "production");
+        assert_eq!(client.default_environment, "production");
     }
 }
