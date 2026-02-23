@@ -170,9 +170,10 @@ class TestGetAllValues:
 
     def test_populates_cache_for_all_keys(self, client: ConfigClient) -> None:
         client.get_all_values(environment="production")
-        assert client._cache["production:API_URL"] == "https://api.example.com"
-        assert client._cache["production:MAX_RETRIES"] == 3
-        assert client._cache["production:DEBUG"] is False
+        # Cache stores (value, expires_at) tuples
+        assert client._cache["production:API_URL"][0] == "https://api.example.com"
+        assert client._cache["production:MAX_RETRIES"][0] == 3
+        assert client._cache["production:DEBUG"][0] is False
 
 
 class TestInvalidateCache:

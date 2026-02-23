@@ -442,3 +442,65 @@ async fn full_workflow_multi_environment() {
     let _ = client.get_value("API_URL", Some("staging")).await.unwrap();
     let _ = client.get_value("API_URL", Some("development")).await.unwrap();
 }
+
+// ===========================================================================
+// Environment-specific cache invalidation
+// ===========================================================================
+
+#[tokio::test]
+async fn invalidate_env_clears_only_target() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/organizations/{TEST_ORG_ID}/config/values/API_URL")))
+        .and(query_param("environment", "production"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "prod-url"})))
+        .expect(2) // Called twice: once initially, once after env invalidation
+        .mount(&server)
+        .await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/organizations/{TEST_ORG_ID}/config/values/API_URL")))
+        .and(query_param("environment", "staging"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "staging-url"})))
+        .expect(1) // Only called once — stays cached
+        .mount(&server)
+        .await;
+
+    let mut client = ConfigClient::with_environment(&server.uri(), TEST_API_KEY, TEST_ORG_ID, "development");
+
+    let _ = client.get_value("API_URL", Some("production")).await.unwrap();
+    let _ = client.get_value("API_URL", Some("staging")).await.unwrap();
+
+    client.invalidate_cache_for_environment("production");
+
+    // Production re-fetched
+    let prod = client.get_value("API_URL", Some("production")).await.unwrap();
+    assert_eq!(prod, json!("prod-url"));
+
+    // Staging still cached
+    let staging = client.get_value("API_URL", Some("staging")).await.unwrap();
+    assert_eq!(staging, json!("staging-url"));
+}
+
+#[tokio::test]
+async fn invalidate_env_noop_for_nonexistent() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path(format!("/organizations/{TEST_ORG_ID}/config/values/API_URL")))
+        .and(query_param("environment", "production"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "prod-url"})))
+        .expect(1) // Only called once — nonexistent env invalidation doesn't affect it
+        .mount(&server)
+        .await;
+
+    let mut client = ConfigClient::with_environment(&server.uri(), TEST_API_KEY, TEST_ORG_ID, "development");
+    let _ = client.get_value("API_URL", Some("production")).await.unwrap();
+
+    client.invalidate_cache_for_environment("nonexistent");
+
+    // Production still cached
+    let val = client.get_value("API_URL", Some("production")).await.unwrap();
+    assert_eq!(val, json!("prod-url"));
+}

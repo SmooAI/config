@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ConfigClient reads configuration values from the Smoo AI config server.
@@ -23,9 +24,15 @@ type ConfigClient struct {
 	baseURL            string
 	orgID              string
 	defaultEnvironment string
+	cacheTTL           time.Duration
 	client             *http.Client
-	cache              map[string]any
+	cache              map[string]cacheEntry
 	mu                 sync.RWMutex
+}
+
+type cacheEntry struct {
+	value     any
+	expiresAt time.Time // zero means no expiry
 }
 
 type valueResponse struct {
@@ -36,9 +43,20 @@ type valuesResponse struct {
 	Values map[string]any `json:"values"`
 }
 
+// ConfigClientOption configures a ConfigClient.
+type ConfigClientOption func(*ConfigClient)
+
+// WithCacheTTL sets the cache time-to-live duration.
+// Zero (default) means cache never expires.
+func WithCacheTTL(ttl time.Duration) ConfigClientOption {
+	return func(c *ConfigClient) {
+		c.cacheTTL = ttl
+	}
+}
+
 // NewConfigClient creates a new configuration client.
 // Pass empty strings to use environment variable defaults.
-func NewConfigClient(baseURL, apiKey, orgID string) *ConfigClient {
+func NewConfigClient(baseURL, apiKey, orgID string, opts ...ConfigClientOption) *ConfigClient {
 	if baseURL == "" {
 		baseURL = os.Getenv("SMOOAI_CONFIG_API_URL")
 	}
@@ -54,7 +72,7 @@ func NewConfigClient(baseURL, apiKey, orgID string) *ConfigClient {
 		defaultEnv = "development"
 	}
 
-	return &ConfigClient{
+	c := &ConfigClient{
 		baseURL:            strings.TrimRight(baseURL, "/"),
 		orgID:              orgID,
 		defaultEnvironment: defaultEnv,
@@ -64,14 +82,20 @@ func NewConfigClient(baseURL, apiKey, orgID string) *ConfigClient {
 				base:   http.DefaultTransport,
 			},
 		},
-		cache: make(map[string]any),
+		cache: make(map[string]cacheEntry),
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // NewConfigClientFromEnv creates a client using only environment variables.
 // Requires SMOOAI_CONFIG_API_URL, SMOOAI_CONFIG_API_KEY, and SMOOAI_CONFIG_ORG_ID.
-func NewConfigClientFromEnv() *ConfigClient {
-	return NewConfigClient("", "", "")
+func NewConfigClientFromEnv(opts ...ConfigClientOption) *ConfigClient {
+	return NewConfigClient("", "", "", opts...)
 }
 
 type authTransport struct {
@@ -91,6 +115,13 @@ func (c *ConfigClient) resolveEnv(environment string) string {
 	return c.defaultEnvironment
 }
 
+func (c *ConfigClient) computeExpiresAt() time.Time {
+	if c.cacheTTL > 0 {
+		return time.Now().Add(c.cacheTTL)
+	}
+	return time.Time{}
+}
+
 // GetValue retrieves a single config value for the given key and environment.
 // Pass empty string for environment to use the default.
 // Results are cached locally after the first fetch.
@@ -99,9 +130,12 @@ func (c *ConfigClient) GetValue(key, environment string) (any, error) {
 	cacheKey := env + ":" + key
 
 	c.mu.RLock()
-	if val, ok := c.cache[cacheKey]; ok {
-		c.mu.RUnlock()
-		return val, nil
+	if entry, ok := c.cache[cacheKey]; ok {
+		if entry.expiresAt.IsZero() || time.Now().Before(entry.expiresAt) {
+			c.mu.RUnlock()
+			return entry.value, nil
+		}
+		// Expired — fall through to fetch
 	}
 	c.mu.RUnlock()
 
@@ -125,7 +159,7 @@ func (c *ConfigClient) GetValue(key, environment string) (any, error) {
 	}
 
 	c.mu.Lock()
-	c.cache[cacheKey] = result.Value
+	c.cache[cacheKey] = cacheEntry{value: result.Value, expiresAt: c.computeExpiresAt()}
 	c.mu.Unlock()
 
 	return result.Value, nil
@@ -157,8 +191,9 @@ func (c *ConfigClient) GetAllValues(environment string) (map[string]any, error) 
 	}
 
 	c.mu.Lock()
+	expiresAt := c.computeExpiresAt()
 	for key, value := range result.Values {
-		c.cache[env+":"+key] = value
+		c.cache[env+":"+key] = cacheEntry{value: value, expiresAt: expiresAt}
 	}
 	c.mu.Unlock()
 
@@ -168,7 +203,19 @@ func (c *ConfigClient) GetAllValues(environment string) (map[string]any, error) 
 // InvalidateCache clears all locally cached values.
 func (c *ConfigClient) InvalidateCache() {
 	c.mu.Lock()
-	c.cache = make(map[string]any)
+	c.cache = make(map[string]cacheEntry)
+	c.mu.Unlock()
+}
+
+// InvalidateCacheForEnvironment clears cached values for a specific environment.
+func (c *ConfigClient) InvalidateCacheForEnvironment(environment string) {
+	prefix := environment + ":"
+	c.mu.Lock()
+	for key := range c.cache {
+		if strings.HasPrefix(key, prefix) {
+			delete(c.cache, key)
+		}
+	}
 	c.mu.Unlock()
 }
 

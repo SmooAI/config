@@ -4,6 +4,9 @@ Uses httpx.MockTransport with a realistic mock server that simulates
 the Smoo AI config API matching the backend in packages/backend.
 """
 
+import time
+from unittest.mock import patch
+
 import httpx
 import pytest
 
@@ -121,6 +124,7 @@ def create_client(
     environment: str = "production",
     api_key: str = TEST_API_KEY,
     org_id: str = TEST_ORG_ID,
+    cache_ttl_seconds: float = 0,
 ) -> ConfigClient:
     """Create a ConfigClient with mocked transport."""
     t = transport or create_mock_transport(api_key=api_key, org_id=org_id)
@@ -129,6 +133,7 @@ def create_client(
         api_key=api_key,
         org_id=org_id,
         environment=environment,
+        cache_ttl_seconds=cache_ttl_seconds,
     )
     client._client = httpx.Client(
         base_url=TEST_BASE_URL,
@@ -417,3 +422,108 @@ class TestFullWorkflow:
             assert client.get_value("MAX_RETRIES") == 3
             assert client.get_value("ENABLE_NEW_UI") is True
             assert request_log.count == 2
+
+
+class TestTTLCaching:
+    """Integration tests for cache TTL behavior."""
+
+    def test_serves_from_cache_within_ttl(self) -> None:
+        with create_client(cache_ttl_seconds=60.0) as client:
+            client.get_value("API_URL", environment="production")
+            assert request_log.count == 1
+
+            # Still cached
+            client.get_value("API_URL", environment="production")
+            assert request_log.count == 1
+
+    def test_refetches_after_ttl_expires(self) -> None:
+        fake_time = [time.monotonic()]
+
+        with patch("smooai_config.client.time.monotonic", side_effect=lambda: fake_time[0]):
+            with create_client(cache_ttl_seconds=0.1) as client:
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 1
+
+                # Still within TTL
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 1
+
+                # Advance past TTL
+                fake_time[0] += 0.2
+
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 2
+
+    def test_no_ttl_means_cache_never_expires(self) -> None:
+        fake_time = [time.monotonic()]
+
+        with patch("smooai_config.client.time.monotonic", side_effect=lambda: fake_time[0]):
+            with create_client() as client:  # No TTL
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 1
+
+                # Advance time significantly
+                fake_time[0] += 86400  # 24 hours
+
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 1  # Still cached
+
+    def test_get_all_values_respects_ttl(self) -> None:
+        fake_time = [time.monotonic()]
+
+        with patch("smooai_config.client.time.monotonic", side_effect=lambda: fake_time[0]):
+            with create_client(cache_ttl_seconds=0.1) as client:
+                client.get_all_values(environment="production")
+                assert request_log.count == 1
+
+                # Cached
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 1
+
+                # Expire
+                fake_time[0] += 0.2
+
+                client.get_value("API_URL", environment="production")
+                assert request_log.count == 2
+
+
+class TestInvalidateCacheForEnvironment:
+    """Integration tests for environment-specific cache invalidation."""
+
+    def test_clears_only_target_environment(self) -> None:
+        with create_client() as client:
+            client.get_value("API_URL", environment="production")
+            client.get_value("API_URL", environment="staging")
+            assert request_log.count == 2
+
+            client.invalidate_cache_for_environment("production")
+
+            # Production re-fetched
+            client.get_value("API_URL", environment="production")
+            assert request_log.count == 3
+
+            # Staging still cached
+            client.get_value("API_URL", environment="staging")
+            assert request_log.count == 3
+
+    def test_clears_all_keys_for_environment(self) -> None:
+        with create_client() as client:
+            client.get_all_values(environment="production")
+            assert request_log.count == 1
+
+            client.invalidate_cache_for_environment("production")
+
+            # All production keys need re-fetch
+            client.get_value("API_URL", environment="production")
+            client.get_value("MAX_RETRIES", environment="production")
+            assert request_log.count == 3
+
+    def test_noop_for_nonexistent_environment(self) -> None:
+        with create_client() as client:
+            client.get_value("API_URL", environment="production")
+            assert request_log.count == 1
+
+            client.invalidate_cache_for_environment("nonexistent")
+
+            client.get_value("API_URL", environment="production")
+            assert request_log.count == 1  # Still cached

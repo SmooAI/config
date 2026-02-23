@@ -8,7 +8,7 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ConfigClient } from './client';
+import { ConfigClient, type ConfigClientOptions } from './client';
 
 // ---------------------------------------------------------------------------
 // Test constants
@@ -124,12 +124,13 @@ beforeEach(() => {
 });
 afterEach(() => server.resetHandlers());
 
-function createClient(overrides: Partial<{ baseUrl: string; apiKey: string; orgId: string; environment: string }> = {}) {
+function createClient(overrides: Partial<ConfigClientOptions> = {}) {
     return new ConfigClient({
         baseUrl: overrides.baseUrl ?? BASE_URL,
         apiKey: overrides.apiKey ?? API_KEY,
         orgId: overrides.orgId ?? ORG_ID,
         environment: overrides.environment,
+        cacheTtlMs: overrides.cacheTtlMs,
     });
 }
 
@@ -467,6 +468,144 @@ describe('ConfigClient Integration Tests', () => {
             await client.getValue('API_URL', 'staging');
             await client.getValue('API_URL', 'development');
             expect(getRequestCount()).toBe(3); // No new requests
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // TTL (time-to-live) caching
+    // -----------------------------------------------------------------------
+    describe('TTL caching', () => {
+        it('serves from cache within TTL window', async () => {
+            const client = createClient({ cacheTtlMs: 60_000 }); // 60s TTL
+
+            await client.getValue('API_URL', 'production');
+            expect(getRequestCount()).toBe(1);
+
+            // Should still be cached
+            await client.getValue('API_URL', 'production');
+            expect(getRequestCount()).toBe(1);
+        });
+
+        it('re-fetches after TTL expires', async () => {
+            // Use a very short TTL that we can simulate by manipulating Date.now
+            const originalDateNow = Date.now;
+            let fakeTime = originalDateNow.call(Date);
+
+            // Override Date.now to control time
+            Date.now = () => fakeTime;
+
+            try {
+                const client = createClient({ cacheTtlMs: 100 }); // 100ms TTL
+
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(1);
+
+                // Still within TTL
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(1);
+
+                // Advance time past TTL
+                fakeTime += 200;
+
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(2); // Cache expired, re-fetched
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it('getAllValues respects TTL', async () => {
+            const originalDateNow = Date.now;
+            let fakeTime = originalDateNow.call(Date);
+            Date.now = () => fakeTime;
+
+            try {
+                const client = createClient({ cacheTtlMs: 100 });
+
+                await client.getAllValues('production');
+                expect(getRequestCount()).toBe(1);
+
+                // Cached
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(1);
+
+                // Expire
+                fakeTime += 200;
+
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(2); // Re-fetched
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it('no TTL means cache never expires', async () => {
+            const originalDateNow = Date.now;
+            let fakeTime = originalDateNow.call(Date);
+            Date.now = () => fakeTime;
+
+            try {
+                const client = createClient(); // No TTL
+
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(1);
+
+                // Advance time significantly
+                fakeTime += 86_400_000; // 24 hours
+
+                await client.getValue('API_URL', 'production');
+                expect(getRequestCount()).toBe(1); // Still cached
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+    });
+
+    // -----------------------------------------------------------------------
+    // Environment-specific cache invalidation
+    // -----------------------------------------------------------------------
+    describe('invalidateCacheForEnvironment', () => {
+        it('clears only the target environment', async () => {
+            const client = createClient();
+
+            await client.getValue('API_URL', 'production');
+            await client.getValue('API_URL', 'staging');
+            expect(getRequestCount()).toBe(2);
+
+            client.invalidateCacheForEnvironment('production');
+
+            // Production re-fetched, staging still cached
+            await client.getValue('API_URL', 'production');
+            expect(getRequestCount()).toBe(3);
+
+            await client.getValue('API_URL', 'staging');
+            expect(getRequestCount()).toBe(3); // Still cached
+        });
+
+        it('clears all keys for the environment', async () => {
+            const client = createClient();
+
+            await client.getAllValues('production');
+            expect(getRequestCount()).toBe(1);
+
+            client.invalidateCacheForEnvironment('production');
+
+            // All production keys need re-fetch
+            await client.getValue('API_URL', 'production');
+            await client.getValue('MAX_RETRIES', 'production');
+            expect(getRequestCount()).toBe(3);
+        });
+
+        it('does nothing for non-existent environment', async () => {
+            const client = createClient();
+
+            await client.getValue('API_URL', 'production');
+            expect(getRequestCount()).toBe(1);
+
+            client.invalidateCacheForEnvironment('nonexistent');
+
+            await client.getValue('API_URL', 'production');
+            expect(getRequestCount()).toBe(1); // Still cached
         });
     });
 });

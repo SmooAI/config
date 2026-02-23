@@ -142,16 +142,16 @@ func TestGetAllValues_PopulatesCache(t *testing.T) {
 	_, err := client.GetAllValues("prod")
 	require.NoError(t, err)
 
-	assert.Equal(t, "val1", client.cache["prod:KEY1"])
-	assert.Equal(t, "val2", client.cache["prod:KEY2"])
+	assert.Equal(t, "val1", client.cache["prod:KEY1"].value)
+	assert.Equal(t, "val2", client.cache["prod:KEY2"].value)
 }
 
 func TestInvalidateCache_ClearsAll(t *testing.T) {
 	client := NewConfigClient("https://example.com", "key", "org")
 	defer client.Close()
 
-	client.cache["prod:KEY"] = "value"
-	client.cache["staging:KEY"] = "value2"
+	client.cache["prod:KEY"] = cacheEntry{value: "value"}
+	client.cache["staging:KEY"] = cacheEntry{value: "value2"}
 	assert.Len(t, client.cache, 2)
 
 	client.InvalidateCache()

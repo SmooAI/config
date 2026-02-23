@@ -8,18 +8,48 @@
 //! - `SMOOAI_CONFIG_ORG_ID` — Organization ID
 //! - `SMOOAI_CONFIG_ENV` — Default environment name (e.g. "production")
 
+use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
+use std::time::{Duration, Instant};
+
+/// Characters to percent-encode in URL path segments.
+/// Encodes everything except unreserved characters (RFC 3986): A-Z a-z 0-9 - . _ ~
+const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'/')
+    .add(b':')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'@')
+    .add(b'[')
+    .add(b'\\')
+    .add(b']')
+    .add(b'^')
+    .add(b'`')
+    .add(b'{')
+    .add(b'|')
+    .add(b'}');
 
 /// Client for reading configuration values from the Smoo AI config server.
 pub struct ConfigClient {
     base_url: String,
     org_id: String,
     default_environment: String,
+    cache_ttl: Option<Duration>,
     client: Client,
-    cache: HashMap<String, serde_json::Value>,
+    cache: HashMap<String, CacheEntry>,
+}
+
+struct CacheEntry {
+    value: serde_json::Value,
+    expires_at: Option<Instant>,
 }
 
 #[derive(Deserialize)]
@@ -53,9 +83,15 @@ impl ConfigClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             org_id: org_id.to_string(),
             default_environment: environment.to_string(),
+            cache_ttl: None,
             client,
             cache: HashMap::new(),
         }
+    }
+
+    /// Set the cache TTL duration. `None` means cache never expires (manual invalidation only).
+    pub fn set_cache_ttl(&mut self, ttl: Option<Duration>) {
+        self.cache_ttl = ttl;
     }
 
     /// Create a config client from environment variables.
@@ -80,6 +116,20 @@ impl ConfigClient {
         }
     }
 
+    fn compute_expires_at(&self) -> Option<Instant> {
+        self.cache_ttl.map(|ttl| Instant::now() + ttl)
+    }
+
+    fn get_cached(&self, cache_key: &str) -> Option<serde_json::Value> {
+        let entry = self.cache.get(cache_key)?;
+        if let Some(expires_at) = entry.expires_at {
+            if Instant::now() > expires_at {
+                return None;
+            }
+        }
+        Some(entry.value.clone())
+    }
+
     /// Get a single config value.
     /// Pass `None` for environment to use the default.
     pub async fn get_value(
@@ -89,15 +139,23 @@ impl ConfigClient {
     ) -> Result<serde_json::Value, reqwest::Error> {
         let env = self.resolve_env(environment).to_string();
         let cache_key = format!("{}:{}", env, key);
-        if let Some(value) = self.cache.get(&cache_key) {
-            return Ok(value.clone());
+
+        if let Some(cached) = self.get_cached(&cache_key) {
+            return Ok(cached);
         }
+
+        // Remove expired entry if still in map
+        if self.cache.contains_key(&cache_key) {
+            self.cache.remove(&cache_key);
+        }
+
+        let encoded_key = utf8_percent_encode(key, PATH_SEGMENT_ENCODE_SET).to_string();
 
         let response: ValueResponse = self
             .client
             .get(format!(
                 "{}/organizations/{}/config/values/{}",
-                self.base_url, self.org_id, key
+                self.base_url, self.org_id, encoded_key
             ))
             .query(&[("environment", &env)])
             .send()
@@ -105,7 +163,14 @@ impl ConfigClient {
             .json()
             .await?;
 
-        self.cache.insert(cache_key, response.value.clone());
+        let expires_at = self.compute_expires_at();
+        self.cache.insert(
+            cache_key,
+            CacheEntry {
+                value: response.value.clone(),
+                expires_at,
+            },
+        );
         Ok(response.value)
     }
 
@@ -126,16 +191,29 @@ impl ConfigClient {
             .json()
             .await?;
 
+        let expires_at = self.compute_expires_at();
         for (key, value) in &response.values {
-            self.cache.insert(format!("{}:{}", env, key), value.clone());
+            self.cache.insert(
+                format!("{}:{}", env, key),
+                CacheEntry {
+                    value: value.clone(),
+                    expires_at,
+                },
+            );
         }
 
         Ok(response.values)
     }
 
-    /// Clear the local cache.
+    /// Clear the entire local cache.
     pub fn invalidate_cache(&mut self) {
         self.cache.clear();
+    }
+
+    /// Clear cached values for a specific environment.
+    pub fn invalidate_cache_for_environment(&mut self, environment: &str) {
+        let prefix = format!("{}:", environment);
+        self.cache.retain(|key, _| !key.starts_with(&prefix));
     }
 }
 
@@ -170,8 +248,20 @@ mod tests {
     #[test]
     fn test_invalidate_cache_clears_all() {
         let mut client = ConfigClient::new("https://api.example.com", "key", "org");
-        client.cache.insert("prod:KEY".to_string(), serde_json::json!("value"));
-        client.cache.insert("staging:KEY".to_string(), serde_json::json!(42));
+        client.cache.insert(
+            "prod:KEY".to_string(),
+            CacheEntry {
+                value: serde_json::json!("value"),
+                expires_at: None,
+            },
+        );
+        client.cache.insert(
+            "staging:KEY".to_string(),
+            CacheEntry {
+                value: serde_json::json!(42),
+                expires_at: None,
+            },
+        );
 
         assert_eq!(client.cache.len(), 2);
         client.invalidate_cache();
@@ -183,6 +273,49 @@ mod tests {
         let mut client = ConfigClient::new("https://api.example.com", "key", "org");
         client.invalidate_cache();
         assert!(client.cache.is_empty());
+    }
+
+    #[test]
+    fn test_invalidate_cache_for_environment() {
+        let mut client = ConfigClient::new("https://api.example.com", "key", "org");
+        client.cache.insert(
+            "prod:KEY1".to_string(),
+            CacheEntry {
+                value: serde_json::json!("v1"),
+                expires_at: None,
+            },
+        );
+        client.cache.insert(
+            "prod:KEY2".to_string(),
+            CacheEntry {
+                value: serde_json::json!("v2"),
+                expires_at: None,
+            },
+        );
+        client.cache.insert(
+            "staging:KEY1".to_string(),
+            CacheEntry {
+                value: serde_json::json!("sv1"),
+                expires_at: None,
+            },
+        );
+
+        client.invalidate_cache_for_environment("prod");
+        assert_eq!(client.cache.len(), 1);
+        assert!(client.cache.contains_key("staging:KEY1"));
+    }
+
+    #[test]
+    fn test_cache_ttl_none_by_default() {
+        let client = ConfigClient::new("https://api.example.com", "key", "org");
+        assert!(client.cache_ttl.is_none());
+    }
+
+    #[test]
+    fn test_set_cache_ttl() {
+        let mut client = ConfigClient::new("https://api.example.com", "key", "org");
+        client.set_cache_ttl(Some(Duration::from_secs(60)));
+        assert_eq!(client.cache_ttl, Some(Duration::from_secs(60)));
     }
 
     #[test]

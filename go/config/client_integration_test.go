@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -576,4 +577,122 @@ func TestIntegration_FullWorkflow_MultiEnvironment(t *testing.T) {
 	_, _ = client.GetValue("API_URL", "staging")
 	_, _ = client.GetValue("API_URL", "development")
 	assert.Equal(t, 3, m.count()) // No new requests
+}
+
+// ---------------------------------------------------------------------------
+// Integration Tests: TTL Caching
+// ---------------------------------------------------------------------------
+
+func TestIntegration_TTL_ServesFromCacheWithinTTL(t *testing.T) {
+	m := newMockConfigServer()
+	defer m.close()
+
+	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID, WithCacheTTL(time.Minute))
+	defer client.Close()
+
+	_, err := client.GetValue("API_URL", "production")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), int64(m.count()))
+
+	// Still cached within TTL
+	_, err = client.GetValue("API_URL", "production")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), int64(m.count()))
+}
+
+func TestIntegration_TTL_RefetchesAfterExpiry(t *testing.T) {
+	m := newMockConfigServer()
+	defer m.close()
+
+	// Use 1ms TTL so it expires immediately
+	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID, WithCacheTTL(time.Millisecond))
+	defer client.Close()
+
+	_, err := client.GetValue("API_URL", "production")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), int64(m.count()))
+
+	// Wait for TTL to expire
+	time.Sleep(5 * time.Millisecond)
+
+	_, err = client.GetValue("API_URL", "production")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), int64(m.count())) // Re-fetched
+}
+
+func TestIntegration_TTL_NoTTLMeansNeverExpires(t *testing.T) {
+	m := newMockConfigServer()
+	defer m.close()
+
+	// No TTL option — cache never expires
+	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	defer client.Close()
+
+	_, err := client.GetValue("API_URL", "production")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), int64(m.count()))
+
+	// Should still be cached (no expiry)
+	_, err = client.GetValue("API_URL", "production")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), int64(m.count()))
+}
+
+// ---------------------------------------------------------------------------
+// Integration Tests: Environment-Specific Cache Invalidation
+// ---------------------------------------------------------------------------
+
+func TestIntegration_InvalidateForEnvironment_ClearsOnlyTarget(t *testing.T) {
+	m := newMockConfigServer()
+	defer m.close()
+
+	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	defer client.Close()
+
+	_, _ = client.GetValue("API_URL", "production")
+	_, _ = client.GetValue("API_URL", "staging")
+	assert.Equal(t, int64(2), int64(m.count()))
+
+	client.InvalidateCacheForEnvironment("production")
+
+	// Production needs re-fetch
+	_, _ = client.GetValue("API_URL", "production")
+	assert.Equal(t, int64(3), int64(m.count()))
+
+	// Staging still cached
+	_, _ = client.GetValue("API_URL", "staging")
+	assert.Equal(t, int64(3), int64(m.count()))
+}
+
+func TestIntegration_InvalidateForEnvironment_ClearsAllKeys(t *testing.T) {
+	m := newMockConfigServer()
+	defer m.close()
+
+	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	defer client.Close()
+
+	_, _ = client.GetAllValues("production")
+	assert.Equal(t, int64(1), int64(m.count()))
+
+	client.InvalidateCacheForEnvironment("production")
+
+	_, _ = client.GetValue("API_URL", "production")
+	_, _ = client.GetValue("MAX_RETRIES", "production")
+	assert.Equal(t, int64(3), int64(m.count()))
+}
+
+func TestIntegration_InvalidateForEnvironment_NoopForNonexistent(t *testing.T) {
+	m := newMockConfigServer()
+	defer m.close()
+
+	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	defer client.Close()
+
+	_, _ = client.GetValue("API_URL", "production")
+	assert.Equal(t, int64(1), int64(m.count()))
+
+	client.InvalidateCacheForEnvironment("nonexistent")
+
+	_, _ = client.GetValue("API_URL", "production")
+	assert.Equal(t, int64(1), int64(m.count())) // Still cached
 }
