@@ -76,6 +76,59 @@ class TestConfigClientInit:
         ) as c:
             assert c._cache == {}
 
+    def test_reads_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
+        monkeypatch.setenv("SMOOAI_CONFIG_API_KEY", "env-key")
+        monkeypatch.setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
+        monkeypatch.setenv("SMOOAI_CONFIG_ENV", "staging")
+
+        with ConfigClient() as c:
+            assert c._base_url == "https://env.example.com"
+            assert c._org_id == "env-org"
+            assert c._default_environment == "staging"
+
+    def test_explicit_args_override_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
+        monkeypatch.setenv("SMOOAI_CONFIG_API_KEY", "env-key")
+        monkeypatch.setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
+
+        with ConfigClient(
+            base_url="https://explicit.example.com",
+            api_key="explicit-key",
+            org_id="explicit-org",
+        ) as c:
+            assert c._base_url == "https://explicit.example.com"
+            assert c._org_id == "explicit-org"
+
+    def test_raises_without_base_url(self) -> None:
+        with pytest.raises(ValueError, match="base_url is required"):
+            ConfigClient(api_key="key", org_id="org")
+
+    def test_raises_without_api_key(self) -> None:
+        with pytest.raises(ValueError, match="api_key is required"):
+            ConfigClient(base_url="https://example.com", org_id="org")
+
+    def test_raises_without_org_id(self) -> None:
+        with pytest.raises(ValueError, match="org_id is required"):
+            ConfigClient(base_url="https://example.com", api_key="key")
+
+    def test_default_environment_fallback(self) -> None:
+        with ConfigClient(
+            base_url="https://config.smooai.dev",
+            api_key="key",
+            org_id="org-id",
+        ) as c:
+            assert c._default_environment == "development"
+
+    def test_explicit_environment(self) -> None:
+        with ConfigClient(
+            base_url="https://config.smooai.dev",
+            api_key="key",
+            org_id="org-id",
+            environment="production",
+        ) as c:
+            assert c._default_environment == "production"
+
 
 class TestGetValue:
     """Tests for get_value()."""

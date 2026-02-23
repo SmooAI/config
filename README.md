@@ -159,7 +159,7 @@ let client = ConfigClient::new(
     "your-api-key",
     "your-org-id",
 );
-let value = client.get_value("API_URL", "production").await?;
+let value = client.get_value("API_URL", Some("production")).await?;
 ```
 
 ### Go - Define and Fetch Configuration
@@ -175,13 +175,171 @@ cfg := config.DefineConfig(
 )
 
 // Fetch values at runtime
-client := config.NewClient(
+client := config.NewConfigClient(
     "https://config.smooai.dev",
     "your-api-key",
     "your-org-id",
 )
+defer client.Close()
 value, err := client.GetValue("API_URL", "production")
 allValues, err := client.GetAllValues("production")
+```
+
+## SDK Runtime Client
+
+All language implementations include a runtime client for fetching configuration values from the Smoo AI config server. Each client supports local caching and environment variable configuration.
+
+### Environment Variables
+
+All clients read from the same set of environment variables:
+
+| Variable                | Description                                            | Required |
+| ----------------------- | ------------------------------------------------------ | -------- |
+| `SMOOAI_CONFIG_API_URL` | Base URL of the config API                             | Yes      |
+| `SMOOAI_CONFIG_API_KEY` | Bearer token for authentication                        | Yes      |
+| `SMOOAI_CONFIG_ORG_ID`  | Organization ID                                        | Yes      |
+| `SMOOAI_CONFIG_ENV`     | Default environment name (defaults to `"development"`) | No       |
+
+Set these in your environment and the client will use them automatically:
+
+```sh
+export SMOOAI_CONFIG_API_URL="https://config.smooai.dev"
+export SMOOAI_CONFIG_API_KEY="your-api-key"
+export SMOOAI_CONFIG_ORG_ID="your-org-id"
+export SMOOAI_CONFIG_ENV="production"
+```
+
+### TypeScript SDK Client
+
+The TypeScript client works in any JavaScript runtime (Node.js, browsers, edge runtimes):
+
+```typescript
+import { ConfigClient } from '@smooai/config/platform/client';
+
+// Option 1: Use environment variables (zero-config)
+const client = new ConfigClient();
+
+// Option 2: Explicit configuration (overrides env vars)
+const client = new ConfigClient({
+    baseUrl: 'https://config.smooai.dev',
+    apiKey: 'your-api-key',
+    orgId: 'your-org-id',
+    environment: 'production',
+});
+
+// Fetch a single value (uses default environment)
+const apiUrl = await client.getValue('API_URL');
+
+// Fetch a value for a specific environment
+const stagingUrl = await client.getValue('API_URL', 'staging');
+
+// Fetch all values
+const allValues = await client.getAllValues();
+
+// Clear the local cache
+client.invalidateCache();
+```
+
+### React Hooks
+
+For React applications, use the built-in hooks with `ConfigProvider`:
+
+```tsx
+import { ConfigProvider, usePublicConfig, useSecretConfig, useFeatureFlag } from '@smooai/config/react';
+
+// Wrap your app with ConfigProvider
+function App() {
+    return (
+        <ConfigProvider baseUrl="https://config.smooai.dev" apiKey="your-api-key" orgId="your-org-id" environment="production">
+            <MyComponent />
+        </ConfigProvider>
+    );
+}
+
+// Use hooks in any child component
+function MyComponent() {
+    const { value: apiUrl, isLoading, error } = usePublicConfig<string>('API_URL');
+    const { value: dbUrl } = useSecretConfig<string>('DATABASE_URL');
+    const { value: enableNewUI, refetch } = useFeatureFlag<boolean>('ENABLE_NEW_UI');
+
+    if (isLoading) return <div>Loading...</div>;
+    if (error) return <div>Error: {error.message}</div>;
+
+    return <div>API URL: {apiUrl}</div>;
+}
+```
+
+### Python SDK Client
+
+```python
+from smooai_config.client import ConfigClient
+
+# Option 1: Use environment variables (zero-config)
+with ConfigClient() as client:
+    value = client.get_value("API_URL")
+    all_values = client.get_all_values()
+
+# Option 2: Explicit configuration
+with ConfigClient(
+    base_url="https://config.smooai.dev",
+    api_key="your-api-key",
+    org_id="your-org-id",
+    environment="production",
+) as client:
+    value = client.get_value("API_URL")
+    value = client.get_value("API_URL", environment="staging")  # Override environment
+```
+
+### Rust SDK Client
+
+```rust
+use smooai_config::client::ConfigClient;
+
+// Option 1: Use environment variables (zero-config)
+let mut client = ConfigClient::from_env();
+
+// Option 2: Explicit configuration
+let mut client = ConfigClient::new(
+    "https://config.smooai.dev",
+    "your-api-key",
+    "your-org-id",
+);
+
+// Option 3: Explicit with default environment
+let mut client = ConfigClient::with_environment(
+    "https://config.smooai.dev",
+    "your-api-key",
+    "your-org-id",
+    "production",
+);
+
+// Fetch values (None uses default environment)
+let value = client.get_value("API_URL", None).await?;
+let value = client.get_value("API_URL", Some("staging")).await?;
+let all = client.get_all_values(None).await?;
+```
+
+### Go SDK Client
+
+```go
+import "github.com/SmooAI/config/go/config"
+
+// Option 1: Use environment variables (zero-config)
+client := config.NewConfigClientFromEnv()
+defer client.Close()
+
+// Option 2: Explicit configuration (empty strings fall back to env vars)
+client := config.NewConfigClient(
+    "https://config.smooai.dev",
+    "your-api-key",
+    "your-org-id",
+)
+defer client.Close()
+
+// Fetch values (empty string uses default environment)
+value, err := client.GetValue("API_URL", "")
+value, err := client.GetValue("API_URL", "staging")
+allValues, err := client.GetAllValues("")
 ```
 
 ## Configuration Tiers
