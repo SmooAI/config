@@ -94,5 +94,5 @@ class TestConfigTier:
         assert ConfigTier.FEATURE_FLAG.value == "feature_flag"
 
     def test_string_enum(self) -> None:
-        assert str(ConfigTier.PUBLIC) == "ConfigTier.PUBLIC"
+        assert str(ConfigTier.PUBLIC) == "public"
         assert ConfigTier("public") == ConfigTier.PUBLIC
