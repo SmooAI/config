@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 2.0.1
+
+### Patch Changes
+
+- 973ffe3: Fix release workflow: regenerate Cargo.lock before crates.io publish, remove lint-staged
+
 ## 2.0.0
 
 ### Major Changes
