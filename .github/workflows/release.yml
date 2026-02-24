@@ -135,10 +135,7 @@ jobs:
                   if [[ -n "$PR_NUMBER" && "$PR_NUMBER" != "null" ]]; then
                     echo "Found Changeset PR #$PR_NUMBER, attempting to auto-merge..."
                     gh pr merge "$PR_NUMBER" --auto --squash
-
-                    # Re-trigger the Release workflow
-                    echo "Re-triggering the release workflow..."
-                    gh workflow run release.yml
+                    # The merge push event will trigger a new workflow run automatically
                   else
                     echo "No open Changeset PR found, skipping merge."
                   fi
