@@ -12,7 +12,6 @@ import pytest
 from smooai_config.config_manager import ConfigManager
 from smooai_config.file_config import _clear_config_dir_cache
 
-
 # ---------------------------------------------------------------------------
 # Test constants
 # ---------------------------------------------------------------------------
