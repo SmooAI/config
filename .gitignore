@@ -60,3 +60,7 @@ go/config/config
 # Smoo AI logs
 .smooai-logs
 
+# SST artifacts (may exist locally)
+.sst
+.pulumi
+

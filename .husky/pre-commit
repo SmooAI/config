@@ -1,4 +1,4 @@
-pnpm lint-staged
+pnpm lint:fix
 pnpm typecheck
 pnpm test
 pnpm build
