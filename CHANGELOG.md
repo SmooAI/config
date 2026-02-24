@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 2.0.4
+
+### Patch Changes
+
+- 3f65d3f: Fix crates.io publish: allow dirty working tree after version sync
+
 ## 2.0.3
 
 ### Patch Changes
