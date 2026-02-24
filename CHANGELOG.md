@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 2.0.2
+
+### Patch Changes
+
+- ad69f8c: Fix release workflow race condition and publish to crates.io/Go module
+
 ## 2.0.1
 
 ### Patch Changes
