@@ -7,7 +7,7 @@ import { CliApiClient } from '../utils/api-client';
 import { getCredentialsOrExit } from '../utils/credentials';
 import { isInteractive, jsonOutput } from '../utils/output';
 import { loadLocalSchema } from '../utils/schema-loader';
-import { validateJsonSchema } from '../utils/schema-validator';
+import { validateJsonSchema, validateSmooaiSchema } from '../utils/schema-validator';
 
 interface PushOptions {
     json?: boolean;
@@ -50,6 +50,13 @@ export async function pushLogic(options: PushOptions): Promise<{ success: boolea
     const validation = validateJsonSchema(loaded.jsonSchema);
     if (!validation.valid) {
         throw new Error(`Invalid JSON Schema: ${validation.errors?.join(', ')}`);
+    }
+
+    // Validate cross-language compatibility
+    const smooaiValidation = validateSmooaiSchema(loaded.jsonSchema);
+    if (!smooaiValidation.valid) {
+        const errorMessages = smooaiValidation.errors.map((e) => `  ${e.path}: ${e.message}\n    Suggestion: ${e.suggestion}`);
+        throw new Error(`Schema uses unsupported JSON Schema features:\n${errorMessages.join('\n')}`);
     }
 
     const schemaName = options.schemaName ?? basename(process.cwd());

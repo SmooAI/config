@@ -180,3 +180,52 @@ func TestConfigDefinition_JSONRoundtrip(t *testing.T) {
 	assert.Equal(t, original.PublicSchema["type"], decoded.PublicSchema["type"])
 	assert.Equal(t, original.JSONSchema["$schema"], decoded.JSONSchema["$schema"])
 }
+
+// --- DefineConfigTyped tests ---
+
+type TestPublicConfig struct {
+	APIUrl     string `json:"api_url"`
+	MaxRetries int    `json:"max_retries" jsonschema:"minimum=0"`
+	Debug      bool   `json:"debug"`
+}
+
+type TestSecretConfig struct {
+	APIKey string `json:"api_key"`
+}
+
+type TestFeatureFlags struct {
+	EnableBeta bool `json:"enable_beta"`
+}
+
+func TestDefineConfigTyped_Basic(t *testing.T) {
+	result, err := DefineConfigTyped(&TestPublicConfig{}, nil, nil)
+	require.NoError(t, err)
+
+	// Public schema should have properties from TestPublicConfig
+	props := result.JSONSchema["properties"].(map[string]any)
+	public := props["public"].(map[string]any)
+	publicProps := public["properties"].(map[string]any)
+	assert.Contains(t, publicProps, "api_url")
+	assert.Contains(t, publicProps, "max_retries")
+	assert.Contains(t, publicProps, "debug")
+}
+
+func TestDefineConfigTyped_AllTiers(t *testing.T) {
+	result, err := DefineConfigTyped(&TestPublicConfig{}, &TestSecretConfig{}, &TestFeatureFlags{})
+	require.NoError(t, err)
+
+	props := result.JSONSchema["properties"].(map[string]any)
+	public := props["public"].(map[string]any)
+	secret := props["secret"].(map[string]any)
+	flags := props["feature_flags"].(map[string]any)
+
+	assert.Contains(t, public["properties"].(map[string]any), "api_url")
+	assert.Contains(t, secret["properties"].(map[string]any), "api_key")
+	assert.Contains(t, flags["properties"].(map[string]any), "enable_beta")
+}
+
+func TestDefineConfigTyped_NilAll(t *testing.T) {
+	result, err := DefineConfigTyped(nil, nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "object", result.JSONSchema["type"])
+}

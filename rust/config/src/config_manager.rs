@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::deferred::{resolve_deferred, DeferredValue};
 use crate::env_config::find_and_process_env_config_with_env;
 use crate::file_config::find_and_process_file_config_with_env;
 use crate::merge::merge_replace_arrays;
@@ -52,6 +53,8 @@ pub struct ConfigManager {
     base_url: Option<String>,
     org_id: Option<String>,
     environment: Option<String>,
+    // Deferred config values
+    deferred: HashMap<String, DeferredValue>,
 }
 
 impl ConfigManager {
@@ -74,6 +77,7 @@ impl ConfigManager {
             base_url: None,
             org_id: None,
             environment: None,
+            deferred: HashMap::new(),
         }
     }
 
@@ -135,6 +139,16 @@ impl ConfigManager {
         self
     }
 
+    /// Register a deferred (computed) config value.
+    ///
+    /// The closure receives the full merged config map (pre-resolution snapshot)
+    /// and returns the computed value. Deferred values are resolved after all
+    /// sources are merged, before the config is made available.
+    pub fn with_deferred(mut self, key: &str, resolver: DeferredValue) -> Self {
+        self.deferred.insert(key.to_string(), resolver);
+        self
+    }
+
     fn get_env(&self) -> HashMap<String, String> {
         self.env_override.clone().unwrap_or_else(|| std::env::vars().collect())
     }
@@ -174,10 +188,7 @@ impl ConfigManager {
         let env = self.get_env();
 
         // 1. Load file config (graceful fallback on error)
-        let file_config = match find_and_process_file_config_with_env(&env) {
-            Ok(config) => config,
-            Err(_) => HashMap::new(),
-        };
+        let file_config = find_and_process_file_config_with_env(&env).unwrap_or_default();
 
         // 2. Load env config
         let schema_keys = self.schema_keys.clone().unwrap_or_default();
@@ -240,6 +251,11 @@ impl ConfigManager {
             inner.config = map.into_iter().collect();
         }
 
+        // 5. Resolve deferred/computed values
+        if !self.deferred.is_empty() {
+            resolve_deferred(&mut inner.config, &self.deferred);
+        }
+
         inner.initialized = true;
         Ok(())
     }
@@ -255,7 +271,7 @@ impl ConfigManager {
             .map_err(|_| SmooaiConfigError::new("Failed to acquire write lock"))?;
 
         // Check cache
-        let cache = cache_selector(&mut *inner);
+        let cache = cache_selector(&mut inner);
         if let Some(entry) = cache.get(key) {
             if Instant::now() < entry.expires_at {
                 return Ok(Some(entry.value.clone()));
@@ -269,7 +285,7 @@ impl ConfigManager {
         // Look up in merged config
         let value = inner.config.get(key).cloned();
         if let Some(ref val) = value {
-            let cache = cache_selector(&mut *inner);
+            let cache = cache_selector(&mut inner);
             cache.insert(
                 key.to_string(),
                 CacheEntry {
@@ -899,6 +915,92 @@ mod tests {
 
         let result = mgr.get_public_config("API_URL").unwrap();
         assert_eq!(result, Some(Value::String("http://localhost".to_string())));
+    }
+
+    // --- Test: Basic Deferred Value ---
+    #[test]
+    fn test_basic_deferred_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{"HOST":"localhost","PORT":5432}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+
+        let mgr = ConfigManager::new().with_env(env).with_deferred(
+            "FULL_URL",
+            Box::new(|config| {
+                let host = config["HOST"].as_str().unwrap_or("unknown");
+                let port = config["PORT"].as_u64().unwrap_or(0);
+                serde_json::json!(format!("{}:{}", host, port))
+            }),
+        );
+
+        assert_eq!(
+            mgr.get_public_config("FULL_URL").unwrap(),
+            Some(serde_json::json!("localhost:5432"))
+        );
+        // Original values preserved
+        assert_eq!(
+            mgr.get_public_config("HOST").unwrap(),
+            Some(serde_json::json!("localhost"))
+        );
+        assert_eq!(mgr.get_public_config("PORT").unwrap(), Some(serde_json::json!(5432)));
+    }
+
+    // --- Test: Multiple Deferred See Pre-Resolution Snapshot ---
+    #[test]
+    fn test_multiple_deferred_see_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{"BASE":"hello"}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+
+        let mgr = ConfigManager::new()
+            .with_env(env)
+            .with_deferred(
+                "A",
+                Box::new(|config| {
+                    let base = config["BASE"].as_str().unwrap_or("");
+                    serde_json::json!(format!("{}-a", base))
+                }),
+            )
+            .with_deferred(
+                "B",
+                Box::new(|config| {
+                    // B should NOT see A's resolved value
+                    serde_json::json!(config.contains_key("A"))
+                }),
+            );
+
+        assert_eq!(mgr.get_public_config("A").unwrap(), Some(serde_json::json!("hello-a")));
+        // B should see that A was NOT in the snapshot
+        assert_eq!(mgr.get_public_config("B").unwrap(), Some(serde_json::json!(false)));
+    }
+
+    // --- Test: Deferred Runs After Full Merge ---
+    #[test]
+    fn test_deferred_runs_after_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{"HOST":"file-host"}"#)]);
+
+        let mut schema_keys = HashSet::new();
+        schema_keys.insert("HOST".to_string());
+
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test"), ("HOST", "env-host")]);
+
+        let mgr = ConfigManager::new()
+            .with_env(env)
+            .with_schema_keys(schema_keys)
+            .with_deferred(
+                "API_URL",
+                Box::new(|config| {
+                    let host = config["HOST"].as_str().unwrap_or("unknown");
+                    serde_json::json!(format!("https://{}/api", host))
+                }),
+            );
+
+        // Env overrides file, deferred sees env value
+        assert_eq!(
+            mgr.get_public_config("API_URL").unwrap(),
+            Some(serde_json::json!("https://env-host/api"))
+        );
     }
 
     // --- Test: No Remote Without Credentials ---

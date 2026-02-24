@@ -6,6 +6,7 @@ export default defineConfig((options: Options) => ({
         'src/utils/mergeReplaceArrays.ts',
         'src/utils/index.ts',
         'src/utils/fs.ts',
+        'src/schema-spec/smooai-config-schema-spec.ts',
         'src/react/index.ts',
         'src/react/hooks.ts',
         'src/platform/server.ts',

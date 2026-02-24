@@ -6,11 +6,13 @@
 pub mod client;
 pub mod cloud_region;
 pub mod config_manager;
+pub mod deferred;
 pub mod env_config;
 pub mod file_config;
 pub mod local;
 pub mod merge;
 pub mod schema;
+pub mod schema_validator;
 pub mod utils;
 
 pub use client::ConfigClient;

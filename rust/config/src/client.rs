@@ -355,3 +355,246 @@ mod tests {
         assert_eq!(client.default_environment, "production");
     }
 }
+
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use std::time::Duration;
+    use wiremock::matchers::{header, method, path_regex, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // --- Test 1: get_value fetches a single value correctly ---
+    #[tokio::test]
+    async fn test_get_value_fetches_single_value() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(query_param("environment", "production"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "hello-world"})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let value = client.get_value("MY_KEY", None).await.unwrap();
+        assert_eq!(value, serde_json::json!("hello-world"));
+    }
+
+    // --- Test 2: get_all_values fetches all values correctly ---
+    #[tokio::test]
+    async fn test_get_all_values_fetches_all() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values$"))
+            .and(query_param("environment", "staging"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "values": {
+                    "DB_HOST": "db.example.com",
+                    "DB_PORT": 5432,
+                    "FEATURE_FLAG": true
+                }
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "staging");
+        let values = client.get_all_values(None).await.unwrap();
+
+        assert_eq!(values.len(), 3);
+        assert_eq!(values["DB_HOST"], serde_json::json!("db.example.com"));
+        assert_eq!(values["DB_PORT"], serde_json::json!(5432));
+        assert_eq!(values["FEATURE_FLAG"], serde_json::json!(true));
+    }
+
+    // --- Test 3: Authorization header is sent correctly ---
+    #[tokio::test]
+    async fn test_auth_header_verification() {
+        let mock_server = MockServer::start().await;
+
+        // Mock expects a specific bearer token
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(header("Authorization", "Bearer my-secret-token-xyz"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "authenticated"})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let mut client =
+            ConfigClient::with_environment(&mock_server.uri(), "my-secret-token-xyz", "org-123", "production");
+        let value = client.get_value("SECRET_KEY", None).await.unwrap();
+        assert_eq!(value, serde_json::json!("authenticated"));
+    }
+
+    // --- Test 4: Caching — second call to same key doesn't hit server ---
+    #[tokio::test]
+    async fn test_caching_prevents_duplicate_requests() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(query_param("environment", "production"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "cached-value"})))
+            .expect(1) // Server should only be hit once
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+
+        // First call — hits the server
+        let value1 = client.get_value("CACHE_KEY", None).await.unwrap();
+        assert_eq!(value1, serde_json::json!("cached-value"));
+
+        // Second call — served from cache, no server hit
+        let value2 = client.get_value("CACHE_KEY", None).await.unwrap();
+        assert_eq!(value2, serde_json::json!("cached-value"));
+    }
+
+    // --- Test 5: TTL expiration causes re-fetch from server ---
+    #[tokio::test]
+    async fn test_ttl_expiration_refetches() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(query_param("environment", "production"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "fresh-value"})))
+            .expect(2) // Server should be hit twice: initial + after TTL expiry
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        // Set a very short TTL so it expires quickly
+        client.set_cache_ttl(Some(Duration::from_millis(1)));
+
+        // First call — hits the server
+        let value1 = client.get_value("TTL_KEY", None).await.unwrap();
+        assert_eq!(value1, serde_json::json!("fresh-value"));
+
+        // Wait for TTL to expire
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Second call — cache expired, hits the server again
+        let value2 = client.get_value("TTL_KEY", None).await.unwrap();
+        assert_eq!(value2, serde_json::json!("fresh-value"));
+    }
+
+    // --- Test 6: invalidate_cache forces re-fetch ---
+    #[tokio::test]
+    async fn test_invalidate_cache_forces_refetch() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(query_param("environment", "production"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "refetched"})))
+            .expect(2) // Server hit twice: initial + after invalidation
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+
+        // First call — hits the server
+        let value1 = client.get_value("INVAL_KEY", None).await.unwrap();
+        assert_eq!(value1, serde_json::json!("refetched"));
+
+        // Invalidate cache
+        client.invalidate_cache();
+
+        // Second call — cache cleared, hits the server again
+        let value2 = client.get_value("INVAL_KEY", None).await.unwrap();
+        assert_eq!(value2, serde_json::json!("refetched"));
+    }
+
+    // --- Test 7: Error handling — server returns 401 ---
+    #[tokio::test]
+    async fn test_error_handling_401_unauthorized() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+                "error": "Unauthorized"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "bad-api-key", "test-org", "production");
+
+        let result = client.get_value("SOME_KEY", None).await;
+        assert!(result.is_err(), "Expected error for 401 response");
+    }
+
+    // --- Test 8: Error handling — server returns 404 ---
+    #[tokio::test]
+    async fn test_error_handling_404_not_found() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .respond_with(ResponseTemplate::new(404).set_body_json(serde_json::json!({
+                "error": "Not found"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+
+        let result = client.get_value("NONEXISTENT_KEY", None).await;
+        assert!(result.is_err(), "Expected error for 404 response");
+    }
+
+    // --- Test 9: Per-environment caching — different envs are separate cache entries ---
+    #[tokio::test]
+    async fn test_per_environment_caching() {
+        let mock_server = MockServer::start().await;
+
+        // Mock for production environment
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(query_param("environment", "production"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "prod-value"})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        // Mock for staging environment
+        Mock::given(method("GET"))
+            .and(path_regex(r"/organizations/.+/config/values/.+"))
+            .and(query_param("environment", "staging"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"value": "staging-value"})))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+
+        // Fetch for production (default env)
+        let prod_value = client.get_value("SHARED_KEY", None).await.unwrap();
+        assert_eq!(prod_value, serde_json::json!("prod-value"));
+
+        // Fetch for staging (explicit env override)
+        let staging_value = client.get_value("SHARED_KEY", Some("staging")).await.unwrap();
+        assert_eq!(staging_value, serde_json::json!("staging-value"));
+
+        // Fetch production again — should come from cache (mock expects only 1 call)
+        let prod_cached = client.get_value("SHARED_KEY", None).await.unwrap();
+        assert_eq!(prod_cached, serde_json::json!("prod-value"));
+
+        // Fetch staging again — should come from cache (mock expects only 1 call)
+        let staging_cached = client.get_value("SHARED_KEY", Some("staging")).await.unwrap();
+        assert_eq!(staging_cached, serde_json::json!("staging-value"));
+    }
+}

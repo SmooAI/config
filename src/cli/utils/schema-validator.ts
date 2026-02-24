@@ -4,6 +4,9 @@
 
 import Ajv from 'ajv';
 
+export { validateSmooaiSchema } from '@/schema-spec/smooai-config-schema-spec';
+export type { SchemaValidationError, SchemaValidationResult } from '@/schema-spec/smooai-config-schema-spec';
+
 const ajv = new Ajv({ allErrors: true, strict: false });
 
 /**

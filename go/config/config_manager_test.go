@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1110,6 +1111,136 @@ func TestConfigManager_SchemaTypeCoercion(t *testing.T) {
 	v, err = mgr.GetPublicConfig("ENABLE_DEBUG")
 	require.NoError(t, err)
 	assert.Equal(t, true, v) // Coerced from string "true" to bool
+}
+
+// ---------------------------------------------------------------------------
+// Deferred (Computed) Config Values
+// ---------------------------------------------------------------------------
+
+func TestConfigManager_DeferredBasic(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{
+		"default.json": map[string]any{
+			"HOST": "localhost",
+			"PORT": float64(5432),
+		},
+	})
+
+	mgr := NewConfigManager(
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+		WithDeferred("FULL_URL", func(config map[string]any) any {
+			host, _ := config["HOST"].(string)
+			port := config["PORT"]
+			return fmt.Sprintf("%s:%v", host, port)
+		}),
+	)
+
+	v, err := mgr.GetPublicConfig("FULL_URL")
+	require.NoError(t, err)
+	assert.Equal(t, "localhost:5432", v)
+
+	// Original values preserved
+	v, err = mgr.GetPublicConfig("HOST")
+	require.NoError(t, err)
+	assert.Equal(t, "localhost", v)
+
+	v, err = mgr.GetPublicConfig("PORT")
+	require.NoError(t, err)
+	assert.Equal(t, 5432.0, v)
+}
+
+func TestConfigManager_DeferredMultipleSeeSnapshot(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{
+		"default.json": map[string]any{
+			"BASE": "hello",
+		},
+	})
+
+	mgr := NewConfigManager(
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+		WithDeferred("A", func(config map[string]any) any {
+			base, _ := config["BASE"].(string)
+			return base + "-a"
+		}),
+		WithDeferred("B", func(config map[string]any) any {
+			_, hasA := config["A"]
+			return hasA
+		}),
+	)
+
+	v, err := mgr.GetPublicConfig("A")
+	require.NoError(t, err)
+	assert.Equal(t, "hello-a", v)
+
+	// B should see that A was NOT in the snapshot
+	v, err = mgr.GetPublicConfig("B")
+	require.NoError(t, err)
+	assert.Equal(t, false, v)
+}
+
+func TestConfigManager_DeferredRunsAfterMerge(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{
+		"default.json": map[string]any{
+			"HOST": "file-host",
+		},
+	})
+
+	mgr := NewConfigManager(
+		WithCMSchemaKeys(map[string]bool{"HOST": true}),
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+			"HOST":                  "env-host",
+		}),
+		WithDeferred("API_URL", func(config map[string]any) any {
+			host, _ := config["HOST"].(string)
+			return fmt.Sprintf("https://%s/api", host)
+		}),
+	)
+
+	// Env overrides file, deferred sees env value
+	v, err := mgr.GetPublicConfig("API_URL")
+	require.NoError(t, err)
+	assert.Equal(t, "https://env-host/api", v)
+}
+
+func TestConfigManager_DeferredWithRemote(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{
+		"default.json": map[string]any{
+			"HOST": "file-host",
+		},
+	})
+
+	mock := newMockCMServer("key", "org", map[string]any{
+		"HOST": "remote-host",
+		"PORT": float64(8080),
+	})
+	defer mock.close()
+
+	mgr := NewConfigManager(
+		WithAPIKey("key"),
+		WithBaseURL(mock.server.URL),
+		WithOrgID("org"),
+		WithConfigEnvironment("test"),
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+		WithDeferred("FULL_URL", func(config map[string]any) any {
+			host, _ := config["HOST"].(string)
+			port := config["PORT"]
+			return fmt.Sprintf("%s:%v", host, port)
+		}),
+	)
+
+	v, err := mgr.GetPublicConfig("FULL_URL")
+	require.NoError(t, err)
+	assert.Equal(t, "remote-host:8080", v)
 }
 
 func TestConfigManager_FileConfigMergeChain(t *testing.T) {

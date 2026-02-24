@@ -124,7 +124,7 @@ impl LocalConfigManager {
             .map_err(|_| SmooaiConfigError::new("Failed to acquire write lock"))?;
 
         // Check cache
-        let cache = cache_selector(&mut *inner);
+        let cache = cache_selector(&mut inner);
         if let Some(entry) = cache.get(key) {
             if Instant::now() < entry.expires_at {
                 return Ok(Some(entry.value.clone()));
@@ -138,7 +138,7 @@ impl LocalConfigManager {
         // File config takes precedence
         let file_value = inner.file_config.as_ref().and_then(|fc| fc.get(key)).cloned();
         if let Some(value) = file_value {
-            let cache = cache_selector(&mut *inner);
+            let cache = cache_selector(&mut inner);
             cache.insert(
                 key.to_string(),
                 CacheEntry {
@@ -152,7 +152,7 @@ impl LocalConfigManager {
         // Env config fallback
         let env_value = inner.env_config.as_ref().and_then(|ec| ec.get(key)).cloned();
         if let Some(value) = env_value {
-            let cache = cache_selector(&mut *inner);
+            let cache = cache_selector(&mut inner);
             cache.insert(
                 key.to_string(),
                 CacheEntry {
