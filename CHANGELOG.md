@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 2.0.3
+
+### Patch Changes
+
+- 77cf41b: Fix PyPI publish: clean dist/ before building to avoid re-uploading old versions
+
 ## 2.0.2
 
 ### Patch Changes
