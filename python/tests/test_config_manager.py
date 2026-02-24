@@ -12,7 +12,6 @@ import pytest
 from smooai_config.config_manager import ConfigManager
 from smooai_config.file_config import _clear_config_dir_cache
 
-
 # ---------------------------------------------------------------------------
 # Test constants
 # ---------------------------------------------------------------------------
@@ -926,3 +925,91 @@ class TestEdgeCases:
             env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
         )
         assert mgr.get_public_config("KEY") == "local"
+
+
+# ---------------------------------------------------------------------------
+# Deferred (Computed) Config Values
+# ---------------------------------------------------------------------------
+
+
+class TestDeferredConfigValues:
+    def test_basic_deferred_value(self, tmp_path: Path) -> None:
+        config_dir = _make_config_dir(
+            tmp_path,
+            {"default.json": {"HOST": "localhost", "PORT": 5432}},
+        )
+        mgr = ConfigManager(
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+            config_overrides={
+                "FULL_URL": lambda config: f"{config['HOST']}:{config['PORT']}",
+            },
+        )
+        assert mgr.get_public_config("FULL_URL") == "localhost:5432"
+        # Original values still present
+        assert mgr.get_public_config("HOST") == "localhost"
+        assert mgr.get_public_config("PORT") == 5432
+
+    def test_multiple_deferred_see_pre_resolution_snapshot(self, tmp_path: Path) -> None:
+        config_dir = _make_config_dir(tmp_path, {"default.json": {"BASE": "hello"}})
+        mgr = ConfigManager(
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+            config_overrides={
+                "A": lambda config: f"{config['BASE']}-a",
+                "B": lambda config: "A" in config,
+            },
+        )
+        assert mgr.get_public_config("A") == "hello-a"
+        # B should see that A was NOT in the snapshot (deferred values don't see each other)
+        assert mgr.get_public_config("B") is False
+
+    def test_deferred_runs_after_full_merge(self, tmp_path: Path) -> None:
+        """Deferred values see the result of file + env merge."""
+        config_dir = _make_config_dir(
+            tmp_path,
+            {"default.json": {"HOST": "file-host"}},
+        )
+        mgr = ConfigManager(
+            schema_keys={"HOST"},
+            env={
+                "SMOOAI_ENV_CONFIG_DIR": config_dir,
+                "SMOOAI_CONFIG_ENV": "test",
+                "HOST": "env-host",
+            },
+            config_overrides={
+                "API_URL": lambda config: f"https://{config['HOST']}/api",
+            },
+        )
+        # Env overrides file, deferred sees env value
+        assert mgr.get_public_config("API_URL") == "https://env-host/api"
+
+    def test_deferred_with_remote(self, tmp_path: Path) -> None:
+        config_dir = _make_config_dir(
+            tmp_path,
+            {"default.json": {"HOST": "file-host"}},
+        )
+        transport = create_mock_transport(values={"HOST": "remote-host", "PORT": 8080})
+        mgr = ConfigManager(
+            api_key=TEST_API_KEY,
+            base_url=TEST_BASE_URL,
+            org_id=TEST_ORG_ID,
+            environment="production",
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+            config_overrides={
+                "FULL_URL": lambda config: f"{config['HOST']}:{config['PORT']}",
+            },
+        )
+        _patch_client_transport(mgr, transport)
+
+        try:
+            # Remote overrides file HOST, deferred sees remote value
+            assert mgr.get_public_config("FULL_URL") == "remote-host:8080"
+        finally:
+            mgr._httpx_client_patch.stop()
+
+    def test_no_deferred_values(self, tmp_path: Path) -> None:
+        """ConfigManager works normally without any deferred values."""
+        config_dir = _make_config_dir(tmp_path, {"default.json": {"KEY": "value"}})
+        mgr = ConfigManager(
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+        )
+        assert mgr.get_public_config("KEY") == "value"

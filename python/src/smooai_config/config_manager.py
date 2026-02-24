@@ -4,12 +4,48 @@ import os
 import sys
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 from smooai_config.client import ConfigClient
 from smooai_config.env_config import find_and_process_env_config
 from smooai_config.file_config import find_and_process_file_config
 from smooai_config.merge import merge_replace_arrays
+
+
+def resolve_deferred_values(
+    config: dict[str, Any],
+    overrides: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
+) -> dict[str, Any]:
+    """Resolve deferred (callable) config values against the merged config snapshot.
+
+    Deferred values are callables that receive the full merged config dict
+    and return a computed value. All deferred values see the pre-resolution
+    snapshot (not each other's resolved values), ensuring deterministic results.
+
+    Args:
+        config: The merged config dict (may contain callable values).
+        overrides: Additional deferred values to add/override.
+
+    Returns:
+        A new dict with all callables resolved to their computed values.
+    """
+    # Take a snapshot of non-callable values for resolution
+    snapshot = {k: v for k, v in config.items() if not callable(v)}
+
+    resolved = dict(config)
+
+    # Resolve callables from the config
+    for key, value in config.items():
+        if callable(value):
+            resolved[key] = value(snapshot)
+
+    # Resolve override callables
+    if overrides:
+        for key, fn in overrides.items():
+            resolved[key] = fn(snapshot)
+
+    return resolved
 
 
 class ConfigManager:
@@ -22,6 +58,9 @@ class ConfigManager:
 
     Thread-safe. Lazy initialization loads and merges all sources on first access.
     Per-key caches with configurable TTL for each tier (public, secret, feature_flag).
+
+    Supports deferred config values via `config_overrides` — callables that
+    receive the merged config dict and return a computed value.
     """
 
     def __init__(
@@ -36,6 +75,7 @@ class ConfigManager:
         schema_types: dict[str, str] | None = None,
         cache_ttl: float = 86400,  # 24 hours
         env: dict[str, str] | None = None,
+        config_overrides: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
     ) -> None:
         self._lock = threading.RLock()
         self._initialized = False
@@ -52,6 +92,7 @@ class ConfigManager:
         self._schema_types = schema_types
         self._cache_ttl = cache_ttl
         self._env = env
+        self._config_overrides = config_overrides
 
     def _resolve_env_var(self, key: str) -> str | None:
         """Resolve an environment variable from the configured env dict or os.environ."""
@@ -109,6 +150,10 @@ class ConfigManager:
         merged: dict[str, Any] = merge_replace_arrays({}, file_config)
         merged = merge_replace_arrays(merged, remote_config)
         merged = merge_replace_arrays(merged, env_config)
+
+        # 5. Resolve deferred/computed values
+        merged = resolve_deferred_values(merged, self._config_overrides)
+
         self._config = merged
         self._initialized = True
 

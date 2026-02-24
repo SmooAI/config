@@ -1,0 +1,294 @@
+{
+    "valid": [
+        {
+            "name": "simple_string_property",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" }
+                }
+            }
+        },
+        {
+            "name": "all_primitive_types",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "str_field": { "type": "string" },
+                    "num_field": { "type": "number" },
+                    "int_field": { "type": "integer" },
+                    "bool_field": { "type": "boolean" },
+                    "null_field": { "type": "null" }
+                }
+            }
+        },
+        {
+            "name": "string_constraints",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "email": { "type": "string", "format": "email", "minLength": 5, "maxLength": 255 },
+                    "pattern_field": { "type": "string", "pattern": "^[a-z]+$" }
+                }
+            }
+        },
+        {
+            "name": "numeric_constraints",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "age": { "type": "integer", "minimum": 0, "maximum": 150 },
+                    "score": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 100 },
+                    "step": { "type": "number", "multipleOf": 0.5 }
+                }
+            }
+        },
+        {
+            "name": "array_type",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "tags": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "uniqueItems": true
+                    }
+                }
+            }
+        },
+        {
+            "name": "nested_object",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "database": {
+                        "type": "object",
+                        "properties": {
+                            "host": { "type": "string", "default": "localhost" },
+                            "port": { "type": "integer", "default": 5432 }
+                        },
+                        "required": ["host"],
+                        "additionalProperties": false
+                    }
+                }
+            }
+        },
+        {
+            "name": "enum_and_const",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "env": { "type": "string", "enum": ["development", "staging", "production"] },
+                    "version": { "const": "v1" }
+                }
+            }
+        },
+        {
+            "name": "composition_anyOf",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "anyOf": [{ "type": "string" }, { "type": "number" }]
+                    }
+                }
+            }
+        },
+        {
+            "name": "composition_oneOf",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "config": {
+                        "oneOf": [
+                            { "type": "object", "properties": { "mode": { "const": "simple" } } },
+                            { "type": "object", "properties": { "mode": { "const": "advanced" } } }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "name": "composition_allOf",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "merged": {
+                        "allOf": [
+                            { "type": "object", "properties": { "a": { "type": "string" } } },
+                            { "type": "object", "properties": { "b": { "type": "number" } } }
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "name": "refs_and_defs",
+            "schema": {
+                "type": "object",
+                "$defs": {
+                    "Address": {
+                        "type": "object",
+                        "properties": {
+                            "street": { "type": "string" },
+                            "city": { "type": "string" }
+                        }
+                    }
+                },
+                "properties": {
+                    "home": { "$ref": "#/$defs/Address" },
+                    "work": { "$ref": "#/$defs/Address" }
+                }
+            }
+        },
+        {
+            "name": "metadata_fields",
+            "schema": {
+                "$schema": "http://json-schema.org/draft-07/schema#",
+                "title": "App Config",
+                "description": "Application configuration schema",
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "title": "App Name", "description": "The application name" }
+                }
+            }
+        },
+        {
+            "name": "supported_formats",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "email": { "type": "string", "format": "email" },
+                    "uri": { "type": "string", "format": "uri" },
+                    "uuid": { "type": "string", "format": "uuid" },
+                    "datetime": { "type": "string", "format": "date-time" },
+                    "ipv4": { "type": "string", "format": "ipv4" },
+                    "ipv6": { "type": "string", "format": "ipv6" }
+                }
+            }
+        },
+        {
+            "name": "nullable_type",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "optional_name": {
+                        "anyOf": [{ "type": "string" }, { "type": "null" }]
+                    }
+                }
+            }
+        }
+    ],
+    "invalid": [
+        {
+            "name": "if_then_else",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "country": { "type": "string" }
+                },
+                "if": { "properties": { "country": { "const": "US" } } },
+                "then": { "properties": { "state": { "type": "string" } } },
+                "else": { "properties": { "province": { "type": "string" } } }
+            },
+            "expected_keywords": ["if", "then", "else"]
+        },
+        {
+            "name": "patternProperties",
+            "schema": {
+                "type": "object",
+                "patternProperties": {
+                    "^x-": { "type": "string" }
+                }
+            },
+            "expected_keywords": ["patternProperties"]
+        },
+        {
+            "name": "propertyNames",
+            "schema": {
+                "type": "object",
+                "propertyNames": { "pattern": "^[a-z]" }
+            },
+            "expected_keywords": ["propertyNames"]
+        },
+        {
+            "name": "dependencies",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "credit_card": { "type": "string" }
+                },
+                "dependencies": {
+                    "credit_card": ["billing_address"]
+                }
+            },
+            "expected_keywords": ["dependencies"]
+        },
+        {
+            "name": "contains",
+            "schema": {
+                "type": "array",
+                "contains": { "type": "number" }
+            },
+            "expected_keywords": ["contains"]
+        },
+        {
+            "name": "not",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "not": { "type": "string" }
+                    }
+                }
+            },
+            "expected_keywords": ["not"]
+        },
+        {
+            "name": "prefixItems",
+            "schema": {
+                "type": "array",
+                "prefixItems": [{ "type": "string" }, { "type": "number" }]
+            },
+            "expected_keywords": ["prefixItems"]
+        },
+        {
+            "name": "unevaluatedProperties",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" }
+                },
+                "unevaluatedProperties": false
+            },
+            "expected_keywords": ["unevaluatedProperties"]
+        },
+        {
+            "name": "unevaluatedItems",
+            "schema": {
+                "type": "array",
+                "items": { "type": "string" },
+                "unevaluatedItems": false
+            },
+            "expected_keywords": ["unevaluatedItems"]
+        },
+        {
+            "name": "nested_unsupported",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "patternProperties": {
+                            "^env_": { "type": "string" }
+                        }
+                    }
+                }
+            },
+            "expected_keywords": ["patternProperties"]
+        }
+    ]
+}

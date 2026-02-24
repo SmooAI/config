@@ -38,6 +38,9 @@ type ConfigManager struct {
 	baseURL     string
 	orgID       string
 	environment string
+
+	// Deferred config values
+	deferred map[string]DeferredValue
 }
 
 // ConfigManagerOption is a functional option for ConfigManager.
@@ -100,6 +103,18 @@ func WithCMCacheTTL(ttl time.Duration) ConfigManagerOption {
 // WithCMEnvOverride overrides environment variables (for testing).
 func WithCMEnvOverride(env map[string]string) ConfigManagerOption {
 	return func(m *ConfigManager) { m.envOverride = env }
+}
+
+// WithDeferred registers a deferred (computed) config value.
+// The function receives the full merged config map (pre-resolution snapshot)
+// and returns the computed value.
+func WithDeferred(key string, fn DeferredValue) ConfigManagerOption {
+	return func(m *ConfigManager) {
+		if m.deferred == nil {
+			m.deferred = make(map[string]DeferredValue)
+		}
+		m.deferred[key] = fn
+	}
 }
 
 // getEnvVal looks up a key from the env override map, falling back to os.Getenv.
@@ -179,6 +194,11 @@ func (m *ConfigManager) initialize() error {
 	merged := MergeReplaceArrays(make(map[string]any), fileConfig).(map[string]any)
 	merged = MergeReplaceArrays(merged, remoteConfig).(map[string]any)
 	merged = MergeReplaceArrays(merged, envConfig).(map[string]any)
+
+	// 5. Resolve deferred/computed values
+	if len(m.deferred) > 0 {
+		ResolveDeferred(merged, m.deferred)
+	}
 
 	m.config = merged
 	m.initialized = true
