@@ -43,7 +43,7 @@
         "build:lib": "pnpm create-entry-points -i \"src/**/*.ts\" -x \"src/cli/**\" && pnpm tsup",
         "build:cli": "tsup --config tsup.cli.config.ts",
         "check-all": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run python:typecheck && pnpm run python:lint && pnpm run python:format:check && pnpm run rust:fmt:check && pnpm run rust:lint && pnpm run rust:test && pnpm run go:fmt:check && pnpm run go:lint && pnpm run go:test && pnpm run build",
-        "ci:publish": "pnpm build && pnpm changeset publish && pnpm run version:sync",
+        "ci:publish": "pnpm build && pnpm changeset publish",
         "format": "oxfmt --write . && pnpm run python:format && pnpm run rust:fmt && pnpm run go:fmt",
         "lint": "oxlint --ignore-pattern .sst --ignore-pattern .pulumi . && pnpm run python:lint && pnpm run rust:lint && pnpm run go:lint",
         "lint:fix": "oxlint --ignore-pattern .sst --ignore-pattern .pulumi --fix .",

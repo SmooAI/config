@@ -59,4 +59,16 @@ for (const file of files) {
     }
 }
 
+// Regenerate Cargo.lock to match updated Cargo.toml version
+import { execSync } from 'child_process';
+try {
+    execSync('cargo generate-lockfile --manifest-path rust/config/Cargo.toml', {
+        cwd: rootDir,
+        stdio: 'inherit',
+    });
+    console.log('  ✅ Regenerated rust/config/Cargo.lock');
+} catch {
+    console.log('  ⚠ Could not regenerate Cargo.lock (cargo not available)');
+}
+
 console.log('Done!');

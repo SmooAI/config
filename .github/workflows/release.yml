@@ -85,16 +85,12 @@ jobs:
               with:
                   commit: '🦋 New version release'
                   title: '🦋 New version release'
+                  version: pnpm changeset version && pnpm run version:sync
                   publish: pnpm ci:publish
                   createGithubReleases: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GH_PAT }}
                   NPM_TOKEN: ${{ secrets.SMOOAI_NPM_TOKEN }}
-
-            - name: Rebuild Python with synced version
-              if: steps.changesets.outputs.published == 'true'
-              run: uv run poe build
-              working-directory: python
 
             - name: Publish smooai-config to PyPI
               if: steps.changesets.outputs.published == 'true'
@@ -103,16 +99,12 @@ jobs:
               env:
                   UV_PUBLISH_TOKEN: ${{ secrets.SMOOAI_PYPI_TOKEN }}
 
-            - name: Regenerate Cargo.lock after version sync
-              if: steps.changesets.outputs.published == 'true'
-              run: cargo generate-lockfile --manifest-path rust/config/Cargo.toml
-
             - name: Publish smooai-config to crates.io
               if: steps.changesets.outputs.published == 'true'
               uses: actions-rs/cargo@v1
               with:
                   command: publish
-                  args: --allow-dirty --manifest-path rust/config/Cargo.toml
+                  args: --manifest-path rust/config/Cargo.toml
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.SMOOAI_CARGO_REGISTRY_TOKEN }}
 
