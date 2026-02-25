@@ -3,6 +3,8 @@ import { defineConfig, type Options } from 'tsup';
 export default defineConfig((options: Options) => ({
     entry: [
         'src/index.ts',
+        'src/vite/preloadConfig.ts',
+        'src/vite/index.ts',
         'src/utils/mergeReplaceArrays.ts',
         'src/utils/index.ts',
         'src/utils/fs.ts',
@@ -15,6 +17,9 @@ export default defineConfig((options: Options) => ({
         'src/platform/server/server.publicConfig.sync.ts',
         'src/platform/server/server.featureFlag.sync.ts',
         'src/platform/server/server.async.ts',
+        'src/nextjs/index.ts',
+        'src/nextjs/hooks.ts',
+        'src/nextjs/getConfig.ts',
         'src/integration-tests/2/smooai-config/production.ts',
         'src/integration-tests/2/smooai-config/production.aws.us-east-1.ts',
         'src/integration-tests/2/smooai-config/production.aws.ts',

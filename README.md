@@ -269,6 +269,67 @@ function MyComponent() {
 }
 ```
 
+### Next.js Integration
+
+For Next.js applications, use `getConfig` in Server Components and `SmooConfigProvider` to pass values to client components with zero loading flash:
+
+```tsx
+// app/layout.tsx (Server Component)
+import { getConfig, SmooConfigProvider } from '@smooai/config/nextjs';
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+    const config = await getConfig({
+        environment: 'production',
+        fetchOptions: { next: { revalidate: 60 } }, // ISR: revalidate every 60s
+    });
+
+    return (
+        <html>
+            <body>
+                <SmooConfigProvider
+                    initialValues={config}
+                    baseUrl={process.env.SMOOAI_CONFIG_API_URL}
+                    apiKey={process.env.SMOOAI_CONFIG_API_KEY}
+                    orgId={process.env.SMOOAI_CONFIG_ORG_ID}
+                    environment="production"
+                >
+                    {children}
+                </SmooConfigProvider>
+            </body>
+        </html>
+    );
+}
+
+// Any client component — values are available synchronously (no loading flash)
+import { usePublicConfig, useFeatureFlag } from '@smooai/config/nextjs';
+
+function MyComponent() {
+    const { value: apiUrl } = usePublicConfig<string>('API_URL'); // Instant — pre-seeded from SSR
+    const { value: enableNewUI } = useFeatureFlag<boolean>('ENABLE_NEW_UI');
+    return <div>API: {apiUrl}</div>;
+}
+```
+
+### Vite React Integration
+
+For Vite-based React apps, call `preloadConfig()` before mounting React to start fetching early:
+
+```tsx
+// main.tsx
+import { preloadConfig } from '@smooai/config/vite';
+import { ConfigProvider } from '@smooai/config/vite';
+import { createRoot } from 'react-dom/client';
+
+// Start fetching config immediately (before React renders)
+preloadConfig({ environment: 'production' });
+
+createRoot(document.getElementById('root')!).render(
+    <ConfigProvider baseUrl="https://config.smooai.dev" apiKey="your-public-key" orgId="your-org-id" environment="production">
+        <App />
+    </ConfigProvider>,
+);
+```
+
 ### Python SDK Client
 
 ```python
@@ -351,6 +412,22 @@ allValues, err := client.GetAllValues("")
 | **Feature Flags** | Runtime toggles         | A/B tests, gradual rollouts, beta access |
 
 Each tier gets its own schema, validation, and JSON Schema output for cross-language consumption.
+
+### Security: B2M Key Restrictions
+
+The Smoo AI Config API enforces tier-based access control depending on the API key type:
+
+| Operation            | B2M (Public Key)  | M2M (Secret Key) |
+| -------------------- | ----------------- | ---------------- |
+| Read public values   | Yes               | Yes              |
+| Read feature flags   | Yes               | Yes              |
+| Read secret values   | **No** (filtered) | Yes              |
+| Write config values  | **No** (403)      | Yes              |
+| Delete config values | **No** (403)      | Yes              |
+
+**Browser-to-Machine (B2M)** keys are designed for browser-based clients. Secret-tier values are automatically filtered from bulk responses and return 403 for individual lookups. B2M keys are read-only for public and feature flag tiers.
+
+**Machine-to-Machine (M2M)** keys have full access to all tiers and write operations.
 
 ## Development
 

@@ -3,7 +3,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { ConfigClient, type ConfigClientOptions } from '../platform/client';
 
-const ConfigContext = createContext<ConfigClient | null>(null);
+export const ConfigContext = createContext<ConfigClient | null>(null);
 
 export interface ConfigProviderProps extends ConfigClientOptions {
     children: ReactNode;

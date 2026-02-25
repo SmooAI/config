@@ -71,9 +71,10 @@ export class ConfigClient {
         return entry.value;
     }
 
-    private async fetchJson<T>(path: string): Promise<T> {
+    private async fetchJson<T>(path: string, fetchOptions?: RequestInit): Promise<T> {
         const response = await fetch(`${this.baseUrl}${path}`, {
-            headers: { Authorization: `Bearer ${this.apiKey}` },
+            ...fetchOptions,
+            headers: { Authorization: `Bearer ${this.apiKey}`, ...fetchOptions?.headers },
         });
         if (!response.ok) {
             throw new Error(`Config API error: HTTP ${response.status} ${response.statusText}`);
@@ -104,12 +105,15 @@ export class ConfigClient {
     /**
      * Get all config values for an environment.
      * All returned values are cached locally.
+     * @param environment - Environment name (defaults to constructor option or SMOOAI_CONFIG_ENV)
+     * @param fetchOptions - Optional fetch options (e.g., Next.js `{ next: { revalidate: 60 } }`)
      */
-    async getAllValues(environment?: string): Promise<Record<string, unknown>> {
+    async getAllValues(environment?: string, fetchOptions?: RequestInit): Promise<Record<string, unknown>> {
         const env = environment ?? this.defaultEnvironment;
 
         const result = await this.fetchJson<{ values: Record<string, unknown> }>(
             `/organizations/${this.orgId}/config/values?environment=${encodeURIComponent(env)}`,
+            fetchOptions,
         );
 
         const expiresAt = this.computeExpiresAt();
@@ -118,6 +122,36 @@ export class ConfigClient {
         }
 
         return result.values;
+    }
+
+    /**
+     * Pre-populate a single cache entry (e.g., from SSR).
+     * Does not make a network request.
+     */
+    seedCache(key: string, value: unknown, environment?: string): void {
+        const env = environment ?? this.defaultEnvironment;
+        this.cache.set(`${env}:${key}`, { value, expiresAt: this.computeExpiresAt() });
+    }
+
+    /**
+     * Pre-populate multiple cache entries from a key-value map (e.g., from SSR).
+     * Does not make a network request.
+     */
+    seedCacheFromMap(values: Record<string, unknown>, environment?: string): void {
+        const env = environment ?? this.defaultEnvironment;
+        const expiresAt = this.computeExpiresAt();
+        for (const [key, value] of Object.entries(values)) {
+            this.cache.set(`${env}:${key}`, { value, expiresAt });
+        }
+    }
+
+    /**
+     * Synchronously read a value from the local cache without making a network request.
+     * Returns `undefined` if the key is not cached or has expired.
+     */
+    getCachedValue(key: string, environment?: string): unknown | undefined {
+        const env = environment ?? this.defaultEnvironment;
+        return this.getCached(`${env}:${key}`);
     }
 
     /** Clear the entire local cache. */
