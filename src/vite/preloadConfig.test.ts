@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { preloadConfig, getPreloadedConfig, resetPreload } from './preloadConfig';
 
-// Mock fetch globally
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+// Mock @smooai/fetch module
+const { mockFetch } = vi.hoisted(() => ({
+    mockFetch: vi.fn(),
+}));
+vi.mock('@smooai/fetch', () => ({
+    default: mockFetch,
+}));
 
 const BASE_OPTIONS = {
     baseUrl: 'https://api.smooai.dev',
