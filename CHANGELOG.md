@@ -1,5 +1,13 @@
 # @smooai/library-template
 
+## 2.1.1
+
+### Patch Changes
+
+- Fix subpath exports for directory-based entry points (nextjs, react, vite, config)
+
+    The wildcard export `./*` only resolves flat files (e.g., `dist/platform/client.mjs`) but not directory index files (e.g., `dist/nextjs/index.mjs`). Added explicit exports for `./nextjs`, `./react`, `./vite`, and `./config` subpaths.
+
 ## 2.1.0
 
 ### Minor Changes
