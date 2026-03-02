@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 2.1.3
+
+### Patch Changes
+
+- Remove create-entry-points from build:lib and add explicit subpath exports for directory modules (nextjs, react, vite, config, utils). The wildcard export pattern ./\* only resolves flat files, not directory index files, so explicit entries are needed for proper module resolution.
+
 ## 2.1.2
 
 ### Patch Changes
