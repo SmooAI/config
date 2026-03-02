@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 2.1.2
+
+### Patch Changes
+
+- Fix subpath exports for directory-based entry points (nextjs, react, vite, config)
+
 ## 2.1.1
 
 ### Patch Changes
