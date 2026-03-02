@@ -1,5 +1,14 @@
 # @smooai/library-template
 
+## 2.1.0
+
+### Minor Changes
+
+- Add Next.js and Vite integrations to published package
+    - `@smooai/config/nextjs` — `getConfig()` for Server Components, `SmooConfigProvider` for SSR pre-seeding, `useFeatureFlag()` and `usePublicConfig()` hooks
+    - `@smooai/config/vite` — `preloadConfig()` for early fetch, `getPreloadedConfig()` for sync access
+    - `ConfigClient.getAllValues()` now accepts optional `fetchOptions` parameter for Next.js ISR revalidation
+
 ## 2.0.4
 
 ### Patch Changes
