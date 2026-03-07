@@ -80,6 +80,26 @@ smooai-config = { git = "https://github.com/SmooAI/config", package = "smooai-co
 go get github.com/SmooAI/config/go/config
 ```
 
+### TypeScript Setup
+
+Add `.smooai-config/**/*.ts` to your `tsconfig.json` so TypeScript processes your configuration files:
+
+```json
+{
+  "compilerOptions": { ... },
+  "include": ["src/**/*", ".smooai-config/**/*.ts"]
+}
+```
+
+Or if you prefer a separate tsconfig for the config directory, create `.smooai-config/tsconfig.json`:
+
+```json
+{
+    "extends": "../tsconfig.json",
+    "include": ["./**/*.ts"]
+}
+```
+
 ## Usage
 
 ### TypeScript - Define Configuration Schemas
