@@ -26,6 +26,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Branch naming
 
 Always prefix with the Jira ticket number:
+
 ```
 SMOODEV-XX-short-description
 ```
@@ -33,6 +34,7 @@ SMOODEV-XX-short-description
 ### Commit messages
 
 Always prefix with the Jira ticket:
+
 ```
 SMOODEV-XX: Descriptive message explaining why
 ```
