@@ -37,6 +37,16 @@
             "import": "./dist/nextjs/index.mjs",
             "require": "./dist/nextjs/index.js"
         },
+        "./nextjs/client": {
+            "types": "./dist/nextjs/client.d.ts",
+            "import": "./dist/nextjs/client.mjs",
+            "require": "./dist/nextjs/client.js"
+        },
+        "./nextjs/getConfig": {
+            "types": "./dist/nextjs/getConfig.d.ts",
+            "import": "./dist/nextjs/getConfig.mjs",
+            "require": "./dist/nextjs/getConfig.js"
+        },
         "./react": {
             "types": "./dist/react/index.d.ts",
             "import": "./dist/react/index.mjs",

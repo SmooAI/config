@@ -18,6 +18,7 @@ export default defineConfig((options: Options) => ({
         'src/platform/server/server.featureFlag.sync.ts',
         'src/platform/server/server.async.ts',
         'src/nextjs/index.ts',
+        'src/nextjs/client.ts',
         'src/nextjs/hooks.ts',
         'src/nextjs/getConfig.ts',
         'src/integration-tests/2/smooai-config/production.ts',
