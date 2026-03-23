@@ -28,49 +28,135 @@
     "exports": {
         ".": {
             "types": "./dist/index.d.ts",
+            "browser": {
+                "types": "./dist/index.d.ts",
+                "import": "./dist/browser/index.mjs"
+            },
             "import": "./dist/index.mjs",
             "require": "./dist/index.js",
             "default": "./dist/index.js"
         },
         "./nextjs": {
             "types": "./dist/nextjs/index.d.ts",
+            "browser": {
+                "types": "./dist/nextjs/index.d.ts",
+                "import": "./dist/browser/nextjs/index.mjs"
+            },
             "import": "./dist/nextjs/index.mjs",
             "require": "./dist/nextjs/index.js"
         },
         "./nextjs/client": {
             "types": "./dist/nextjs/client.d.ts",
+            "browser": {
+                "types": "./dist/nextjs/client.d.ts",
+                "import": "./dist/browser/nextjs/client.mjs"
+            },
             "import": "./dist/nextjs/client.mjs",
             "require": "./dist/nextjs/client.js"
         },
+        "./nextjs/hooks": {
+            "types": "./dist/nextjs/hooks.d.ts",
+            "browser": {
+                "types": "./dist/nextjs/hooks.d.ts",
+                "import": "./dist/browser/nextjs/hooks.mjs"
+            },
+            "import": "./dist/nextjs/hooks.mjs",
+            "require": "./dist/nextjs/hooks.js"
+        },
         "./nextjs/getConfig": {
             "types": "./dist/nextjs/getConfig.d.ts",
+            "browser": {
+                "types": "./dist/nextjs/getConfig.d.ts",
+                "import": "./dist/browser/nextjs/getConfig.mjs"
+            },
             "import": "./dist/nextjs/getConfig.mjs",
             "require": "./dist/nextjs/getConfig.js"
         },
         "./feature-flags": {
             "types": "./dist/feature-flags/index.d.ts",
+            "browser": {
+                "types": "./dist/feature-flags/index.d.ts",
+                "import": "./dist/browser/feature-flags/index.mjs"
+            },
             "import": "./dist/feature-flags/index.mjs",
             "require": "./dist/feature-flags/index.js"
         },
         "./react": {
             "types": "./dist/react/index.d.ts",
+            "browser": {
+                "types": "./dist/react/index.d.ts",
+                "import": "./dist/browser/react/index.mjs"
+            },
             "import": "./dist/react/index.mjs",
             "require": "./dist/react/index.js"
         },
+        "./react/hooks": {
+            "types": "./dist/react/hooks.d.ts",
+            "browser": {
+                "types": "./dist/react/hooks.d.ts",
+                "import": "./dist/browser/react/hooks.mjs"
+            },
+            "import": "./dist/react/hooks.mjs",
+            "require": "./dist/react/hooks.js"
+        },
         "./vite": {
             "types": "./dist/vite/index.d.ts",
+            "browser": {
+                "types": "./dist/vite/index.d.ts",
+                "import": "./dist/browser/vite/index.mjs"
+            },
             "import": "./dist/vite/index.mjs",
             "require": "./dist/vite/index.js"
         },
+        "./vite/preloadConfig": {
+            "types": "./dist/vite/preloadConfig.d.ts",
+            "browser": {
+                "types": "./dist/vite/preloadConfig.d.ts",
+                "import": "./dist/browser/vite/preloadConfig.mjs"
+            },
+            "import": "./dist/vite/preloadConfig.mjs",
+            "require": "./dist/vite/preloadConfig.js"
+        },
         "./config": {
             "types": "./dist/config/index.d.ts",
+            "browser": {
+                "types": "./dist/config/index.d.ts",
+                "import": "./dist/browser/config/index.mjs"
+            },
             "import": "./dist/config/index.mjs",
             "require": "./dist/config/index.js"
         },
+        "./config/server": {
+            "types": "./dist/config/server.d.ts",
+            "import": "./dist/config/server.mjs",
+            "require": "./dist/config/server.js"
+        },
+        "./platform/client": {
+            "types": "./dist/platform/client.d.ts",
+            "browser": {
+                "types": "./dist/platform/client.d.ts",
+                "import": "./dist/browser/platform/client.mjs"
+            },
+            "import": "./dist/platform/client.mjs",
+            "require": "./dist/platform/client.js"
+        },
         "./utils": {
             "types": "./dist/utils/index.d.ts",
+            "browser": {
+                "types": "./dist/utils/index.d.ts",
+                "import": "./dist/browser/utils/index.mjs"
+            },
             "import": "./dist/utils/index.mjs",
             "require": "./dist/utils/index.js"
+        },
+        "./utils/mergeReplaceArrays": {
+            "types": "./dist/utils/mergeReplaceArrays.d.ts",
+            "browser": {
+                "types": "./dist/utils/mergeReplaceArrays.d.ts",
+                "import": "./dist/browser/utils/mergeReplaceArrays.mjs"
+            },
+            "import": "./dist/utils/mergeReplaceArrays.mjs",
+            "require": "./dist/utils/mergeReplaceArrays.js"
         },
         "./*": {
             "types": "./dist/*.d.ts",
@@ -148,6 +234,7 @@
         "@types/node": "^22.13.10",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
+        "esbuild-plugin-alias": "^0.2.1",
         "husky": "^9.1.7",
         "jsdom": "^28.1.0",
         "lodash.snakecase": "^4.1.1",

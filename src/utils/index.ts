@@ -5,6 +5,7 @@ import createEsmUtils from 'esm-utils';
  * Initialize global __dirname and __filename if not already set.
  */
 export function initEsmUtils() {
+    if (typeof global === 'undefined') return;
     if (!global.__dirname || !global.__filename) {
         const { __dirname, __filename } = import.meta.url
             ? createEsmUtils({ url: import.meta.url, resolve: import.meta.resolve } as any)
