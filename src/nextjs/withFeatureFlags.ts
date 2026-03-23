@@ -1,34 +1,26 @@
 /**
- * Next.js config helper that injects feature flags as NEXT_PUBLIC_ environment variables.
+ * @deprecated Use `withSmooConfig` from `@smooai/config/nextjs/withSmooConfig` instead.
  *
- * This allows client components to read feature flags via `getClientFeatureFlag()`
- * from `@smooai/config/feature-flags` without importing any Node.js-dependent code.
+ * This module is kept for backward compatibility. It wraps `withSmooConfig`
+ * to provide the same feature-flag-only API.
  *
  * @example
  * ```ts
- * // next.config.ts
+ * // Migrate from:
  * import { withFeatureFlags } from '@smooai/config/nextjs/withFeatureFlags';
- * import defaultConfig from './.smooai-config/default';
- * import developmentConfig from './.smooai-config/development';
+ * const nextConfig = withFeatureFlags({ default: { aboutPage: false }, development: { aboutPage: true } });
  *
- * const nextConfig = withFeatureFlags({
- *     default: defaultConfig,
- *     development: developmentConfig,
+ * // To:
+ * import { withSmooConfig } from '@smooai/config/nextjs/withSmooConfig';
+ * const nextConfig = withSmooConfig({
+ *     default: { featureFlags: { aboutPage: false } },
+ *     development: { featureFlags: { aboutPage: true } },
  * });
- *
- * export default nextConfig;
- * ```
- *
- * This will set environment variables like:
- * - NEXT_PUBLIC_FEATURE_FLAG_ABOUT_PAGE=true (in development)
- * - NEXT_PUBLIC_FEATURE_FLAG_ABOUT_PAGE=false (in production)
- *
- * Then in any client component:
- * ```tsx
- * import { getClientFeatureFlag } from '@smooai/config/feature-flags';
- * const isEnabled = getClientFeatureFlag('aboutPage');
  * ```
  */
+
+import { withSmooConfig } from './withSmooConfig';
+import type { WithSmooConfigOptions } from './withSmooConfig';
 
 type NextConfig = Record<string, unknown>;
 type FeatureFlagConfig = Record<string, boolean>;
@@ -43,41 +35,24 @@ interface WithFeatureFlagsOptions {
 }
 
 /**
- * Convert a camelCase key to UPPER_SNAKE_CASE.
- * e.g., "aboutPage" → "ABOUT_PAGE"
- */
-function toUpperSnakeCase(key: string): string {
-    return key.replace(/([A-Z])/g, '_$1').toUpperCase();
-}
-
-/**
- * Wraps a Next.js config to inject feature flags as NEXT_PUBLIC_ environment variables.
+ * @deprecated Use `withSmooConfig` instead.
  *
- * Reads `NEXT_PUBLIC_SST_STAGE` (or `NODE_ENV`) to determine which config to use.
- * Falls back to development config if stage is not 'production'.
+ * Wraps a Next.js config to inject feature flags as NEXT_PUBLIC_ environment variables.
+ * This is a backward-compatible wrapper around `withSmooConfig`.
  */
 export function withFeatureFlags(flagConfigs: WithFeatureFlagsOptions, nextConfig: NextConfig = {}): NextConfig {
-    const stage = process.env.NEXT_PUBLIC_SST_STAGE ?? (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+    // Convert the flat flag configs into SmooConfigValues format
+    const smooOptions: WithSmooConfigOptions = { default: {} };
 
-    // Merge default with stage-specific overrides
-    const defaultFlags = flagConfigs.default ?? {};
-    const stageOverrides = flagConfigs[stage] ?? {};
-    const resolvedFlags: FeatureFlagConfig = { ...defaultFlags, ...stageOverrides };
-
-    // Inject as NEXT_PUBLIC_ env vars
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(resolvedFlags)) {
-        const envKey = `NEXT_PUBLIC_FEATURE_FLAG_${toUpperSnakeCase(key)}`;
-        env[envKey] = String(value);
-        // Also set in process.env for SSR
-        process.env[envKey] = String(value);
+    for (const [stage, flags] of Object.entries(flagConfigs)) {
+        if (flags !== undefined) {
+            smooOptions[stage] = { featureFlags: flags };
+        }
     }
 
-    return {
-        ...nextConfig,
-        env: {
-            ...(nextConfig.env as Record<string, string> | undefined),
-            ...env,
-        },
-    };
+    return withSmooConfig(smooOptions, nextConfig);
 }
+
+// Re-export withSmooConfig types and function for convenience
+export { withSmooConfig } from './withSmooConfig';
+export type { SmooConfigValues, WithSmooConfigOptions } from './withSmooConfig';
