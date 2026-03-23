@@ -24,7 +24,7 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ## About @smooai/config
 
-**Type-safe configuration management for every layer of your stack** - Define configuration schemas once, validate everywhere, and manage public settings, secrets, and feature flags across TypeScript, Python, Rust, and Go.
+**Type-safe configuration management for every layer of your stack** -- Define configuration schemas once, validate everywhere, and manage public settings, secrets, and feature flags with full TypeScript inference.
 
 ![NPM Version](https://img.shields.io/npm/v/%40smooai%2Fconfig?style=for-the-badge)
 ![NPM Downloads](https://img.shields.io/npm/dw/%40smooai%2Fconfig?style=for-the-badge)
@@ -34,85 +34,41 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/SmooAI/config/release.yml?style=for-the-badge)
 ![GitHub Repo stars](https://img.shields.io/github/stars/SmooAI/config?style=for-the-badge)
 
-### Why @smooai/config?
+---
 
-Ever scattered configuration values across environment variables, JSON files, and hardcoded strings? Or struggled to keep configuration consistent across microservices written in different languages? Traditional config management gives you the values, but not the safety.
+### What's New in v3
 
-**@smooai/config provides:**
+- **`@smooai/config/client`** -- Universal client reader for feature flags and public config. Works in Next.js, Vite, and any browser environment with zero Node.js dependencies.
+- **`@smooai/config/nextjs/withSmooConfig`** -- Inject feature flags _and_ public config into `next.config.ts` as `NEXT_PUBLIC_` env vars. Replaces the deprecated `withFeatureFlags`.
+- **`@smooai/config/feature-flags`** -- Build-time feature flag reader (re-exports from `/client` for convenience).
+- **`@smooai/config/vite/smooConfigPlugin`** -- Vite plugin that injects `VITE_FEATURE_FLAG_*` and `VITE_CONFIG_*` at build time.
+- **Browser/server separation** -- Browser builds ship zero Node.js deps. Every export path has a dedicated `browser` condition in `package.json`.
+- **Typed key objects** -- `defineConfig()` returns `FeatureFlagKeys`, `PublicConfigKeys`, and `SecretConfigKeys` with auto-generated `UPPER_SNAKE_CASE` mappings and full TypeScript inference.
 
-- **Three configuration tiers** - Separate public config, secrets, and feature flags with distinct schemas
-- **Schema-agnostic validation** - Works with Zod, Valibot, ArkType, Effect Schema, or any StandardSchema-compliant library
-- **Type-safe keys** - Automatic camelCase-to-UPPER_SNAKE_CASE mapping with full TypeScript inference
-- **JSON Schema serialization** - Convert any schema to JSON Schema for cross-language interoperability
-- **Runtime client** - Fetch configuration from a centralized config server with local caching
-- **Multi-language support** - Native implementations in TypeScript, Python, Rust, and Go
+---
 
 ### Install
-
-#### TypeScript / JavaScript
 
 ```sh
 pnpm add @smooai/config
 ```
 
-#### Python
+---
 
-```sh
-pip install smooai-config
-```
+## Quick Start (TypeScript)
 
-or with [uv](https://docs.astral.sh/uv/):
+### 1. Define your configuration schema
 
-```sh
-uv add smooai-config
-```
-
-#### Rust
-
-```toml
-[dependencies]
-smooai-config = { git = "https://github.com/SmooAI/config", package = "smooai-config" }
-```
-
-#### Go
-
-```sh
-go get github.com/SmooAI/config/go/config
-```
-
-### TypeScript Setup
-
-Add `.smooai-config/**/*.ts` to your `tsconfig.json` so TypeScript processes your configuration files:
-
-```json
-{
-  "compilerOptions": { ... },
-  "include": ["src/**/*", ".smooai-config/**/*.ts"]
-}
-```
-
-Or if you prefer a separate tsconfig for the config directory, create `.smooai-config/tsconfig.json`:
-
-```json
-{
-    "extends": "../tsconfig.json",
-    "include": ["./**/*.ts"]
-}
-```
-
-## Usage
-
-### TypeScript - Define Configuration Schemas
-
-Use any StandardSchema-compliant validation library to define your configuration:
+Use `defineConfig()` with any [StandardSchema](https://github.com/standard-schema/standard-schema)-compliant library (Zod, Valibot, ArkType, Effect Schema) or the built-in `StringSchema`, `BooleanSchema`, and `NumberSchema` helpers:
 
 ```typescript
+// .smooai-config/config.ts
 import { defineConfig, StringSchema, BooleanSchema, NumberSchema } from '@smooai/config';
 import { z } from 'zod';
 
 const config = defineConfig({
     publicConfigSchema: {
-        apiUrl: z.string().url(),
+        apiBaseUrl: z.string().url(),
         maxRetries: NumberSchema,
         enableDebug: BooleanSchema,
     },
@@ -121,177 +77,81 @@ const config = defineConfig({
         apiKey: StringSchema,
     },
     featureFlagSchema: {
-        enableNewUI: BooleanSchema,
+        enableNewUi: BooleanSchema,
         betaFeatures: BooleanSchema,
     },
 });
+
+export default config;
+
+// Extract typed key objects for use throughout your app
+export const { FeatureFlagKeys, PublicConfigKeys, SecretConfigKeys } = config;
 ```
 
-Supports Zod, Valibot, ArkType, Effect Schema, and built-in schema types - see [SCHEMA_USAGE.md](SCHEMA_USAGE.md) for examples with each library.
-
-### Python - Define and Fetch Configuration
-
-```python
-from pydantic import BaseModel
-from smooai_config import define_config, ConfigTier
-from smooai_config.client import ConfigClient
-
-# Define schemas using Pydantic models
-class PublicConfig(BaseModel):
-    api_url: str = "https://api.example.com"
-    max_retries: int = 3
-
-class SecretConfig(BaseModel):
-    database_url: str
-    api_key: str
-
-config = define_config(
-    public=PublicConfig,
-    secret=SecretConfig,
-)
-
-# Fetch values at runtime
-with ConfigClient(
-    base_url="https://config.smooai.dev",
-    api_key="your-api-key",
-    org_id="your-org-id",
-) as client:
-    value = client.get_value("API_URL", environment="production")
-    all_values = client.get_all_values(environment="production")
-```
-
-### Rust - Define and Fetch Configuration
-
-```rust
-use smooai_config::{define_config, ConfigTier};
-use smooai_config::client::ConfigClient;
-
-// Define configuration tiers
-let config = define_config(
-    Some(vec![("api_url", "https://api.example.com")]),
-    Some(vec![("database_url", "postgres://...")]),
-    None,
-);
-
-// Fetch values at runtime
-let client = ConfigClient::new(
-    "https://config.smooai.dev",
-    "your-api-key",
-    "your-org-id",
-);
-let value = client.get_value("API_URL", Some("production")).await?;
-```
-
-### Go - Define and Fetch Configuration
-
-```go
-import "github.com/SmooAI/config/go/config"
-
-// Define configuration
-cfg := config.DefineConfig(
-    map[string]interface{}{"apiUrl": "https://api.example.com"},
-    map[string]interface{}{"databaseUrl": "postgres://..."},
-    nil,
-)
-
-// Fetch values at runtime
-client := config.NewConfigClient(
-    "https://config.smooai.dev",
-    "your-api-key",
-    "your-org-id",
-)
-defer client.Close()
-value, err := client.GetValue("API_URL", "production")
-allValues, err := client.GetAllValues("production")
-```
-
-## SDK Runtime Client
-
-All language implementations include a runtime client for fetching configuration values from the Smoo AI config server. Each client supports local caching and environment variable configuration.
-
-### Environment Variables
-
-All clients read from the same set of environment variables:
-
-| Variable                | Description                                            | Required |
-| ----------------------- | ------------------------------------------------------ | -------- |
-| `SMOOAI_CONFIG_API_URL` | Base URL of the config API                             | Yes      |
-| `SMOOAI_CONFIG_API_KEY` | Bearer token for authentication                        | Yes      |
-| `SMOOAI_CONFIG_ORG_ID`  | Organization ID                                        | Yes      |
-| `SMOOAI_CONFIG_ENV`     | Default environment name (defaults to `"development"`) | No       |
-
-Set these in your environment and the client will use them automatically:
-
-```sh
-export SMOOAI_CONFIG_API_URL="https://config.smooai.dev"
-export SMOOAI_CONFIG_API_KEY="your-api-key"
-export SMOOAI_CONFIG_ORG_ID="your-org-id"
-export SMOOAI_CONFIG_ENV="production"
-```
-
-### TypeScript SDK Client
-
-The TypeScript client works in any JavaScript runtime (Node.js, browsers, edge runtimes):
+`defineConfig()` automatically maps camelCase keys to `UPPER_SNAKE_CASE`:
 
 ```typescript
-import { ConfigClient } from '@smooai/config/platform/client';
+FeatureFlagKeys.ENABLE_NEW_UI; // "ENABLE_NEW_UI"
+PublicConfigKeys.API_BASE_URL; // "API_BASE_URL"
+SecretConfigKeys.DATABASE_URL; // "DATABASE_URL"
+```
 
-// Option 1: Use environment variables (zero-config)
-const client = new ConfigClient();
+### 2. Add to `tsconfig.json`
 
-// Option 2: Explicit configuration (overrides env vars)
-const client = new ConfigClient({
-    baseUrl: 'https://config.smooai.dev',
-    apiKey: 'your-api-key',
-    orgId: 'your-org-id',
-    environment: 'production',
+```json
+{
+    "compilerOptions": { ... },
+    "include": ["src/**/*", ".smooai-config/**/*.ts"]
+}
+```
+
+---
+
+## Next.js Integration
+
+### Inject config into `next.config.ts`
+
+Use `withSmooConfig()` to inject feature flags and public config as `NEXT_PUBLIC_` environment variables, with per-stage overrides:
+
+```typescript
+// next.config.ts
+import { withSmooConfig } from '@smooai/config/nextjs/withSmooConfig';
+
+const nextConfig = withSmooConfig({
+    default: {
+        featureFlags: { enableNewUi: false, betaFeatures: false },
+        publicConfig: { apiBaseUrl: 'https://api.smooai.com', maxRetries: 3 },
+    },
+    development: {
+        featureFlags: { enableNewUi: true },
+        publicConfig: { apiBaseUrl: 'http://localhost:3000' },
+    },
 });
 
-// Fetch a single value (uses default environment)
-const apiUrl = await client.getValue('API_URL');
-
-// Fetch a value for a specific environment
-const stagingUrl = await client.getValue('API_URL', 'staging');
-
-// Fetch all values
-const allValues = await client.getAllValues();
-
-// Clear the local cache
-client.invalidateCache();
+export default nextConfig;
 ```
 
-### React Hooks
+This sets environment variables like `NEXT_PUBLIC_FEATURE_FLAG_ENABLE_NEW_UI=true` and `NEXT_PUBLIC_CONFIG_API_BASE_URL=http://localhost:3000` based on the current stage.
 
-For React applications, use the built-in hooks with `ConfigProvider`:
+### Read config in React client components
 
 ```tsx
-import { ConfigProvider, usePublicConfig, useSecretConfig, useFeatureFlag } from '@smooai/config/react';
+import { getClientFeatureFlag, getClientPublicConfig } from '@smooai/config/client';
 
-// Wrap your app with ConfigProvider
-function App() {
-    return (
-        <ConfigProvider baseUrl="https://config.smooai.dev" apiKey="your-api-key" orgId="your-org-id" environment="production">
-            <MyComponent />
-        </ConfigProvider>
-    );
-}
-
-// Use hooks in any child component
 function MyComponent() {
-    const { value: apiUrl, isLoading, error } = usePublicConfig<string>('API_URL');
-    const { value: dbUrl } = useSecretConfig<string>('DATABASE_URL');
-    const { value: enableNewUI, refetch } = useFeatureFlag<boolean>('ENABLE_NEW_UI');
+    const isNewUi = getClientFeatureFlag('enableNewUi');
+    const apiUrl = getClientPublicConfig('apiBaseUrl');
 
-    if (isLoading) return <div>Loading...</div>;
-    if (error) return <div>Error: {error.message}</div>;
-
-    return <div>API URL: {apiUrl}</div>;
+    if (!isNewUi) return <LegacyUI />;
+    return <NewUI apiUrl={apiUrl} />;
 }
 ```
 
-### Next.js Integration
+These functions check `NEXT_PUBLIC_FEATURE_FLAG_*` and `NEXT_PUBLIC_CONFIG_*` env vars automatically -- no provider needed, no loading state.
 
-For Next.js applications, use `getConfig` in Server Components and `SmooConfigProvider` to pass values to client components with zero loading flash:
+### Server Components + Client hydration (zero loading flash)
+
+For apps that need runtime config from a config server, use `getConfig` on the server and `SmooConfigProvider` to hydrate client components:
 
 ```tsx
 // app/layout.tsx (Server Component)
@@ -300,7 +160,7 @@ import { getConfig, SmooConfigProvider } from '@smooai/config/nextjs';
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
     const config = await getConfig({
         environment: 'production',
-        fetchOptions: { next: { revalidate: 60 } }, // ISR: revalidate every 60s
+        fetchOptions: { next: { revalidate: 60 } },
     });
 
     return (
@@ -319,28 +179,55 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </html>
     );
 }
+```
 
-// Any client component — values are available synchronously (no loading flash)
+```tsx
+// Any client component -- values available synchronously (pre-seeded from SSR)
 import { usePublicConfig, useFeatureFlag } from '@smooai/config/nextjs';
 
-function MyComponent() {
-    const { value: apiUrl } = usePublicConfig<string>('API_URL'); // Instant — pre-seeded from SSR
-    const { value: enableNewUI } = useFeatureFlag<boolean>('ENABLE_NEW_UI');
-    return <div>API: {apiUrl}</div>;
+function Dashboard() {
+    const { value: apiUrl } = usePublicConfig<string>('API_BASE_URL');
+    const { value: enableNewUi } = useFeatureFlag<boolean>('ENABLE_NEW_UI');
+    return (
+        <div>
+            API: {apiUrl}, New UI: {String(enableNewUi)}
+        </div>
+    );
 }
 ```
 
-### Vite React Integration
+---
 
-For Vite-based React apps, call `preloadConfig()` before mounting React to start fetching early:
+## Vite Integration
+
+### Vite plugin
+
+```typescript
+// vite.config.ts
+import { defineConfig } from 'vite';
+import { smooConfigPlugin } from '@smooai/config/vite/smooConfigPlugin';
+
+export default defineConfig({
+    plugins: [
+        smooConfigPlugin({
+            featureFlags: { enableNewUi: true, betaFeatures: false },
+            publicConfig: { apiBaseUrl: 'http://localhost:3000' },
+        }),
+    ],
+});
+```
+
+Then read values the same way as Next.js -- `getClientFeatureFlag` and `getClientPublicConfig` from `@smooai/config/client` check `VITE_FEATURE_FLAG_*` and `VITE_CONFIG_*` automatically.
+
+### Preload config (optional)
+
+For runtime config from a config server, start fetching before React mounts:
 
 ```tsx
 // main.tsx
-import { preloadConfig } from '@smooai/config/vite';
-import { ConfigProvider } from '@smooai/config/vite';
+import { preloadConfig, ConfigProvider } from '@smooai/config/vite';
 import { createRoot } from 'react-dom/client';
 
-// Start fetching config immediately (before React renders)
 preloadConfig({ environment: 'production' });
 
 createRoot(document.getElementById('root')!).render(
@@ -350,78 +237,96 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-### Python SDK Client
+---
 
-```python
-from smooai_config.client import ConfigClient
+## Server-Side Config Access
 
-# Option 1: Use environment variables (zero-config)
-with ConfigClient() as client:
-    value = client.get_value("API_URL")
-    all_values = client.get_all_values()
+For Node.js server code, use `buildConfigObject` to get sync and async accessors with full type safety:
 
-# Option 2: Explicit configuration
-with ConfigClient(
-    base_url="https://config.smooai.dev",
-    api_key="your-api-key",
-    org_id="your-org-id",
-    environment="production",
-) as client:
-    value = client.get_value("API_URL")
-    value = client.get_value("API_URL", environment="staging")  # Override environment
+```typescript
+import buildConfigObject from '@smooai/config/platform/server';
+import config, { PublicConfigKeys, SecretConfigKeys, FeatureFlagKeys } from './.smooai-config/config';
+
+const configObj = buildConfigObject(config);
+
+// Sync access (uses worker threads)
+const dbUrl = configObj.secretConfig.getSync(SecretConfigKeys.DATABASE_URL);
+const apiUrl = configObj.publicConfig.getSync(PublicConfigKeys.API_BASE_URL);
+const isNewUi = configObj.featureFlag.getSync(FeatureFlagKeys.ENABLE_NEW_UI);
+
+// Async access
+const apiKey = await configObj.secretConfig.getAsync(SecretConfigKeys.API_KEY);
 ```
 
-### Rust SDK Client
+---
 
-```rust
-use smooai_config::client::ConfigClient;
+## React Hooks (framework-agnostic)
 
-// Option 1: Use environment variables (zero-config)
-let mut client = ConfigClient::from_env();
+For any React app using the runtime config client:
 
-// Option 2: Explicit configuration
-let mut client = ConfigClient::new(
-    "https://config.smooai.dev",
-    "your-api-key",
-    "your-org-id",
-);
+```tsx
+import { ConfigProvider, usePublicConfig, useFeatureFlag } from '@smooai/config/react';
 
-// Option 3: Explicit with default environment
-let mut client = ConfigClient::with_environment(
-    "https://config.smooai.dev",
-    "your-api-key",
-    "your-org-id",
-    "production",
-);
+function App() {
+    return (
+        <ConfigProvider baseUrl="https://config.smooai.dev" apiKey="your-api-key" orgId="your-org-id" environment="production">
+            <MyComponent />
+        </ConfigProvider>
+    );
+}
 
-// Fetch values (None uses default environment)
-let value = client.get_value("API_URL", None).await?;
-let value = client.get_value("API_URL", Some("staging")).await?;
-let all = client.get_all_values(None).await?;
+function MyComponent() {
+    const { value: apiUrl, isLoading, error } = usePublicConfig<string>('API_BASE_URL');
+    const { value: enableNewUi } = useFeatureFlag<boolean>('ENABLE_NEW_UI');
+
+    if (isLoading) return <div>Loading...</div>;
+    if (error) return <div>Error: {error.message}</div>;
+
+    return (
+        <div>
+            API URL: {apiUrl}, New UI: {String(enableNewUi)}
+        </div>
+    );
+}
 ```
 
-### Go SDK Client
+---
 
-```go
-import "github.com/SmooAI/config/go/config"
+## SDK Runtime Client
 
-// Option 1: Use environment variables (zero-config)
-client := config.NewConfigClientFromEnv()
-defer client.Close()
+All language implementations include a runtime client for fetching configuration values from the Smoo AI config server with local caching.
 
-// Option 2: Explicit configuration (empty strings fall back to env vars)
-client := config.NewConfigClient(
-    "https://config.smooai.dev",
-    "your-api-key",
-    "your-org-id",
-)
-defer client.Close()
+### Environment Variables
 
-// Fetch values (empty string uses default environment)
-value, err := client.GetValue("API_URL", "")
-value, err := client.GetValue("API_URL", "staging")
-allValues, err := client.GetAllValues("")
+| Variable                | Description                                            | Required |
+| ----------------------- | ------------------------------------------------------ | -------- |
+| `SMOOAI_CONFIG_API_URL` | Base URL of the config API                             | Yes      |
+| `SMOOAI_CONFIG_API_KEY` | Bearer token for authentication                        | Yes      |
+| `SMOOAI_CONFIG_ORG_ID`  | Organization ID                                        | Yes      |
+| `SMOOAI_CONFIG_ENV`     | Default environment name (defaults to `"development"`) | No       |
+
+### TypeScript Client
+
+```typescript
+import { ConfigClient } from '@smooai/config/platform/client';
+
+// Zero-config (reads from env vars)
+const client = new ConfigClient();
+
+// Or explicit
+const client = new ConfigClient({
+    baseUrl: 'https://config.smooai.dev',
+    apiKey: 'your-api-key',
+    orgId: 'your-org-id',
+    environment: 'production',
+});
+
+const apiUrl = await client.getValue('API_BASE_URL');
+const allValues = await client.getAllValues();
+client.invalidateCache();
 ```
+
+---
 
 ## Configuration Tiers
 
@@ -431,11 +336,7 @@ allValues, err := client.GetAllValues("")
 | **Secret**        | Server-side only        | Database URLs, API keys, JWT secrets     |
 | **Feature Flags** | Runtime toggles         | A/B tests, gradual rollouts, beta access |
 
-Each tier gets its own schema, validation, and JSON Schema output for cross-language consumption.
-
 ### Security: B2M Key Restrictions
-
-The Smoo AI Config API enforces tier-based access control depending on the API key type:
 
 | Operation            | B2M (Public Key)  | M2M (Secret Key) |
 | -------------------- | ----------------- | ---------------- |
@@ -445,18 +346,84 @@ The Smoo AI Config API enforces tier-based access control depending on the API k
 | Write config values  | **No** (403)      | Yes              |
 | Delete config values | **No** (403)      | Yes              |
 
-**Browser-to-Machine (B2M)** keys are designed for browser-based clients. Secret-tier values are automatically filtered from bulk responses and return 403 for individual lookups. B2M keys are read-only for public and feature flag tiers.
+**Browser-to-Machine (B2M)** keys are designed for browser clients. Secret-tier values are automatically filtered. B2M keys are read-only for public and feature flag tiers.
 
 **Machine-to-Machine (M2M)** keys have full access to all tiers and write operations.
+
+---
+
+## Multi-Language Support
+
+@smooai/config has native implementations in Python, Rust, and Go alongside the primary TypeScript package.
+
+### Python
+
+```sh
+pip install smooai-config
+# or: uv add smooai-config
+```
+
+```python
+from pydantic import BaseModel
+from smooai_config import define_config
+from smooai_config.client import ConfigClient
+
+class PublicConfig(BaseModel):
+    api_url: str = "https://api.example.com"
+    max_retries: int = 3
+
+class SecretConfig(BaseModel):
+    database_url: str
+    api_key: str
+
+config = define_config(public=PublicConfig, secret=SecretConfig)
+
+with ConfigClient() as client:  # reads from env vars
+    value = client.get_value("API_URL", environment="production")
+    all_values = client.get_all_values()
+```
+
+### Rust
+
+```toml
+[dependencies]
+smooai-config = { git = "https://github.com/SmooAI/config", package = "smooai-config" }
+```
+
+```rust
+use smooai_config::client::ConfigClient;
+
+let mut client = ConfigClient::from_env();
+let value = client.get_value("API_URL", None).await?;
+let all = client.get_all_values(Some("production")).await?;
+```
+
+### Go
+
+```sh
+go get github.com/SmooAI/config/go/config
+```
+
+```go
+import "github.com/SmooAI/config/go/config"
+
+client := config.NewConfigClientFromEnv()
+defer client.Close()
+
+value, err := client.GetValue("API_URL", "production")
+allValues, err := client.GetAllValues("")
+```
+
+---
 
 ## Development
 
 ### Prerequisites
 
 - Node.js 22+, pnpm 10+
-- Python 3.13+ with uv
-- Rust toolchain (rustup)
-- Go 1.22+
+- Python 3.13+ with uv (for Python package)
+- Rust toolchain (for Rust package)
+- Go 1.22+ (for Go package)
 
 ### Commands
 
@@ -470,45 +437,22 @@ pnpm typecheck             # Type check (tsc, basedpyright, cargo check)
 pnpm check-all             # Full CI parity check
 ```
 
-### Built With
+### Schema Libraries
 
-- **TypeScript** - Core implementation with StandardSchema support
-- **Python** - Pydantic-based schemas with httpx runtime client
-- **Rust** - Serde-based schemas with reqwest async client
-- **Go** - Native schemas with net/http client and local caching
-- [StandardSchema](https://github.com/standard-schema/standard-schema) - Schema-agnostic validation
-- [Zod](https://zod.dev/), [Valibot](https://valibot.dev/), [ArkType](https://arktype.io/), [Effect](https://effect.website/) - Supported validation libraries
+Supports Zod, Valibot, ArkType, Effect Schema, and built-in schema types. See [SCHEMA_USAGE.md](SCHEMA_USAGE.md) for examples with each library.
+
+---
 
 ## Contributing
 
 Contributions are welcome! This project uses [changesets](https://github.com/changesets/changesets) to manage versions and releases.
 
-### Development Workflow
-
 1. Fork the repository
 2. Create your branch (`git checkout -b amazing-feature`)
 3. Make your changes
-4. Add a changeset to document your changes:
-
-    ```sh
-    pnpm changeset
-    ```
-
-    This will prompt you to:
-    - Choose the type of version bump (patch, minor, or major)
-    - Provide a description of the changes
-
-5. Commit your changes (`git commit -m 'Add some amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
-
-### Pull Request Guidelines
-
-- Reference any related issues in your PR description
-
-The maintainers will review your PR and may request changes before merging.
-
-<!-- CONTACT -->
+4. Add a changeset: `pnpm changeset`
+5. Commit and push
+6. Open a Pull Request
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
