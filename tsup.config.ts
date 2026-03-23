@@ -25,6 +25,7 @@ const serverEntry = [
     'src/nextjs/client.ts',
     'src/nextjs/hooks.ts',
     'src/nextjs/getConfig.ts',
+    'src/nextjs/withFeatureFlags.ts',
     'src/integration-tests/2/smooai-config/production.ts',
     'src/integration-tests/2/smooai-config/production.aws.us-east-1.ts',
     'src/integration-tests/2/smooai-config/production.aws.ts',
