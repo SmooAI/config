@@ -1,6 +1,6 @@
 {
     "name": "@smooai/config",
-    "version": "2.1.4",
+    "version": "2.1.5",
     "description": "Type-safe multi-language configuration management with schema validation, three-tier config (public, secret, feature flags), and runtime client support for TypeScript, Python, Rust, and Go.",
     "homepage": "https://github.com/SmooAI/config#readme",
     "bugs": {
@@ -46,6 +46,11 @@
             "types": "./dist/nextjs/getConfig.d.ts",
             "import": "./dist/nextjs/getConfig.mjs",
             "require": "./dist/nextjs/getConfig.js"
+        },
+        "./feature-flags": {
+            "types": "./dist/feature-flags/index.d.ts",
+            "import": "./dist/feature-flags/index.mjs",
+            "require": "./dist/feature-flags/index.js"
         },
         "./react": {
             "types": "./dist/react/index.d.ts",

@@ -45,6 +45,7 @@ export default defineConfig((options: Options) => ({
         'src/config/SecretConfigKey.ts',
         'src/config/PublicConfigKey.ts',
         'src/config/FeatureFlagKey.ts',
+        'src/feature-flags/index.ts',
     ],
     clean: true,
     dts: true,
