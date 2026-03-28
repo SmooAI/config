@@ -8,6 +8,8 @@
  *   SMOOAI_CONFIG_ENV      — Default environment name (e.g. "production")
  */
 
+import fetch from '@smooai/fetch';
+
 export interface ConfigClientOptions {
     /** Base URL of the config API server. Falls back to SMOOAI_CONFIG_API_URL env var. */
     baseUrl?: string;
