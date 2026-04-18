@@ -1,9 +1,14 @@
 [package]
 name = "smooai-config"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
-description = "Smoo AI Configuration Management Library"
+description = "Type-safe three-tier configuration management (public, secret, feature flags) with schema validation and a runtime client for the Smoo AI config platform."
 license = "MIT"
+repository = "https://github.com/SmooAI/config"
+homepage = "https://github.com/SmooAI/config"
+keywords = ["config", "configuration", "feature-flags", "smooai", "secrets"]
+categories = ["config", "development-tools"]
+readme = "README.md"
 
 [dependencies]
 percent-encoding = "2"
