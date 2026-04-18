@@ -1,6 +1,10 @@
 /**
  * API client wrapper for CLI commands.
  * Extends ConfigClient with schema and environment management methods.
+ *
+ * SMOODEV-602: routes HTTP through `@smooai/fetch` so flaky-network retries,
+ * 429 back-off, and clearer error surfaces apply to every CLI call — same
+ * resilience the SmooAI platform ships for its own HTTP callers.
  */
 
 import fetch from '@smooai/fetch';

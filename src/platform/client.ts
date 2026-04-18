@@ -6,6 +6,10 @@
  *   SMOOAI_CONFIG_API_KEY  — Bearer token for authentication
  *   SMOOAI_CONFIG_ORG_ID   — Organization ID
  *   SMOOAI_CONFIG_ENV      — Default environment name (e.g. "production")
+ *
+ * SMOODEV-602: HTTP calls route through `@smooai/fetch`, which drops in as a
+ * replacement for the global `fetch` and adds retries, Retry-After honoring,
+ * and clearer error surfaces. Works in both Node and browser bundles.
  */
 
 import fetch from '@smooai/fetch';
