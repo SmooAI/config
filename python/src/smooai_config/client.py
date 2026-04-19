@@ -128,6 +128,37 @@ class ConfigClient:
             for key, value in values.items():
                 self._cache[f"{env}:{key}"] = (value, expires_at)
 
+    def evaluate_feature_flag(
+        self,
+        key: str,
+        context: dict[str, Any] | None = None,
+        *,
+        environment: str | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate a cohort-aware feature flag for a given context.
+
+        Always hits the server so rules stay hot-reloadable without
+        re-deploying consumer code. Unlike :meth:`get_value`, this method
+        is **not** cached — cohort rules can depend on per-request user
+        context.
+
+        :param key: Feature-flag key (must be tier=feature_flag on the server).
+        :param context: Opaque attribute map the rules reference
+            (``userId``, ``orgId``, ``plan``, …). Defaults to empty.
+        :param environment: Named environment override; falls back to
+            the client default.
+        :returns: Dict with ``value`` plus optional ``matchedRuleId``,
+            ``rolloutBucket``, and ``source`` (``raw`` | ``rule`` |
+            ``rollout`` | ``default``).
+        """
+        env = environment or self._default_environment
+        response = self._client.post(
+            f"/organizations/{self._org_id}/config/feature-flags/{key}/evaluate",
+            json={"environment": env, "context": context or {}},
+        )
+        response.raise_for_status()
+        return response.json()
+
     def invalidate_cache(self) -> None:
         """Clear the entire local cache."""
         with self._lock:
