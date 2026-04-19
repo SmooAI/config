@@ -6,8 +6,6 @@
         "types": ["node"],
         "target": "ES2022",
         "jsx": "react-jsx",
-        "ignoreDeprecations": "5.0",
-        "baseUrl": "./",
         "paths": {
             "@/*": ["./src/*"]
         }
