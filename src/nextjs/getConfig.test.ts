@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock fetch globally
-const mockFetch = vi.fn();
-vi.stubGlobal('fetch', mockFetch);
+// Mock @smooai/fetch module
+const { mockFetch } = vi.hoisted(() => ({
+    mockFetch: vi.fn(),
+}));
+vi.mock('@smooai/fetch', () => ({
+    default: mockFetch,
+}));
 
 import { getConfig } from './getConfig';
 

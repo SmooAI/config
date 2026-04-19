@@ -3,6 +3,7 @@
  * Extends ConfigClient with schema and environment management methods.
  */
 
+import fetch from '@smooai/fetch';
 import { type Credentials } from './credentials';
 
 export interface ConfigSchema {
