@@ -200,6 +200,23 @@ func (c *ConfigClient) GetAllValues(environment string) (map[string]any, error) 
 	return result.Values, nil
 }
 
+// SeedCacheFromMap pre-populates the local cache from an already-fetched map.
+//
+// Useful for cold-start hydration from a baked config blob — the caller
+// decrypts the blob and feeds the map in, so subsequent GetValue calls
+// resolve synchronously without hitting the HTTP API.
+//
+// Pass empty string for environment to use the default.
+func (c *ConfigClient) SeedCacheFromMap(values map[string]any, environment string) {
+	env := c.resolveEnv(environment)
+	c.mu.Lock()
+	expiresAt := c.computeExpiresAt()
+	for key, value := range values {
+		c.cache[env+":"+key] = cacheEntry{value: value, expiresAt: expiresAt}
+	}
+	c.mu.Unlock()
+}
+
 // InvalidateCache clears all locally cached values.
 func (c *ConfigClient) InvalidateCache() {
 	c.mu.Lock()

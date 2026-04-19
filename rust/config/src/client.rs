@@ -205,6 +205,20 @@ impl ConfigClient {
         Ok(response.values)
     }
 
+    /// Pre-populate the local cache from an already-fetched map.
+    ///
+    /// Useful for cold-start hydration from a baked config blob — the caller
+    /// decrypts the blob and feeds the map in, so subsequent `get_value`
+    /// calls resolve synchronously without hitting the HTTP API.
+    pub fn seed_cache_from_map(&mut self, values: HashMap<String, serde_json::Value>, environment: Option<&str>) {
+        let env = self.resolve_env(environment).to_string();
+        let expires_at = self.compute_expires_at();
+        for (key, value) in values {
+            self.cache
+                .insert(format!("{}:{}", env, key), CacheEntry { value, expires_at });
+        }
+    }
+
     /// Clear the entire local cache.
     pub fn invalidate_cache(&mut self) {
         self.cache.clear();
