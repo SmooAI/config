@@ -3,6 +3,7 @@
 //! Provides schema definition, JSON Schema generation, runtime config client,
 //! and local file/env-based configuration with caching.
 
+pub mod build;
 pub mod client;
 pub mod cloud_region;
 pub mod config_manager;
@@ -11,6 +12,7 @@ pub mod env_config;
 pub mod file_config;
 pub mod local;
 pub mod merge;
+pub mod runtime;
 pub mod schema;
 pub mod schema_validator;
 pub mod utils;
