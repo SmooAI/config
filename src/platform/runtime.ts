@@ -92,6 +92,52 @@ export interface BuildConfigRuntimeOptions {
 }
 
 /**
+ * Lowest-level accessor: returns the decrypted `{ public, secret }` maps
+ * from the baked blob, or `undefined` when no blob is present (env vars
+ * unset). Cached; subsequent calls return the same object.
+ *
+ * Prefer `buildConfigRuntime(schema)` or `hydrateConfigClient(client)` —
+ * they give you a uniform `.get*` / `.getValue` API with built-in
+ * feature-flag fallback. Use this directly only when your TypeScript
+ * project can't serialize the full schema type (e.g. very large schemas
+ * + tsgo inference limits) and you just want the raw map.
+ */
+export function readBakedConfig(): { public: Record<string, unknown>; secret: Record<string, unknown> } | undefined {
+    const blob = getBlob();
+    const hasValues = Object.keys(blob.public).length > 0 || Object.keys(blob.secret).length > 0;
+    return hasValues ? blob : undefined;
+}
+
+/**
+ * Seed a `ConfigClient` cache from the baked blob, so `client.getValue(key)`
+ * resolves public + secret keys synchronously (no HTTP) after the first
+ * call. Feature-flag reads keep going through the normal fetch path.
+ *
+ * Works without any schema-typed generics — useful in projects where the
+ * schema type is too large to import without hitting compiler inference
+ * limits.
+ *
+ * @example
+ *   import { ConfigClient } from '@smooai/config/platform/client';
+ *   import { hydrateConfigClient } from '@smooai/config/platform/runtime';
+ *
+ *   const client = new ConfigClient();
+ *   hydrateConfigClient(client);
+ *
+ *   const tavily = await client.getValue('tavilyApiKey');   // from blob, sync
+ *   const flag   = await client.getValue('newFlow');         // live fetch, 30s cache
+ *
+ * @returns The number of keys seeded, for logging/sanity. `0` when no blob.
+ */
+export function hydrateConfigClient(client: ConfigClient, environment?: string): number {
+    const blob = readBakedConfig();
+    if (!blob) return 0;
+    const merged = { ...blob.public, ...blob.secret };
+    client.seedCacheFromMap(merged, environment);
+    return Object.keys(merged).length;
+}
+
+/**
  * Build a runtime config accessor with typed, per-tier getters.
  *
  * Returns the same `{ getPublicConfig, getSecretConfig, getFeatureFlag }`
