@@ -92,19 +92,13 @@ const aliasedModules = [
     'effect',
     'effect/JSONSchema',
     'json-schema-to-zod',
-    'zod-to-json-schema',
     'rotating-file-stream',
 ];
 
 const aliasMap: Record<string, string> = {};
 for (const mod of aliasedModules) {
     aliasMap[mod] =
-        mod === '@valibot/to-json-schema' ||
-        mod === 'arktype' ||
-        mod === 'effect' ||
-        mod === 'effect/JSONSchema' ||
-        mod === 'json-schema-to-zod' ||
-        mod === 'zod-to-json-schema'
+        mod === '@valibot/to-json-schema' || mod === 'arktype' || mod === 'effect' || mod === 'effect/JSONSchema' || mod === 'json-schema-to-zod'
             ? schemaStub
             : nodeStub;
 }

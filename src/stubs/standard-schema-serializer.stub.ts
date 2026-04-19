@@ -13,7 +13,3 @@ export const make = (..._args: any[]) => ({});
 
 // json-schema-to-zod
 export const jsonSchemaToZod = (..._args: any[]) => '';
-
-// zod-to-json-schema
-export default (..._args: any[]) => ({});
-export const zodToJsonSchema = (..._args: any[]) => ({});

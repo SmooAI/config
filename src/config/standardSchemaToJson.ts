@@ -5,8 +5,7 @@ import type { Type as ArkType } from 'arktype';
 import { Schema as EffectSchema } from 'effect';
 import * as EffectJSONSchema from 'effect/JSONSchema';
 import type { BaseIssue, BaseSchema } from 'valibot';
-import type { ZodType } from 'zod';
-import zodToJsonSchema from 'zod-to-json-schema';
+import { z, type ZodType } from 'zod';
 
 /**
  * Zod type names that cannot be serialized to JSON Schema for config.
@@ -93,7 +92,7 @@ export function standardSchemaToJson<I, O>(schema: StandardSchemaV1<I, O> | Effe
         switch (vendor) {
             case 'zod':
                 checkZodSchema(schema as ZodType);
-                return zodToJsonSchema(schema as ZodType);
+                return z.toJSONSchema(schema as ZodType);
             case 'valibot':
                 return valibotToJsonSchema(schema as BaseSchema<unknown, unknown, BaseIssue<unknown>>);
             case 'arktype':
