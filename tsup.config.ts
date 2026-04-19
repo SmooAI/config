@@ -17,6 +17,8 @@ const serverEntry = [
     'src/react/hooks.ts',
     'src/platform/server.ts',
     'src/platform/client.ts',
+    'src/platform/runtime.ts',
+    'src/platform/build.ts',
     'src/platform/server/server.secretConfig.sync.ts',
     'src/platform/server/server.publicConfig.sync.ts',
     'src/platform/server/server.featureFlag.sync.ts',

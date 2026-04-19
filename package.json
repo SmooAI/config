@@ -164,6 +164,16 @@
             "import": "./dist/platform/client.mjs",
             "require": "./dist/platform/client.js"
         },
+        "./platform/lambda-runtime": {
+            "types": "./dist/platform/lambda-runtime.d.ts",
+            "import": "./dist/platform/lambda-runtime.mjs",
+            "require": "./dist/platform/lambda-runtime.js"
+        },
+        "./platform/build": {
+            "types": "./dist/platform/build.d.ts",
+            "import": "./dist/platform/build.mjs",
+            "require": "./dist/platform/build.js"
+        },
         "./utils": {
             "types": "./dist/utils/index.d.ts",
             "browser": {
