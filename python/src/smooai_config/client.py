@@ -110,6 +110,24 @@ class ConfigClient:
                 self._cache[f"{env}:{key}"] = (value, expires_at)
         return values
 
+    def seed_cache_from_map(
+        self,
+        values: dict[str, Any],
+        *,
+        environment: str | None = None,
+    ) -> None:
+        """Pre-populate the local cache from an already-fetched map.
+
+        Useful for cold-start hydration from a baked config blob — the caller
+        decrypts the blob and feeds the map in, so subsequent ``get_value``
+        calls resolve synchronously without hitting the HTTP API. Thread-safe.
+        """
+        env = environment or self._default_environment
+        with self._lock:
+            expires_at = self._compute_expires_at()
+            for key, value in values.items():
+                self._cache[f"{env}:{key}"] = (value, expires_at)
+
     def invalidate_cache(self) -> None:
         """Clear the entire local cache."""
         with self._lock:
