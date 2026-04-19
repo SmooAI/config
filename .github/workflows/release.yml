@@ -85,7 +85,7 @@ jobs:
               with:
                   commit: '🦋 New version release'
                   title: '🦋 New version release'
-                  version: pnpm changeset version && pnpm run version:sync
+                  version: pnpm run version:bump
                   publish: pnpm ci:publish
                   createGithubReleases: true
               env:
