@@ -62,6 +62,21 @@ struct ValuesResponse {
     values: HashMap<String, serde_json::Value>,
 }
 
+/// Response from `POST /config/feature-flags/:key/evaluate`.
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+pub struct EvaluateFeatureFlagResponse {
+    /// The resolved flag value — shape depends on the flag definition.
+    pub value: serde_json::Value,
+    /// If a rule fired, the `id` of that rule.
+    #[serde(default, rename = "matchedRuleId", skip_serializing_if = "Option::is_none")]
+    pub matched_rule_id: Option<String>,
+    /// The 0-99 bucket the context was assigned, if rollout ran.
+    #[serde(default, rename = "rolloutBucket", skip_serializing_if = "Option::is_none")]
+    pub rollout_bucket: Option<u8>,
+    /// Which branch of the evaluator produced the value.
+    pub source: String,
+}
+
 impl ConfigClient {
     /// Create a new config client with explicit parameters.
     pub fn new(base_url: &str, api_key: &str, org_id: &str) -> Self {
@@ -203,6 +218,36 @@ impl ConfigClient {
         }
 
         Ok(response.values)
+    }
+
+    /// Evaluate a cohort-aware feature flag for a given context.
+    ///
+    /// Always hits the server so rules stay hot-reloadable without
+    /// re-deploying consumer code. Unlike `get_value`, this method is **not**
+    /// cached — cohort rules can depend on per-request user context.
+    pub async fn evaluate_feature_flag(
+        &self,
+        key: &str,
+        context: &serde_json::Value,
+        environment: Option<&str>,
+    ) -> Result<EvaluateFeatureFlagResponse, reqwest::Error> {
+        let env = self.resolve_env(environment).to_string();
+        let encoded_key = utf8_percent_encode(key, PATH_SEGMENT_ENCODE_SET).to_string();
+        let body = serde_json::json!({
+            "environment": env,
+            "context": context,
+        });
+        self.client
+            .post(format!(
+                "{}/organizations/{}/config/feature-flags/{}/evaluate",
+                self.base_url, self.org_id, encoded_key
+            ))
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await
     }
 
     /// Pre-populate the local cache from an already-fetched map.

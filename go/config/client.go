@@ -200,6 +200,59 @@ func (c *ConfigClient) GetAllValues(environment string) (map[string]any, error) 
 	return result.Values, nil
 }
 
+// EvaluateFeatureFlagResponse is the body returned by
+// POST /config/feature-flags/{key}/evaluate.
+type EvaluateFeatureFlagResponse struct {
+	// Value is the resolved flag value — shape depends on the flag definition.
+	Value any `json:"value"`
+	// MatchedRuleID is the id of the rule that fired, if any.
+	MatchedRuleID string `json:"matchedRuleId,omitempty"`
+	// RolloutBucket is the 0-99 bucket the context was assigned, if rollout ran.
+	RolloutBucket *int `json:"rolloutBucket,omitempty"`
+	// Source is which branch of the evaluator produced the value:
+	// "raw", "rule", "rollout", or "default".
+	Source string `json:"source"`
+}
+
+// EvaluateFeatureFlag evaluates a cohort-aware feature flag for a given context.
+//
+// Always hits the server so rules stay hot-reloadable without re-deploying
+// consumer code. Unlike GetValue, this method is NOT cached — cohort rules
+// can depend on per-request user context.
+//
+// Pass empty string for environment to use the client's default. Pass nil or
+// an empty map for context if the flag doesn't reference any attributes.
+func (c *ConfigClient) EvaluateFeatureFlag(key string, context map[string]any, environment string) (*EvaluateFeatureFlagResponse, error) {
+	env := c.resolveEnv(environment)
+	if context == nil {
+		context = map[string]any{}
+	}
+	body, err := json.Marshal(map[string]any{"environment": env, "context": context})
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag marshal: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/organizations/%s/config/feature-flags/%s/evaluate",
+		c.baseURL, c.orgID, url.PathEscape(key))
+
+	resp, err := c.client.Post(u, "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("config evaluate feature flag: HTTP %d: %s", resp.StatusCode, string(b))
+	}
+
+	var result EvaluateFeatureFlagResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag decode: %w", err)
+	}
+	return &result, nil
+}
+
 // SeedCacheFromMap pre-populates the local cache from an already-fetched map.
 //
 // Useful for cold-start hydration from a baked config blob — the caller

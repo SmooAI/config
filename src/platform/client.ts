@@ -14,6 +14,17 @@
 
 import fetch from '@smooai/fetch';
 
+export interface EvaluateFeatureFlagResponse {
+    /** The resolved flag value — shape depends on the flag definition. */
+    value: unknown;
+    /** If a rule fired, the `id` of that rule. */
+    matchedRuleId?: string;
+    /** The 0-99 bucket the context was assigned, if rollout ran. */
+    rolloutBucket?: number;
+    /** Which branch of the evaluator produced the value. */
+    source: 'raw' | 'rule' | 'rollout' | 'default';
+}
+
 export interface ConfigClientOptions {
     /** Base URL of the config API server. Falls back to SMOOAI_CONFIG_API_URL env var. */
     baseUrl?: string;
@@ -149,6 +160,29 @@ export class ConfigClient {
         for (const [key, value] of Object.entries(values)) {
             this.cache.set(`${env}:${key}`, { value, expiresAt });
         }
+    }
+
+    /**
+     * Evaluate a cohort-aware feature flag for a given context.
+     *
+     * Always hits the server so rules stay hot-reloadable without
+     * re-deploying consumer code. The backend (`/config/feature-flags/:key/evaluate`)
+     * walks the rule list, then any rollout bucket, then falls through to
+     * `default`. The `context` map is opaque to the client — shape is
+     * whatever the rules reference (`userId`, `orgId`, `plan`, `email`, …).
+     *
+     * Unlike `getValue`, this method is **not** cached — cohort rules can
+     * tie evaluations to user context that changes per request, so each
+     * call must go to the server. If you need caching, do it at the
+     * consumer layer keyed off the context you care about.
+     */
+    async evaluateFeatureFlag(key: string, context: Record<string, unknown> = {}, environment?: string): Promise<EvaluateFeatureFlagResponse> {
+        const env = environment ?? this.defaultEnvironment;
+        return this.fetchJson<EvaluateFeatureFlagResponse>(`/organizations/${this.orgId}/config/feature-flags/${encodeURIComponent(key)}/evaluate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ environment: env, context }),
+        });
     }
 
     /**
