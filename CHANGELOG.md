@@ -1,5 +1,42 @@
 # @smooai/library-template
 
+## 3.2.0
+
+### Minor Changes
+
+- 87ff52d: Add `@smooai/config/platform/runtime` and `@smooai/config/platform/build` — framework-agnostic bake-and-decrypt pattern for shipping config to deployment targets (Lambda, ECS, Fargate, EC2, containers, anywhere Node + filesystem).
+
+    **Pattern** (mirrors SST v4's `Resource.*` cold-start-decrypt, without the SST coupling):
+    1. Deploy-time baker (`buildBundle`) calls `ConfigClient.getAllValues(env)`, partitions via `classifyFromSchema` (public + secret into the blob, feature flags skipped), encrypts with AES-256-GCM, returns `{ keyB64, bundle }`. Deploy glue writes the bundle to disk and sets `SMOO_CONFIG_KEY_FILE` + `SMOO_CONFIG_KEY` on the function.
+    2. Runtime helper (`buildConfigRuntime(schema)`) decrypts the blob once at cold start and exposes the same typed `getPublicConfig` / `getSecretConfig` / `getFeatureFlag` API as the existing `buildConfigObject` — consumer code stays identical.
+    3. Feature flags always hit the config API at runtime (they're designed to flip without a redeploy), routed through a cached `ConfigClient`.
+
+    Blob layout: `nonce (12 random bytes) || ciphertext || authTag (16 bytes)`. Random nonce + fresh key per `buildBundle` — no key-reuse hazard across re-bakes.
+
+    Paired with a deploy-pipeline adapter in your infra repo (SST, Pulumi, Vercel, whatever), this eliminates the 4 KB Lambda env-var ceiling for secrets while keeping the library API unchanged.
+
+- fec5b31: Use Zod v4's built-in `z.toJSONSchema()` instead of the `zod-to-json-schema` adapter. Drops the adapter dep (typed against Zod v3 — needed `as any` casts to pass Zod v4 schemas through) and removes the related stubs from the browser-build alias map. Runtime output shape is equivalent. Also drops the `zod-to-json-schema` runtime dependency.
+
+### Patch Changes
+
+- 816e23d: **SMOODEV-602** — CLI + runtime client fixes surfaced while dogfooding the
+  three-tier schema in the smooai monorepo:
+    - `smooai-config diff/push/pull` no longer fails with
+      `ERR_UNKNOWN_FILE_EXTENSION` on `.smooai-config/config.ts`. The schema
+      loader used a bare `await import(tsPath)` which Node can't resolve for
+      `.ts` files — switched to `tsImport` from `tsx/esm/api` (tsx is already
+      a runtime dep of this package), so the CLI works out of the box in any
+      project that declares its schema in TypeScript.
+    - Both HTTP paths (`src/platform/client.ts` runtime client and
+      `src/cli/utils/api-client.ts` CLI client) now route through
+      `@smooai/fetch` — which dogfoods our own resilient-fetch package for
+      retries, 429 Retry-After honoring, and clearer error surfaces.
+      `@smooai/fetch` was already a dependency; it just wasn't being used.
+
+    No API-surface change. Drop-in patch release.
+
+- ce09743: Improve README with v3 features, type safety examples, and React/Next.js focus
+
 ## 3.0.0
 
 ### Major Changes
