@@ -233,6 +233,7 @@
         "go:lint": "(cd go/config && go vet ./...)",
         "go:test": "(cd go/config && go test -v ./...)",
         "version:sync": "node scripts/sync-versions.mjs",
+        "version:bump": "pnpm changeset version && pnpm run version:sync",
         "format:check": "oxfmt --check ."
     },
     "dependencies": {
