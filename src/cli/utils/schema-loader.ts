@@ -86,7 +86,14 @@ export async function loadLocalSchema(configDir?: string): Promise<LoadedSchema 
 
     if (tsPath) {
         try {
-            const mod = await import(tsPath);
+            // SMOODEV-602: use tsx's `tsImport` to load `.ts` at runtime. A bare
+            // `await import(tsPath)` hits ERR_UNKNOWN_FILE_EXTENSION under Node
+            // because .ts has no built-in loader. `tsx` is already a dependency
+            // of this package — routing the dynamic import through it lets
+            // `smooai-config diff/push/pull` work out of the box in any project
+            // whose `.smooai-config/config.ts` is actual TypeScript.
+            const { tsImport } = await import('tsx/esm/api');
+            const mod = await tsImport(tsPath, import.meta.url);
             const configDef = mod.default ?? mod;
             if (configDef.serializedAllConfigSchema) {
                 return {
