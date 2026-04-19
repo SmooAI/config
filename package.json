@@ -267,6 +267,7 @@
         "oxlint": "^0.16.0",
         "react-dom": "^19.2.4",
         "tsup": "^8.4.0",
+        "typescript": "^5.8.2",
         "vite": "^6.2.4",
         "vite-node": "^3.1.1",
         "vite-tsconfig-paths": "^5.1.4",
