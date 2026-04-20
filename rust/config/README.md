@@ -38,6 +38,24 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 A Rust port of [@smooai/config](https://www.npmjs.com/package/@smooai/config) that mirrors the feature set of the TypeScript and Python versions. The crate exposes a type-driven configuration API using `schemars` for JSON Schema generation, an async `reqwest`-based runtime client with local caching, and a local config manager that merges file and environment variable sources.
 
+### Priority chain
+
+Every config read goes through the same **fallback chain** as the TypeScript SDK (see [main README — Priority Chain](../../README.md#priority-chain) for diagrams + rationale):
+
+| #   | Source                              | Notes                                              |
+| --- | ----------------------------------- | -------------------------------------------------- |
+| 1   | **Baked blob**                      | AES-GCM file on disk, decrypted once               |
+| 2   | **Environment variables**           | `std::env::var(UPPER_SNAKE_CASE(key))`             |
+| 3   | **HTTP config API** (`api.smoo.ai`) | async fetch via `reqwest`, 30s cache               |
+| 4   | **Local file defaults**             | `.smooai-config/<env>.toml` / `.json`, deep-merged |
+
+**First non-empty source wins** — later sources don't override earlier ones. Feature flags flip to HTTP-first and skip the blob.
+
+Parity for the unified `build_config(schema)` trait-based accessor is tracked in [SMOODEV-613](https://smooai.atlassian.net/browse/SMOODEV-613) — including `.get()` (async via tokio) and `.get_blocking()` (sync via `block_on` bridge) for drop-in sync call sites. Until it lands, this crate exposes:
+
+- `define_config_typed::<T>()` + `schemars`-derived schemas (unchanged)
+- `ConfigClient` — HTTP-only tier (async, local cache, no blob / env / file fallback yet)
+
 ### Why smooai-config?
 
 Ever hardcoded configuration values across your Rust services or fought to keep configuration in sync between Rust backends and TypeScript frontends? Traditional config management gives you the values, but not the safety or cross-language consistency.
