@@ -41,8 +41,8 @@ function withEnv(vars: Record<string, string | undefined>): () => void {
 /** Dynamic import of buildConfigObjectAsync with fresh module state. */
 async function freshBuildConfigObject() {
     vi.resetModules();
-    const mod = await import('@/platform/server/server.async');
-    return mod.default(config);
+    const mod = await import('@/server/internal');
+    return mod.buildConfigAsync(config);
 }
 
 describe('Full Pipeline Integration Tests', () => {
@@ -71,19 +71,19 @@ describe('Full Pipeline Integration Tests', () => {
             const serverConfig = await freshBuildConfigObject();
 
             // Public config
-            const apiUrl = await serverConfig.getPublicConfig('apiUrl');
+            const apiUrl = await serverConfig.publicConfig.get('apiUrl');
             expect(apiUrl).toBe('http://localhost:3000');
 
-            const maxRetries = await serverConfig.getPublicConfig('maxRetries');
+            const maxRetries = await serverConfig.publicConfig.get('maxRetries');
             expect(maxRetries).toBe(3);
 
-            const enableDebug = await serverConfig.getPublicConfig('enableDebug');
+            const enableDebug = await serverConfig.publicConfig.get('enableDebug');
             expect(enableDebug).toBe(true);
 
-            const appName = await serverConfig.getPublicConfig('appName');
+            const appName = await serverConfig.publicConfig.get('appName');
             expect(appName).toBe('default-app');
 
-            const database = await serverConfig.getPublicConfig('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toEqual({
                 host: 'localhost',
                 port: 5432,
@@ -91,43 +91,43 @@ describe('Full Pipeline Integration Tests', () => {
             });
 
             // Secret config
-            const apiKey = await serverConfig.getSecretConfig('apiKey');
+            const apiKey = await serverConfig.secretConfig.get('apiKey');
             expect(apiKey).toBe('default-api-key');
 
-            const dbPassword = await serverConfig.getSecretConfig('dbPassword');
+            const dbPassword = await serverConfig.secretConfig.get('dbPassword');
             expect(dbPassword).toBe('default-db-pass');
 
             // Feature flags
-            const enableNewUI = await serverConfig.getFeatureFlag('enableNewUI');
+            const enableNewUI = await serverConfig.featureFlag.get('enableNewUI');
             expect(enableNewUI).toBe(false);
 
-            const enableBeta = await serverConfig.getFeatureFlag('enableBeta');
+            const enableBeta = await serverConfig.featureFlag.get('enableBeta');
             expect(enableBeta).toBe(false);
 
-            const maintenanceMode = await serverConfig.getFeatureFlag('maintenanceMode');
+            const maintenanceMode = await serverConfig.featureFlag.get('maintenanceMode');
             expect(maintenanceMode).toBe(false);
         });
 
         it('sets standard built-in config', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const env = await serverConfig.getPublicConfig(PublicConfigKey.ENV as any);
+            const env = await serverConfig.publicConfig.get(PublicConfigKey.ENV as any);
             expect(env).toBe('test');
 
-            const isLocal = await serverConfig.getPublicConfig(PublicConfigKey.IS_LOCAL as any);
+            const isLocal = await serverConfig.publicConfig.get(PublicConfigKey.IS_LOCAL as any);
             expect(isLocal).toBe(false);
 
-            const provider = await serverConfig.getPublicConfig(PublicConfigKey.CLOUD_PROVIDER as any);
+            const provider = await serverConfig.publicConfig.get(PublicConfigKey.CLOUD_PROVIDER as any);
             expect(provider).toBe('unknown');
 
-            const region = await serverConfig.getPublicConfig(PublicConfigKey.REGION as any);
+            const region = await serverConfig.publicConfig.get(PublicConfigKey.REGION as any);
             expect(region).toBe('unknown');
         });
 
         it('returns undefined for non-existent keys', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const result = await serverConfig.getPublicConfig('nonexistent' as any);
+            const result = await serverConfig.publicConfig.get('nonexistent' as any);
             expect(result).toBeUndefined();
         });
     });
@@ -157,20 +157,20 @@ describe('Full Pipeline Integration Tests', () => {
             const serverConfig = await freshBuildConfigObject();
 
             // Overridden in development.ts
-            const apiUrl = await serverConfig.getPublicConfig('apiUrl');
+            const apiUrl = await serverConfig.publicConfig.get('apiUrl');
             expect(apiUrl).toBe('http://dev-api.example.com');
 
-            const appName = await serverConfig.getPublicConfig('appName');
+            const appName = await serverConfig.publicConfig.get('appName');
             expect(appName).toBe('dev-app');
 
-            const enableDebug = await serverConfig.getPublicConfig('enableDebug');
+            const enableDebug = await serverConfig.publicConfig.get('enableDebug');
             expect(enableDebug).toBe(true);
 
             // Inherited from default.ts (not overridden)
-            const maxRetries = await serverConfig.getPublicConfig('maxRetries');
+            const maxRetries = await serverConfig.publicConfig.get('maxRetries');
             expect(maxRetries).toBe(3);
 
-            const database = await serverConfig.getPublicConfig('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toEqual({
                 host: 'localhost',
                 port: 5432,
@@ -181,24 +181,24 @@ describe('Full Pipeline Integration Tests', () => {
         it('overrides feature flags from development.ts', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const enableNewUI = await serverConfig.getFeatureFlag('enableNewUI');
+            const enableNewUI = await serverConfig.featureFlag.get('enableNewUI');
             expect(enableNewUI).toBe(true);
 
-            const enableBeta = await serverConfig.getFeatureFlag('enableBeta');
+            const enableBeta = await serverConfig.featureFlag.get('enableBeta');
             expect(enableBeta).toBe(true);
 
             // Not overridden → default
-            const maintenanceMode = await serverConfig.getFeatureFlag('maintenanceMode');
+            const maintenanceMode = await serverConfig.featureFlag.get('maintenanceMode');
             expect(maintenanceMode).toBe(false);
         });
 
         it('inherits secrets from default.ts when development.ts does not override them', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const apiKey = await serverConfig.getSecretConfig('apiKey');
+            const apiKey = await serverConfig.secretConfig.get('apiKey');
             expect(apiKey).toBe('default-api-key');
 
-            const dbPassword = await serverConfig.getSecretConfig('dbPassword');
+            const dbPassword = await serverConfig.secretConfig.get('dbPassword');
             expect(dbPassword).toBe('default-db-pass');
         });
     });
@@ -228,15 +228,15 @@ describe('Full Pipeline Integration Tests', () => {
             const serverConfig = await freshBuildConfigObject();
 
             // production.aws.ts overrides apiUrl from production.ts
-            const apiUrl = await serverConfig.getPublicConfig('apiUrl');
+            const apiUrl = await serverConfig.publicConfig.get('apiUrl');
             expect(apiUrl).toBe('https://aws-api.example.com');
 
             // production.ts sets maxRetries=5
-            const maxRetries = await serverConfig.getPublicConfig('maxRetries');
+            const maxRetries = await serverConfig.publicConfig.get('maxRetries');
             expect(maxRetries).toBe(5);
 
             // production.aws.us-east-1.ts overrides database.host via defer function
-            const database = await serverConfig.getPublicConfig('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toBeDefined();
             expect(database!.host).toBe('us-east-1-db.example.com');
             // ssl comes from production.ts
@@ -248,30 +248,30 @@ describe('Full Pipeline Integration Tests', () => {
         it('applies production secrets', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const apiKey = await serverConfig.getSecretConfig('apiKey');
+            const apiKey = await serverConfig.secretConfig.get('apiKey');
             expect(apiKey).toBe('prod-api-key-secret');
 
-            const dbPassword = await serverConfig.getSecretConfig('dbPassword');
+            const dbPassword = await serverConfig.secretConfig.get('dbPassword');
             expect(dbPassword).toBe('prod-db-pass-secret');
 
-            const jwtSecret = await serverConfig.getSecretConfig('jwtSecret');
+            const jwtSecret = await serverConfig.secretConfig.get('jwtSecret');
             expect(jwtSecret).toBe('prod-jwt-secret');
         });
 
         it('detects AWS cloud provider and region from env vars', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const provider = await serverConfig.getPublicConfig(PublicConfigKey.CLOUD_PROVIDER as any);
+            const provider = await serverConfig.publicConfig.get(PublicConfigKey.CLOUD_PROVIDER as any);
             expect(provider).toBe('aws');
 
-            const region = await serverConfig.getPublicConfig(PublicConfigKey.REGION as any);
+            const region = await serverConfig.publicConfig.get(PublicConfigKey.REGION as any);
             expect(region).toBe('us-east-1');
         });
 
         it('sets enableDebug=false from production.ts override', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const enableDebug = await serverConfig.getPublicConfig('enableDebug');
+            const enableDebug = await serverConfig.publicConfig.get('enableDebug');
             expect(enableDebug).toBe(false);
         });
     });
@@ -297,35 +297,35 @@ describe('Full Pipeline Integration Tests', () => {
 
             // These would fail TypeScript compilation without `as any`:
             // @ts-expect-error - TS enforces tier isolation
-            await serverConfig.getPublicConfig('apiKey');
+            await serverConfig.publicConfig.get('apiKey');
             // @ts-expect-error - TS enforces tier isolation
-            await serverConfig.getSecretConfig('apiUrl');
+            await serverConfig.secretConfig.get('apiUrl');
             // @ts-expect-error - TS enforces tier isolation
-            await serverConfig.getPublicConfig('enableNewUI');
+            await serverConfig.publicConfig.get('enableNewUI');
             // @ts-expect-error - TS enforces tier isolation
-            await serverConfig.getFeatureFlag('apiUrl');
+            await serverConfig.featureFlag.get('apiUrl');
         });
 
         it('each getter retrieves only its designated tier keys correctly', async () => {
             const serverConfig = await freshBuildConfigObject();
 
             // Public tier
-            const apiUrl = await serverConfig.getPublicConfig('apiUrl');
+            const apiUrl = await serverConfig.publicConfig.get('apiUrl');
             expect(apiUrl).toBe('http://localhost:3000');
 
             // Secret tier
-            const apiKey = await serverConfig.getSecretConfig('apiKey');
+            const apiKey = await serverConfig.secretConfig.get('apiKey');
             expect(apiKey).toBe('default-api-key');
 
             // Feature flag tier
-            const enableNewUI = await serverConfig.getFeatureFlag('enableNewUI');
+            const enableNewUI = await serverConfig.featureFlag.get('enableNewUI');
             expect(enableNewUI).toBe(false);
         });
 
         it('non-existent keys return undefined', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const result = await serverConfig.getPublicConfig('totallyFakeKey' as any);
+            const result = await serverConfig.publicConfig.get('totallyFakeKey' as any);
             expect(result).toBeUndefined();
         });
     });
@@ -347,8 +347,8 @@ describe('Full Pipeline Integration Tests', () => {
 
             try {
                 const serverConfig = await freshBuildConfigObject();
-                const provider = await serverConfig.getPublicConfig(PublicConfigKey.CLOUD_PROVIDER as any);
-                const region = await serverConfig.getPublicConfig(PublicConfigKey.REGION as any);
+                const provider = await serverConfig.publicConfig.get(PublicConfigKey.CLOUD_PROVIDER as any);
+                const region = await serverConfig.publicConfig.get(PublicConfigKey.REGION as any);
                 expect(provider).toBe('aws');
                 expect(region).toBe('eu-west-1');
             } finally {
@@ -368,8 +368,8 @@ describe('Full Pipeline Integration Tests', () => {
 
             try {
                 const serverConfig = await freshBuildConfigObject();
-                const provider = await serverConfig.getPublicConfig(PublicConfigKey.CLOUD_PROVIDER as any);
-                const region = await serverConfig.getPublicConfig(PublicConfigKey.REGION as any);
+                const provider = await serverConfig.publicConfig.get(PublicConfigKey.CLOUD_PROVIDER as any);
+                const region = await serverConfig.publicConfig.get(PublicConfigKey.REGION as any);
                 expect(provider).toBe('custom-cloud');
                 expect(region).toBe('custom-region-1');
             } finally {
@@ -393,8 +393,8 @@ describe('Full Pipeline Integration Tests', () => {
 
             try {
                 const serverConfig = await freshBuildConfigObject();
-                const provider = await serverConfig.getPublicConfig(PublicConfigKey.CLOUD_PROVIDER as any);
-                const region = await serverConfig.getPublicConfig(PublicConfigKey.REGION as any);
+                const provider = await serverConfig.publicConfig.get(PublicConfigKey.CLOUD_PROVIDER as any);
+                const region = await serverConfig.publicConfig.get(PublicConfigKey.REGION as any);
                 expect(provider).toBe('unknown');
                 expect(region).toBe('unknown');
             } finally {
@@ -422,9 +422,9 @@ describe('Full Pipeline Integration Tests', () => {
         it('returns same value on repeated async calls', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const result1 = await serverConfig.getPublicConfig('apiUrl');
-            const result2 = await serverConfig.getPublicConfig('apiUrl');
-            const result3 = await serverConfig.getPublicConfig('apiUrl');
+            const result1 = await serverConfig.publicConfig.get('apiUrl');
+            const result2 = await serverConfig.publicConfig.get('apiUrl');
+            const result3 = await serverConfig.publicConfig.get('apiUrl');
             expect(result1).toBe(result2);
             expect(result2).toBe(result3);
             expect(result1).toBe('http://localhost:3000');
@@ -433,8 +433,8 @@ describe('Full Pipeline Integration Tests', () => {
         it('returns same structured value on repeated calls', async () => {
             const serverConfig = await freshBuildConfigObject();
 
-            const result1 = await serverConfig.getPublicConfig('database');
-            const result2 = await serverConfig.getPublicConfig('database');
+            const result1 = await serverConfig.publicConfig.get('database');
+            const result2 = await serverConfig.publicConfig.get('database');
             expect(result1).toEqual(result2);
         });
     });
