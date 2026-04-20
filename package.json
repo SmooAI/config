@@ -155,6 +155,11 @@
             "import": "./dist/config/server.mjs",
             "require": "./dist/config/server.js"
         },
+        "./server": {
+            "types": "./dist/server/index.d.ts",
+            "import": "./dist/server/index.mjs",
+            "require": "./dist/server/index.js"
+        },
         "./platform/client": {
             "types": "./dist/platform/client.d.ts",
             "browser": {
@@ -163,11 +168,6 @@
             },
             "import": "./dist/platform/client.mjs",
             "require": "./dist/platform/client.js"
-        },
-        "./platform/lambda-runtime": {
-            "types": "./dist/platform/lambda-runtime.d.ts",
-            "import": "./dist/platform/lambda-runtime.mjs",
-            "require": "./dist/platform/lambda-runtime.js"
         },
         "./platform/build": {
             "types": "./dist/platform/build.d.ts",

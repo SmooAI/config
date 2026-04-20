@@ -1,6 +1,6 @@
 import path from 'path';
 import { PublicConfigKey } from '@/config/PublicConfigKey';
-import buildConfigObject from '@/platform/server';
+import { buildConfig } from '@/server';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import config from './smooai-config/config';
 
@@ -29,7 +29,7 @@ describe('Server Config Integration Tests', () => {
         }
     });
 
-    const serverConfig = buildConfigObject(config);
+    const serverConfig = buildConfig(config);
 
     beforeEach(() => {
         // Clear any caches that might be persisting between tests
@@ -38,44 +38,44 @@ describe('Server Config Integration Tests', () => {
 
     describe('Standard Public Config', () => {
         it('should retrieve standard environment config', async () => {
-            const env = await serverConfig.publicConfig.getAsync(PublicConfigKey.ENV);
+            const env = await serverConfig.publicConfig.get(PublicConfigKey.ENV);
             expect(env).toBeDefined();
         });
 
         it('should retrieve standard cloud provider config', async () => {
-            const cloudProvider = await serverConfig.publicConfig.getAsync(PublicConfigKey.CLOUD_PROVIDER);
+            const cloudProvider = await serverConfig.publicConfig.get(PublicConfigKey.CLOUD_PROVIDER);
             expect(cloudProvider).toBeDefined();
         });
 
         it('should retrieve standard region config', async () => {
-            const region = await serverConfig.publicConfig.getAsync(PublicConfigKey.REGION);
+            const region = await serverConfig.publicConfig.get(PublicConfigKey.REGION);
             expect(region).toBeDefined();
         });
 
         it('should retrieve standard is local config', async () => {
-            const isLocal = await serverConfig.publicConfig.getAsync(PublicConfigKey.IS_LOCAL);
+            const isLocal = await serverConfig.publicConfig.get(PublicConfigKey.IS_LOCAL);
             expect(typeof isLocal).toBe('boolean');
         });
     });
 
     describe('Public Config', () => {
         it('should retrieve basic string config', async () => {
-            const apiUrl = await serverConfig.publicConfig.getAsync('apiUrl');
+            const apiUrl = await serverConfig.publicConfig.get('apiUrl');
             expect(apiUrl).toBe('http://localhost:3000');
         });
 
         it('should retrieve basic number config', async () => {
-            const maxRetries = await serverConfig.publicConfig.getAsync('maxRetries');
+            const maxRetries = await serverConfig.publicConfig.get('maxRetries');
             expect(maxRetries).toBe(3);
         });
 
         it('should retrieve basic boolean config', async () => {
-            const enableDebug = await serverConfig.publicConfig.getAsync('enableDebug');
+            const enableDebug = await serverConfig.publicConfig.get('enableDebug');
             expect(enableDebug).toBe(true);
         });
 
         it('should retrieve structured database config', async () => {
-            const database = await serverConfig.publicConfig.getAsync('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toEqual({
                 host: 'localhost',
                 port: 5432,
@@ -86,7 +86,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should retrieve structured features config', async () => {
-            const features = await serverConfig.publicConfig.getAsync('features');
+            const features = await serverConfig.publicConfig.get('features');
             expect(features).toEqual({
                 rateLimiting: {
                     enabled: true,
@@ -103,19 +103,19 @@ describe('Server Config Integration Tests', () => {
 
         it('should handle invalid public config key', async () => {
             // @ts-expect-error Testing invalid key
-            const result = await serverConfig.publicConfig.getAsync('nonexistentKey');
+            const result = await serverConfig.publicConfig.get('nonexistentKey');
             expect(result).toBeUndefined();
         });
     });
 
     describe('Secret Config', () => {
         it('should retrieve basic secret string config', async () => {
-            const apiKey = await serverConfig.secretConfig.getAsync('apiKey');
+            const apiKey = await serverConfig.secretConfig.get('apiKey');
             expect(apiKey).toBe('dev-api-key');
         });
 
         it('should retrieve structured credentials config', async () => {
-            const credentials = await serverConfig.secretConfig.getAsync('credentials');
+            const credentials = await serverConfig.secretConfig.get('credentials');
             expect(credentials).toEqual({
                 username: 'admin',
                 password: 'admin123',
@@ -125,7 +125,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should retrieve structured encryption config', async () => {
-            const encryption = await serverConfig.secretConfig.getAsync('encryption');
+            const encryption = await serverConfig.secretConfig.get('encryption');
             expect(encryption).toEqual({
                 algorithm: 'aes-256-gcm',
                 keyRotationDays: 30,
@@ -135,21 +135,21 @@ describe('Server Config Integration Tests', () => {
 
         it('should handle invalid secret config key', async () => {
             // @ts-expect-error Testing invalid key
-            const result = await serverConfig.secretConfig.getAsync('nonexistentKey');
+            const result = await serverConfig.secretConfig.get('nonexistentKey');
             expect(result).toBeUndefined();
         });
     });
 
     describe('Feature Flags', () => {
         it('should retrieve basic feature flags', async () => {
-            const enableNewUI = await serverConfig.featureFlag.getAsync('enableNewUI');
-            const betaFeatures = await serverConfig.featureFlag.getAsync('betaFeatures');
+            const enableNewUI = await serverConfig.featureFlag.get('enableNewUI');
+            const betaFeatures = await serverConfig.featureFlag.get('betaFeatures');
             expect(enableNewUI).toBe(false);
             expect(betaFeatures).toBe(false);
         });
 
         it('should retrieve structured experimental features config', async () => {
-            const experimentalFeatures = await serverConfig.featureFlag.getAsync('experimentalFeatures');
+            const experimentalFeatures = await serverConfig.featureFlag.get('experimentalFeatures');
             expect(experimentalFeatures).toEqual({
                 aiAssist: false,
                 darkMode: false,
@@ -159,7 +159,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should retrieve structured A/B testing config', async () => {
-            const abTesting = await serverConfig.featureFlag.getAsync('abTesting');
+            const abTesting = await serverConfig.featureFlag.get('abTesting');
             expect(abTesting).toEqual({
                 enabled: false,
                 testGroups: [
@@ -179,7 +179,7 @@ describe('Server Config Integration Tests', () => {
 
         it('should handle invalid feature flag key', async () => {
             // @ts-expect-error Testing invalid key
-            const result = await serverConfig.featureFlag.getAsync('nonexistentKey');
+            const result = await serverConfig.featureFlag.get('nonexistentKey');
             expect(result).toBeUndefined();
         });
     });
@@ -220,7 +220,7 @@ describe('Server Config Integration Tests', () => {
 
     describe('Type Validation', () => {
         it('should validate database port range', async () => {
-            const database = await serverConfig.publicConfig.getAsync('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toBeDefined();
             if (database) {
                 expect(database.port).toBeGreaterThanOrEqual(1);
@@ -229,7 +229,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should validate connection timeout range', async () => {
-            const database = await serverConfig.publicConfig.getAsync('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toBeDefined();
             if (database) {
                 expect(database.connectionTimeout).toBeGreaterThanOrEqual(1000);
@@ -238,7 +238,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should validate pool size range', async () => {
-            const database = await serverConfig.publicConfig.getAsync('database');
+            const database = await serverConfig.publicConfig.get('database');
             expect(database).toBeDefined();
             if (database) {
                 expect(database.poolSize).toBeGreaterThanOrEqual(1);
@@ -247,7 +247,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should validate encryption algorithm', async () => {
-            const encryption = await serverConfig.secretConfig.getAsync('encryption');
+            const encryption = await serverConfig.secretConfig.get('encryption');
             expect(encryption).toBeDefined();
             if (encryption) {
                 expect(['aes-256-gcm', 'chacha20-poly1305']).toContain(encryption.algorithm);
@@ -255,7 +255,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should validate key rotation days range', async () => {
-            const encryption = await serverConfig.secretConfig.getAsync('encryption');
+            const encryption = await serverConfig.secretConfig.get('encryption');
             expect(encryption).toBeDefined();
             if (encryption) {
                 expect(encryption.keyRotationDays).toBeGreaterThanOrEqual(1);
@@ -264,7 +264,7 @@ describe('Server Config Integration Tests', () => {
         });
 
         it('should validate rollout percentage range', async () => {
-            const experimentalFeatures = await serverConfig.featureFlag.getAsync('experimentalFeatures');
+            const experimentalFeatures = await serverConfig.featureFlag.get('experimentalFeatures');
             expect(experimentalFeatures).toBeDefined();
             if (experimentalFeatures) {
                 expect(experimentalFeatures.rolloutPercentage).toBeGreaterThanOrEqual(0);

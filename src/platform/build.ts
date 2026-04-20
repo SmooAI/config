@@ -12,7 +12,7 @@ import { ConfigClient, ConfigClientOptions } from './client';
  *   SMOO_CONFIG_KEY_FILE = <absolute path to the blob on disk at runtime>
  *   SMOO_CONFIG_KEY      = <returned keyB64>
  *
- * At cold start, `@smooai/config/platform/runtime` reads both and decrypts
+ * At cold start, `@smooai/config/server` reads both and decrypts
  * once into an in-memory map. No runtime fetch for public + secret values.
  *
  * **Feature flags are intentionally NOT baked** — they're designed to flip
