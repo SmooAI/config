@@ -1,6 +1,6 @@
 [package]
 name = "smooai-config"
-version = "4.0.0"
+version = "4.1.0"
 edition = "2021"
 description = "Type-safe three-tier configuration management (public, secret, feature flags) with schema validation and a runtime client for the Smoo AI config platform."
 license = "MIT"
