@@ -38,6 +38,26 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 This is the Python port of [@smooai/config](https://www.npmjs.com/package/@smooai/config), mirroring the TypeScript feature set for backend services. Define schemas with familiar Pydantic models, generate JSON Schema for cross-language interoperability, and use the runtime client to fetch live configuration values from any Python environment.
 
+### Priority chain
+
+Every config read — sync or async, public or secret — runs the same **fallback chain** as the TypeScript SDK (see [main README — Priority Chain](../README.md#priority-chain) for diagrams + rationale):
+
+| #   | Source                              | Notes                                                      |
+| --- | ----------------------------------- | ---------------------------------------------------------- |
+| 1   | **Baked blob**                      | AES-GCM file on disk, decrypted once at process start      |
+| 2   | **Environment variables**           | `os.environ[UPPER_SNAKE_CASE(key)]`                        |
+| 3   | **HTTP config API** (`api.smoo.ai`) | live fetch via `httpx`, 30s cache                          |
+| 4   | **Local file defaults**             | `.smooai-config/<env>.py` / `.json` / `.yaml`, deep-merged |
+
+**First non-empty source wins** — later sources don't override earlier ones. Feature flags flip to HTTP-first and skip the blob (live-toggleable by design).
+
+Parity for the unified `build_config(schema)` surface is tracked in [SMOODEV-612](https://smooai.atlassian.net/browse/SMOODEV-612). Until it lands, this package exposes:
+
+- `define_config(...)` + Pydantic schemas (unchanged)
+- `ConfigClient` — HTTP-only tier (no blob / env / file fallback yet)
+
+Callers that need the full priority chain today can wrap `ConfigClient` with their own fallback logic, or use the TypeScript SDK from a Node sidecar. Production Python services don't need this today since the Python AI server pulls most config via env vars set by SST.
+
 ### Why smooai-config?
 
 Ever scattered configuration across environment variables, dotenv files, and hardcoded values across your Python microservices? Or struggled to keep configuration consistent between TypeScript frontends and Python backends? Traditional config management gives you the values, but not the safety.

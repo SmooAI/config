@@ -34,6 +34,24 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 A Go port of [@smooai/config](https://www.npmjs.com/package/@smooai/config) that mirrors the feature set of the TypeScript, Python, and Rust versions. The package exposes a struct-driven configuration API using `invopop/jsonschema` for JSON Schema reflection, a thread-safe HTTP client with `sync.RWMutex`-protected local caching, and a unified config manager that merges file config, remote API, and environment variables.
 
+### Priority chain
+
+Every config read goes through the same **fallback chain** as the TypeScript SDK (see [main README — Priority Chain](../../README.md#priority-chain) for diagrams + rationale):
+
+| #   | Source                              | Notes                                              |
+| --- | ----------------------------------- | -------------------------------------------------- |
+| 1   | **Baked blob**                      | AES-GCM file on disk, decrypted once               |
+| 2   | **Environment variables**           | `os.Getenv(UPPER_SNAKE_CASE(key))`                 |
+| 3   | **HTTP config API** (`api.smoo.ai`) | fetch via `net/http`, 30s cache                    |
+| 4   | **Local file defaults**             | `.smooai-config/<env>.yaml` / `.json`, deep-merged |
+
+**First non-empty source wins** — later sources don't override earlier ones. Feature flags flip to HTTP-first and skip the blob.
+
+Parity for the unified `BuildConfig(schema)` accessor — with `.GetContext(ctx, key)` for context-aware access — is tracked in [SMOODEV-614](https://smooai.atlassian.net/browse/SMOODEV-614). Go doesn't split sync vs async (blocking IO is the default), so the Go SDK exposes one `Get` method per tier rather than the `get` / `getSync` pair from TypeScript. Until parity lands, this package exposes:
+
+- `DefineConfigTyped[T]()` + struct-tag-derived schemas (unchanged)
+- `ConfigClient` — HTTP-only tier with local caching (no blob / env / file fallback chain yet)
+
 ### Why smooai-config?
 
 Ever scattered configuration across hardcoded values, config files, and environment variables across your Go services? Or struggled to keep configuration consistent between Go backends and TypeScript frontends? Traditional config management gives you the values, but not the cross-language safety.
