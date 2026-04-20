@@ -64,3 +64,4 @@ go/config/config
 .sst
 .pulumi
 
+src/server/sync-worker-source.generated.ts
