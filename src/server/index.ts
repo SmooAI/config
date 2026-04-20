@@ -40,25 +40,53 @@
  *   // Sync (drop-in for constructors / top-level init):
  *   const supabaseUrl = config.publicConfig.getSync('supabaseUrl');
  */
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { defineConfig, InferConfigTypes } from '@/config/config';
 import { createSyncFn } from 'synckit';
 import { buildConfigAsync, BuildConfigAsyncOptions } from './internal';
+import { WORKER_SOURCE } from './sync-worker-source.generated';
 
 export type { BuildConfigAsyncOptions as BuildConfigOptions } from './internal';
 export { __resetServerCaches } from './internal';
 
 /**
- * Resolve the compiled sync-worker path. tsup emits `dist/server/sync-worker.{js,mjs}`
- * alongside `index.{js,mjs}` so `__dirname` / `import.meta.url` point at the same
- * directory regardless of which module format the consumer loads.
+ * SMOODEV-617 — materialize the bundled worker into a temp file once per
+ * process so `createSyncFn` can take a real `file://` URL.
+ *
+ * Why not a `data:` URL directly? synckit's `createSyncFn` calls
+ * `fileURLToPath(url)` unconditionally in the top of its implementation
+ * — it only accepts `file://`. The `dataUrl` helper exposed on the
+ * synckit API is used internally to wrap the *real* worker file in a
+ * global-shim injector; it is not a way for callers to avoid writing
+ * a file to disk.
+ *
+ * So instead, at first-use time we:
+ *   1. Import `WORKER_SOURCE` — the fully-bundled ESM source of
+ *      `src/server/sync-worker.ts` with every dep inlined. Built ahead
+ *      of tsup by `scripts/build-sync-worker.mjs` and consumed as a
+ *      plain string literal; esbuild / tsup cannot tree-shake it out.
+ *   2. Write it to `mkdtempSync()/sync-worker.mjs` — one-time 1-2 MiB
+ *      write to `/tmp` on Lambda (512 MiB–10 GiB available).
+ *   3. Hand the resulting `file://` URL to `createSyncFn`. synckit spins
+ *      up a Node `Worker` as normal; the worker imports its deps from
+ *      inside the bundled source, no external module resolution.
+ *
+ * Works in any Node environment with a writable temp dir: AWS Lambda,
+ * ECS, Fargate, long-lived servers, CLI scripts. Vercel edge runtimes
+ * don't have `worker_threads`, so `.getSync()` is a no-go there by
+ * design — but `.get()` (async) still works everywhere.
  */
-function resolveSyncWorkerPath(): string {
-    // CJS build sets __dirname; ESM build doesn't. Fall through gracefully.
-    // eslint-disable-next-line no-undef
-    const dir = typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
-    return path.resolve(dir, 'sync-worker.js');
+let cachedWorkerUrl: URL | undefined;
+function ensureWorkerFile(): URL {
+    if (cachedWorkerUrl) return cachedWorkerUrl;
+    const dir = mkdtempSync(join(tmpdir(), 'smooai-config-'));
+    const filePath = join(dir, 'sync-worker.mjs');
+    writeFileSync(filePath, WORKER_SOURCE);
+    cachedWorkerUrl = pathToFileURL(filePath);
+    return cachedWorkerUrl;
 }
 
 export function buildConfig<Schema extends ReturnType<typeof defineConfig>>(schema: Schema, options?: BuildConfigAsyncOptions) {
@@ -69,13 +97,13 @@ export function buildConfig<Schema extends ReturnType<typeof defineConfig>>(sche
 
     const asyncCore = buildConfigAsync(schema, options);
 
-    const workerPath = resolveSyncWorkerPath();
     // One worker per tier keeps bundles simple and lets synckit keep a
     // warm thread per tier so repeated reads in hot paths don't repay the
     // worker-spawn cost.
-    const publicSync = createSyncFn(workerPath, { tsRunner: 'tsx' });
-    const secretSync = createSyncFn(workerPath, { tsRunner: 'tsx' });
-    const flagSync = createSyncFn(workerPath, { tsRunner: 'tsx' });
+    const workerUrl = ensureWorkerFile();
+    const publicSync = createSyncFn(workerUrl);
+    const secretSync = createSyncFn(workerUrl);
+    const flagSync = createSyncFn(workerUrl);
 
     return {
         publicConfig: {
