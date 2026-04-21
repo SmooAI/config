@@ -40,10 +40,10 @@
  *   // Sync (drop-in for constructors / top-level init):
  *   const supabaseUrl = config.publicConfig.getSync('supabaseUrl');
  */
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { defineConfig, InferConfigTypes } from '@/config/config';
 import { createSyncFn } from 'synckit';
 import { buildConfigAsync, BuildConfigAsyncOptions } from './internal';
@@ -53,35 +53,69 @@ export type { BuildConfigAsyncOptions as BuildConfigOptions } from './internal';
 export { __resetServerCaches } from './internal';
 
 /**
- * SMOODEV-617 — materialize the bundled worker into a temp file once per
- * process so `createSyncFn` can take a real `file://` URL.
+ * Resolve the worker file URL for synckit. Two paths, in order:
  *
- * Why not a `data:` URL directly? synckit's `createSyncFn` calls
- * `fileURLToPath(url)` unconditionally in the top of its implementation
- * — it only accepts `file://`. The `dataUrl` helper exposed on the
- * synckit API is used internally to wrap the *real* worker file in a
- * global-shim injector; it is not a way for callers to avoid writing
- * a file to disk.
+ *   1. **Sidecar file** — `./sync-worker.mjs` sitting next to the compiled
+ *      SDK entry. This is the normal case when the consumer does not bundle
+ *      (plain Node resolution from `node_modules/@smooai/config/dist/server/`)
+ *      or when the bundler copies the sidecar (SST `copyFiles`, esbuild with
+ *      the `new URL(..., import.meta.url)` asset hint, etc.). Zero /tmp write,
+ *      zero cold-start cost beyond what synckit itself pays.
  *
- * So instead, at first-use time we:
- *   1. Import `WORKER_SOURCE` — the fully-bundled ESM source of
- *      `src/server/sync-worker.ts` with every dep inlined. Built ahead
- *      of tsup by `scripts/build-sync-worker.mjs` and consumed as a
- *      plain string literal; esbuild / tsup cannot tree-shake it out.
- *   2. Write it to `mkdtempSync()/sync-worker.mjs` — one-time 1-2 MiB
- *      write to `/tmp` on Lambda (512 MiB–10 GiB available).
- *   3. Hand the resulting `file://` URL to `createSyncFn`. synckit spins
- *      up a Node `Worker` as normal; the worker imports its deps from
- *      inside the bundled source, no external module resolution.
+ *   2. **Extracted from `WORKER_SOURCE`** (SMOODEV-617 fallback) — the worker
+ *      body is also embedded as a bundled ESM string literal in
+ *      `sync-worker-source.generated.ts`. If the sidecar isn't on disk
+ *      (single-file bundled Lambda with no copyFiles), we write the string
+ *      to `mkdtempSync()/sync-worker.mjs` once per process and hand that
+ *      `file://` URL to synckit. One-time ~1-2 MiB write to `/tmp`.
  *
- * Works in any Node environment with a writable temp dir: AWS Lambda,
- * ECS, Fargate, long-lived servers, CLI scripts. Vercel edge runtimes
- * don't have `worker_threads`, so `.getSync()` is a no-go there by
- * design — but `.get()` (async) still works everywhere.
+ * Why not a `data:` URL directly? `createSyncFn` passes the URL through
+ * `fileURLToPath` unconditionally — only `file://` works.
+ *
+ * How to keep this on path (1) on AWS Lambda via SST:
+ *
+ * ```ts
+ * // sst.config.ts
+ * new sst.aws.Function('Api', {
+ *   handler: 'src/api.handler',
+ *   copyFiles: [
+ *     { from: 'node_modules/@smooai/config/dist/server/sync-worker.mjs' },
+ *   ],
+ * });
+ * ```
+ *
+ * Or at the project level via `$transform` so every `Function` gets it:
+ *
+ * ```ts
+ * $transform(sst.aws.Function, (fn) => {
+ *   fn.copyFiles = [
+ *     ...(fn.copyFiles ?? []),
+ *     { from: 'node_modules/@smooai/config/dist/server/sync-worker.mjs' },
+ *   ];
+ * });
+ * ```
+ *
+ * Vercel edge runtimes don't have `worker_threads` at all, so `.getSync()`
+ * is unavailable there by design — `.get()` (async) works everywhere.
  */
 let cachedWorkerUrl: URL | undefined;
+
 function ensureWorkerFile(): URL {
     if (cachedWorkerUrl) return cachedWorkerUrl;
+
+    // Path 1 — sidecar file next to the compiled SDK entry.
+    try {
+        const sidecar = new URL('./sync-worker.mjs', import.meta.url);
+        if (existsSync(fileURLToPath(sidecar))) {
+            cachedWorkerUrl = sidecar;
+            return cachedWorkerUrl;
+        }
+    } catch {
+        // `new URL` can throw in exotic environments (Deno compile, etc.).
+        // Fall through to the embedded-source extraction path.
+    }
+
+    // Path 2 — extract the embedded worker source to /tmp.
     const dir = mkdtempSync(join(tmpdir(), 'smooai-config-'));
     const filePath = join(dir, 'sync-worker.mjs');
     writeFileSync(filePath, WORKER_SOURCE);

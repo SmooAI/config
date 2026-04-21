@@ -77,26 +77,27 @@ export function smooConfigPlugin(options: SmooConfigPluginOptions): Plugin {
 
             // Return define map so Vite replaces these at build time.
             //
-            // Vite's `define` only substitutes STATIC references like
-            // `import.meta.env.VITE_CONFIG_API_URL`. The SDK's
-            // `getClientPublicConfig(key)` / `getClientFeatureFlag(key)`
-            // helpers use DYNAMIC access — `process.env[\`VITE_CONFIG_\${envKey}\`]`
-            // — which Vite can't rewrite per-key. For the dynamic path to
-            // work we need a runtime object the SDK can index into at
-            // runtime. The SDK already checks `globalThis.__VITE_ENV__`
-            // for exactly this; it was just never populated.
+            // Two layers:
             //
-            // We emit:
-            //   1. Per-key static substitutions under `import.meta.env.VITE_X`
-            //      and `process.env.VITE_X` — covers direct-access consumers.
-            //   2. `globalThis.__VITE_ENV__` as a JSON-baked object the SDK's
-            //      dynamic getters fall through to at runtime.
+            //   1. Per-key static substitution under `import.meta.env.VITE_X`
+            //      and `process.env.VITE_X`. This is what lets consumers
+            //      write `import.meta.env.VITE_CONFIG_API_URL` directly and
+            //      have Vite inline the value — the normal Vite ergonomic.
+            //
+            //   2. `__SMOO_CLIENT_ENV__` as a literal JSON object containing
+            //      every baked key. The SDK's `getClientPublicConfig(key)` /
+            //      `getClientFeatureFlag(key)` read via a dynamic key
+            //      (`obj[computedKey]`), which Vite's per-key substitution
+            //      can't handle because the key isn't known statically. The
+            //      SDK reads `__SMOO_CLIENT_ENV__[computedKey]` instead —
+            //      one defined global, populated identically on both Vite
+            //      and Next.js (via `withSmooConfig`'s webpack DefinePlugin).
             const define: Record<string, string> = {};
             for (const [key, value] of Object.entries(envVars)) {
                 define[`import.meta.env.${key}`] = JSON.stringify(value);
                 define[`process.env.${key}`] = JSON.stringify(value);
             }
-            define['globalThis.__VITE_ENV__'] = JSON.stringify(envVars);
+            define.__SMOO_CLIENT_ENV__ = JSON.stringify(envVars);
 
             return { define };
         },

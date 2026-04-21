@@ -39,81 +39,68 @@ export function toUpperSnakeCase(key: string): string {
 }
 
 /**
- * Get a feature flag value from build-time environment variables.
+ * Read the unified bundler-baked env bag.
  *
- * Checks for:
- * 1. NEXT_PUBLIC_FEATURE_FLAG_{KEY} (Next.js)
- * 2. VITE_FEATURE_FLAG_{KEY} (Vite)
+ * Both `smooConfigPlugin` (Vite) and `withSmooConfig` (Next.js) replace
+ * `__SMOO_CLIENT_ENV__` at build time with a literal JSON object
+ * containing all baked `*_CONFIG_*` and `*_FEATURE_FLAG_*` values.
  *
- * The key is converted from camelCase to UPPER_SNAKE_CASE.
- * e.g., "aboutPage" checks NEXT_PUBLIC_FEATURE_FLAG_ABOUT_PAGE
+ * The SDK's dynamic-key lookups (`obj[computedKey]`) only work when the
+ * env bag is a real runtime object. Per-key static substitution of
+ * `process.env.X` / `import.meta.env.X` is useless here because the key
+ * is only known at call time — so neither bundler rewrites it, and both
+ * return `undefined`. A single defined global fixes that for both.
  *
- * @param key - The camelCase feature flag key
- * @returns true if the flag is explicitly set to "true", false otherwise
+ * Falls back to `{}` if the plugin wasn't installed or the bundler didn't
+ * run (e.g. plain tsc/ts-node), preserving the old "return undefined"
+ * behaviour in unconfigured environments.
  */
-export function getClientFeatureFlag(key: string): boolean {
-    const envKey = toUpperSnakeCase(key);
+declare const __SMOO_CLIENT_ENV__: Record<string, string> | undefined;
 
-    const nextValue = typeof process !== 'undefined' ? process.env?.[`NEXT_PUBLIC_FEATURE_FLAG_${envKey}`] : undefined;
-    if (nextValue !== undefined) {
-        return nextValue === 'true' || nextValue === '1';
-    }
-
-    const viteValue = typeof process !== 'undefined' ? process.env?.[`VITE_FEATURE_FLAG_${envKey}`] : undefined;
-    if (viteValue !== undefined) {
-        return viteValue === 'true' || viteValue === '1';
-    }
-
+function readClientEnv(): Record<string, string> {
     try {
-        const viteEnv = (globalThis as Record<string, unknown>).__VITE_ENV__ as Record<string, string> | undefined;
-        const viteEnvValue = viteEnv?.[`VITE_FEATURE_FLAG_${envKey}`];
-        if (viteEnvValue !== undefined) {
-            return viteEnvValue === 'true' || viteEnvValue === '1';
+        // Each bundler's define/DefinePlugin rewrites this to the literal object.
+        if (typeof __SMOO_CLIENT_ENV__ !== 'undefined' && __SMOO_CLIENT_ENV__) {
+            return __SMOO_CLIENT_ENV__;
         }
     } catch {
-        // Vite env not available
+        // ReferenceError when neither plugin ran — fall through.
     }
-
-    return false;
+    return {};
 }
 
 /**
- * Get a public config value from build-time environment variables.
+ * Get a feature flag value from the bundler-baked env bag.
  *
- * Checks for:
- * 1. NEXT_PUBLIC_CONFIG_{KEY} (Next.js)
- * 2. VITE_CONFIG_{KEY} (Vite)
+ * Looks up (in order, first hit wins):
+ * 1. `NEXT_PUBLIC_FEATURE_FLAG_{KEY}` — populated by `withSmooConfig` (Next.js)
+ * 2. `VITE_FEATURE_FLAG_{KEY}` — populated by `smooConfigPlugin` (Vite)
  *
  * The key is converted from camelCase to UPPER_SNAKE_CASE.
- * e.g., "apiBaseUrl" checks NEXT_PUBLIC_CONFIG_API_BASE_URL
+ * e.g., `"aboutPage"` → `NEXT_PUBLIC_FEATURE_FLAG_ABOUT_PAGE`
+ */
+export function getClientFeatureFlag(key: string): boolean {
+    const envKey = toUpperSnakeCase(key);
+    const env = readClientEnv();
+    const raw = env[`NEXT_PUBLIC_FEATURE_FLAG_${envKey}`] ?? env[`VITE_FEATURE_FLAG_${envKey}`];
+    if (raw === undefined) return false;
+    return raw === 'true' || raw === '1';
+}
+
+/**
+ * Get a public config value from the bundler-baked env bag.
  *
- * @param key - The camelCase config key
- * @returns The config value as a string, or undefined if not set
+ * Looks up (in order, first hit wins):
+ * 1. `NEXT_PUBLIC_CONFIG_{KEY}` — populated by `withSmooConfig` (Next.js)
+ * 2. `VITE_CONFIG_{KEY}` — populated by `smooConfigPlugin` (Vite)
+ *
+ * The key is converted from camelCase to UPPER_SNAKE_CASE.
+ * e.g., `"apiBaseUrl"` → `NEXT_PUBLIC_CONFIG_API_BASE_URL`
  */
 export function getClientPublicConfig(key: string): string | undefined {
     const envKey = toUpperSnakeCase(key);
-
-    const nextValue = typeof process !== 'undefined' ? process.env?.[`NEXT_PUBLIC_CONFIG_${envKey}`] : undefined;
-    if (nextValue !== undefined) {
-        return nextValue;
-    }
-
-    const viteValue = typeof process !== 'undefined' ? process.env?.[`VITE_CONFIG_${envKey}`] : undefined;
-    if (viteValue !== undefined) {
-        return viteValue;
-    }
-
-    try {
-        const viteEnv = (globalThis as Record<string, unknown>).__VITE_ENV__ as Record<string, string> | undefined;
-        const viteEnvValue = viteEnv?.[`VITE_CONFIG_${envKey}`];
-        if (viteEnvValue !== undefined) {
-            return viteEnvValue;
-        }
-    } catch {
-        // Vite env not available
-    }
-
-    return undefined;
+    const env = readClientEnv();
+    return env[`NEXT_PUBLIC_CONFIG_${envKey}`] ?? env[`VITE_CONFIG_${envKey}`];
 }
 
 /**

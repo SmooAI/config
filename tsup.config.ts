@@ -83,16 +83,14 @@ const browserEntry = [
 const nodeStub = path.resolve(__dirname, 'src/stubs/node-deps.stub.ts');
 const schemaStub = path.resolve(__dirname, 'src/stubs/standard-schema-serializer.stub.ts');
 
-const aliasedModules = [
-    '@smooai/logger/Logger',
-    'esm-utils',
-    '@valibot/to-json-schema',
-    'arktype',
-    'effect',
-    'effect/JSONSchema',
-    'json-schema-to-zod',
-    'rotating-file-stream',
-];
+// Node-only modules we still alias to stubs in the browser build. Schema
+// serializers (arktype / effect / valibot adapter / json-schema-to-zod) use
+// `esm-utils` (which evals CJS), so they can never ship to the browser —
+// we stub them with a schema-only no-op. `rotating-file-stream` is defensive:
+// nothing should resolve it now that `@smooai/logger` has a top-level
+// `browser` export condition, but keeping the alias means a stray import
+// from a transitive dep can't break consumer bundles.
+const aliasedModules = ['esm-utils', '@valibot/to-json-schema', 'arktype', 'effect', 'effect/JSONSchema', 'json-schema-to-zod', 'rotating-file-stream'];
 
 const aliasMap: Record<string, string> = {};
 for (const mod of aliasedModules) {
@@ -123,28 +121,12 @@ export default defineConfig((options: Options) => [
         sourcemap: true,
         target: 'es2022',
         treeShaking: true,
-        // Mark Node.js-only deps as non-external so esbuild resolves them through our alias plugin.
-        // `@smooai/fetch` is listed so the alias (→ `@smooai/fetch/browser`)
-        // is applied by esbuild — external imports bypass aliasing.
-        noExternal: [...aliasedModules, '@smooai/fetch'],
+        // Non-external so esbuild routes these through the alias plugin
+        // and substitutes the stubs. `@smooai/fetch` and `@smooai/logger`
+        // are *not* listed — both now have top-level `browser` export
+        // conditions (fetch ≥3.1.0, logger ≥4.0.4), so `platform: 'browser'`
+        // picks the right entry automatically. No alias workaround needed.
+        noExternal: aliasedModules,
         esbuildPlugins: [alias(aliasMap)],
-        // SMOODEV-645: `@smooai/fetch`'s package.json exposes a browser
-        // subpath (`./browser/*`) but has no top-level `browser`
-        // condition on `.`. In platform/client.ts we do
-        //   import fetch from '@smooai/fetch';
-        // which in the browser build otherwise resolves to the Node entry
-        // — pulling in `@smooai/logger` + `rotating-file-stream` and
-        // breaking Vite / Next.js consumer bundles with
-        //   "Module 'node:v8' has been externalized".
-        // esbuild's native `alias` (which does module-level resolution,
-        // not just path replacement like `esbuild-plugin-alias`) rewrites
-        // the bare specifier to the browser subpath for the browser bundle
-        // only.
-        esbuildOptions(opts) {
-            // The `./browser/*` subpath pattern requires a trailing segment —
-            // bare `@smooai/fetch/browser` doesn't resolve. Use the explicit
-            // `/browser/index` entry which matches the subpath pattern.
-            opts.alias = { ...(opts.alias ?? {}), '@smooai/fetch': '@smooai/fetch/browser/index' };
-        },
     },
 ]);

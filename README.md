@@ -258,6 +258,44 @@ const isNewUi = configObj.featureFlag.getSync(FeatureFlagKeys.ENABLE_NEW_UI);
 const apiKey = await configObj.secretConfig.getAsync(SecretConfigKeys.API_KEY);
 ```
 
+### How `.getSync()` works (and how to optimise it on Lambda)
+
+Sync accessors run an async config read to completion on the caller thread via
+`synckit` — a Node `Worker` pool + `Atomics.wait` on a `SharedArrayBuffer`.
+`createSyncFn` only accepts a `file://` URL, so the worker body has to live on
+disk. The SDK resolves it in two stages:
+
+1. **Sidecar file** — `sync-worker.mjs` sitting next to `dist/server/index.mjs`
+   in the installed package. This is the normal case for plain Node resolution
+   (no bundling) or when the bundler copies the sidecar to the deploy output.
+   Zero `/tmp` writes.
+
+2. **Extract-to-`/tmp` fallback** — if the sidecar isn't found on disk (e.g.
+   a single-file bundled Lambda handler with no copyFiles), the SDK writes
+   an embedded copy of the worker source to `mkdtempSync()/sync-worker.mjs`
+   once per process and hands that path to synckit. One ~1-2 MiB write at
+   cold start. Works anywhere with a writable temp dir.
+
+Both paths are transparent — existing code keeps working either way. To keep
+path (1) on AWS Lambda via SST, copy the sidecar alongside each function:
+
+```typescript
+// sst.config.ts — per function
+new sst.aws.Function('Api', {
+    handler: 'src/api.handler',
+    copyFiles: [{ from: 'node_modules/@smooai/config/dist/server/sync-worker.mjs' }],
+});
+
+// Or at the stack level via $transform (every Function gets it automatically)
+$transform(sst.aws.Function, (fn) => {
+    fn.copyFiles = [...(fn.copyFiles ?? []), { from: 'node_modules/@smooai/config/dist/server/sync-worker.mjs' }];
+});
+```
+
+Vercel edge runtimes don't expose `worker_threads`, so `.getSync()` is a no-go
+there by design — use `.get()` (async) everywhere that needs to run on the
+edge. The error surface makes this explicit.
+
 ---
 
 ## React Hooks (framework-agnostic)
