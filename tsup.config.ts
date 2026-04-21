@@ -122,11 +122,19 @@ export default defineConfig((options: Options) => [
         target: 'es2022',
         treeShaking: true,
         // Non-external so esbuild routes these through the alias plugin
-        // and substitutes the stubs. `@smooai/fetch` and `@smooai/logger`
-        // are *not* listed — both now have top-level `browser` export
-        // conditions (fetch ≥3.1.0, logger ≥4.0.4), so `platform: 'browser'`
-        // picks the right entry automatically. No alias workaround needed.
-        noExternal: aliasedModules,
+        // and substitutes the stubs.
+        //
+        // `@smooai/fetch` is inlined (kept non-external) in the browser
+        // build on purpose: `platform: 'browser'` does pick up fetch's
+        // `browser` export condition automatically, but only if the
+        // consumer's resolution of `@smooai/fetch` lands on ≥3.1.0. If a
+        // consumer pins the old major (2.x) somewhere else in its tree,
+        // their browser build would fall back to fetch's Node entry and
+        // pull `rotating-file-stream` + logger. Bundling fetch into the
+        // browser dist here makes the browser build self-contained and
+        // immune to consumer-side resolution surprises. The cost is a
+        // small duplicated payload (~few KB) — worth it for robustness.
+        noExternal: [...aliasedModules, '@smooai/fetch'],
         esbuildPlugins: [alias(aliasMap)],
     },
 ]);

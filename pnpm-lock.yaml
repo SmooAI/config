@@ -13,8 +13,8 @@ importers:
         specifier: ^1.4.1
         version: 1.4.1
       '@smooai/fetch':
-        specifier: ^2.1.0
-        version: 2.1.0(@types/node@22.13.10)(typescript@5.8.2)
+        specifier: ^3.1.0
+        version: 3.1.0(@types/node@22.13.10)(typescript@5.8.2)
       '@smooai/logger':
         specifier: ^3.1.1
         version: 3.1.1
@@ -1325,15 +1325,25 @@ packages:
     peerDependencies:
       typescript: ^5.8.2
 
-  '@smooai/fetch@2.1.0':
-    resolution: {integrity: sha512-cww14BkogDR2TBAi6zLsgwV/Cgci+fwmUDd0JeLaj4yycLPR6OkJRfJJ1P4DsQDUqLnHnDFQ4dZ48tBgY/n0EQ==}
+  '@smooai/fetch@3.1.0':
+    resolution: {integrity: sha512-0q4ZWvFWLlUWZEAQAeTHCrLGk4k2ew9/8bDLuUepqS2AyrJkDSynKzK5U5H0ZYAyEdidzh346MuE0Q//SgXUww==}
 
   '@smooai/logger@3.1.1':
     resolution: {integrity: sha512-WGjgW7wqwZ2XqcrAOCf237FmR/0bT4Cfb61vhdsaQHX7rxQhSs88VD4SxrNT53KbIcIULuj6z2TaZDCY7TJtwQ==}
     engines: {node: '>=20.0.0'}
 
+  '@smooai/logger@3.3.0':
+    resolution: {integrity: sha512-yIuKxI6M+w/pgG23EhhXdO717EGJjGFESwIoq/KwXDJqEcjq07HlfmkOzBS+wAKj1WRRz17AbmN12oSmq+oJnQ==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
+
   '@smooai/utils@1.3.1':
     resolution: {integrity: sha512-y1jbOW8llHJrCuayJliSEVDSvEaj/4aKF9UP81Qo5i2wN2omFhyBtto0hAPMC3RcygYOBUPfAHJIFkSw+l4g5A==}
+    engines: {node: '>=20.0.0'}
+    hasBin: true
+
+  '@smooai/utils@1.3.2':
+    resolution: {integrity: sha512-OvXXcrXNH61m3udK1G0rTkSjp2dTAfRMHdfLL1NuF/wT7ld4PvuLEN1GRd7n5M+OHhqpE9WSwNx+qdXhMCEiYQ==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
@@ -4767,11 +4777,11 @@ snapshots:
     dependencies:
       typescript: 5.8.2
 
-  '@smooai/fetch@2.1.0(@types/node@22.13.10)(typescript@5.8.2)':
+  '@smooai/fetch@3.1.0(@types/node@22.13.10)(typescript@5.8.2)':
     dependencies:
       '@faker-js/faker': 9.9.0
-      '@smooai/logger': 3.1.1
-      '@smooai/utils': 1.3.1(@types/node@22.13.10)(typescript@5.8.2)
+      '@smooai/logger': 3.3.0
+      '@smooai/utils': 1.3.2(@types/node@22.13.10)(typescript@5.8.2)
       '@standard-schema/spec': 1.0.0
       '@standard-schema/utils': 0.3.0
       lodash.merge: 4.6.2
@@ -4802,12 +4812,52 @@ snapshots:
     transitivePeerDependencies:
       - aws-crt
 
+  '@smooai/logger@3.3.0':
+    dependencies:
+      '@aws-sdk/client-sqs': 3.883.0
+      browser-dtector: 4.1.0
+      dayjs: 1.11.18
+      esbuild-plugin-alias: 0.2.1
+      esm-utils: 4.3.0
+      json-stable-stringify: 1.3.0
+      merge-anything: 6.0.6
+      picocolors: 1.1.1
+      rotating-file-stream: 3.2.7
+      serialize-error: 11.0.3
+      source-map-support: 0.5.21
+      uuid: 9.0.1
+      zod: 4.1.5
+    transitivePeerDependencies:
+      - aws-crt
+
   '@smooai/utils@1.3.1(@types/node@22.13.10)(typescript@5.8.2)':
     dependencies:
       '@oclif/core': 2.16.0(@types/node@22.13.10)(typescript@5.8.2)
       '@oclif/plugin-help': 6.2.32
       '@oclif/plugin-plugins': 5.4.46
       '@smooai/logger': 3.1.1
+      '@standard-schema/spec': 1.0.0
+      '@standard-schema/utils': 0.3.0
+      find-up: 7.0.0
+      hono: 4.9.6
+      http-status-codes: 2.3.0
+      libphonenumber-js: 1.12.15
+      zod: 4.1.5
+      zx: 8.8.1
+    transitivePeerDependencies:
+      - '@swc/core'
+      - '@swc/wasm'
+      - '@types/node'
+      - aws-crt
+      - supports-color
+      - typescript
+
+  '@smooai/utils@1.3.2(@types/node@22.13.10)(typescript@5.8.2)':
+    dependencies:
+      '@oclif/core': 2.16.0(@types/node@22.13.10)(typescript@5.8.2)
+      '@oclif/plugin-help': 6.2.32
+      '@oclif/plugin-plugins': 5.4.46
+      '@smooai/logger': 3.3.0
       '@standard-schema/spec': 1.0.0
       '@standard-schema/utils': 0.3.0
       find-up: 7.0.0
