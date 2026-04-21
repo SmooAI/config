@@ -1,5 +1,21 @@
 # @smooai/library-template
 
+## 4.1.4
+
+### Patch Changes
+
+- 68dad85: **SMOODEV-646: `smooConfigPlugin` — inject `process.env.VITE_*` as well as `import.meta.env.VITE_*`**
+
+    `getClientPublicConfig` / `getClientFeatureFlag` read `process.env.VITE_*` by design (so the same SDK code path works on Next.js + Vite). The Vite plugin previously only substituted `import.meta.env.VITE_*`, so at browser runtime the SDK getters returned `undefined` — no bundle-baked values.
+
+    Fix: the plugin now emits **both** `import.meta.env.VITE_X` and `process.env.VITE_X` define entries. Bundled values finally make it through to `getClientPublicConfig('apiUrl')` / `getClientFeatureFlag('observability')` in Vite apps.
+
+- 68dad85: **SMOODEV-647: `smooConfigPlugin` populates `globalThis.__VITE_ENV__` for dynamic SDK getters**
+
+    `getClientPublicConfig(key)` / `getClientFeatureFlag(key)` use DYNAMIC property access (`process.env[\`VITE*CONFIG*\${envKey}\`]`) which Vite's `define`can't substitute per-key. The SDK's getters already had a fallback path checking`globalThis.**VITE_ENV**` at runtime — the plugin just never populated it.
+
+    The plugin now emits `define: { 'globalThis.__VITE_ENV__': JSON.stringify(envVars) }` in addition to the per-key static substitutions. Bundle-baked values now flow through the SDK's dynamic getters in Vite apps.
+
 ## 4.1.3
 
 ### Patch Changes
