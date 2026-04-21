@@ -123,8 +123,28 @@ export default defineConfig((options: Options) => [
         sourcemap: true,
         target: 'es2022',
         treeShaking: true,
-        // Mark Node.js-only deps as non-external so esbuild resolves them through our alias plugin
-        noExternal: aliasedModules,
+        // Mark Node.js-only deps as non-external so esbuild resolves them through our alias plugin.
+        // `@smooai/fetch` is listed so the alias (→ `@smooai/fetch/browser`)
+        // is applied by esbuild — external imports bypass aliasing.
+        noExternal: [...aliasedModules, '@smooai/fetch'],
         esbuildPlugins: [alias(aliasMap)],
+        // SMOODEV-645: `@smooai/fetch`'s package.json exposes a browser
+        // subpath (`./browser/*`) but has no top-level `browser`
+        // condition on `.`. In platform/client.ts we do
+        //   import fetch from '@smooai/fetch';
+        // which in the browser build otherwise resolves to the Node entry
+        // — pulling in `@smooai/logger` + `rotating-file-stream` and
+        // breaking Vite / Next.js consumer bundles with
+        //   "Module 'node:v8' has been externalized".
+        // esbuild's native `alias` (which does module-level resolution,
+        // not just path replacement like `esbuild-plugin-alias`) rewrites
+        // the bare specifier to the browser subpath for the browser bundle
+        // only.
+        esbuildOptions(opts) {
+            // The `./browser/*` subpath pattern requires a trailing segment —
+            // bare `@smooai/fetch/browser` doesn't resolve. Use the explicit
+            // `/browser/index` entry which matches the subpath pattern.
+            opts.alias = { ...(opts.alias ?? {}), '@smooai/fetch': '@smooai/fetch/browser/index' };
+        },
     },
 ]);
