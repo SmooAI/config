@@ -141,6 +141,14 @@ export interface ConfigAsyncAccessor<ConfigType, PublicKey extends keyof ConfigT
     invalidateCaches: () => void;
     /** Diagnostic — which tier served this key in the last successful read. */
     getSource: (key: string) => 'blob' | 'env' | 'http' | 'file' | undefined;
+    /**
+     * Record a source for a key without performing a read. The sync wrapper
+     * in `/server/index.ts` uses this to copy sources reported by the
+     * synckit worker back into the parent thread's diagnostic map — each
+     * worker has its own module scope, so without this the parent's
+     * `getSource` never sees sync reads.
+     */
+    recordSource: (key: string, source: 'blob' | 'env' | 'http' | 'file' | undefined) => void;
 }
 
 const lastSource = new Map<string, 'blob' | 'env' | 'http' | 'file'>();
@@ -292,6 +300,9 @@ export function buildConfigAsync<Schema extends ReturnType<typeof defineConfig>>
         featureFlag: { get: getFlag },
         invalidateCaches,
         getSource: (key: string) => lastSource.get(key),
+        recordSource: (key: string, source) => {
+            if (source) lastSource.set(key, source);
+        },
     } satisfies ConfigAsyncAccessor<ConfigType, PublicKey, SecretKey, FlagKey>;
 }
 

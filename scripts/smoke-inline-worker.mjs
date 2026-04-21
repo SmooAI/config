@@ -57,7 +57,16 @@ try {
     if (apiUrlAsync !== 'https://api.smoke.example') throw new Error(`async apiUrl mismatch: ${apiUrlAsync}`);
     if (tavilySync !== 'tvly-smoke') throw new Error(`sync tavily mismatch: ${tavilySync}`);
 
-    console.log('\n✅ SMOOTH: inline worker + priority chain work end-to-end');
+    // SMOODEV-642 — after a sync read, getSource must return the tier the
+    // worker actually used. Before the fix this was always undefined for
+    // keys that were only ever read via .getSync().
+    const tavilySrc = cfg.getSource('tavilyApiKey');
+    const apiUrlSrc = cfg.getSource('apiUrl');
+    console.log('getSource sync :', `tavilyApiKey=${tavilySrc} apiUrl=${apiUrlSrc}`);
+    if (tavilySrc !== 'blob') throw new Error(`getSource(tavilyApiKey) expected 'blob' after sync read, got: ${tavilySrc}`);
+    if (apiUrlSrc !== 'blob') throw new Error(`getSource(apiUrl) expected 'blob', got: ${apiUrlSrc}`);
+
+    console.log('\n✅ SMOOTH: inline worker + priority chain + getSource(sync) work end-to-end');
     process.exit(0);
 } catch (err) {
     console.error('\n❌ FAILED:', err);
