@@ -258,26 +258,103 @@ const isNewUi = configObj.featureFlag.getSync(FeatureFlagKeys.ENABLE_NEW_UI);
 const apiKey = await configObj.secretConfig.getAsync(SecretConfigKeys.API_KEY);
 ```
 
-### How `.getSync()` works (and how to optimise it on Lambda)
+### How `.getSync()` works (and how to ship it in any bundled compute)
 
 Sync accessors run an async config read to completion on the caller thread via
 `synckit` — a Node `Worker` pool + `Atomics.wait` on a `SharedArrayBuffer`.
 `createSyncFn` only accepts a `file://` URL, so the worker body has to live on
 disk. The SDK resolves it in two stages:
 
-1. **Sidecar file** — `sync-worker.mjs` sitting next to `dist/server/index.mjs`
-   in the installed package. This is the normal case for plain Node resolution
-   (no bundling) or when the bundler copies the sidecar to the deploy output.
-   Zero `/tmp` writes.
+1. **Sidecar file** — `sync-worker.mjs` sitting next to the compiled SDK entry
+   (i.e. resolved via `new URL('./sync-worker.mjs', import.meta.url)` from
+   `dist/server/index.mjs`). This is the normal case for plain Node resolution
+   with no bundling — `node_modules/@smooai/config/dist/server/sync-worker.mjs`
+   is already there. It's also the preferred case when bundlers copy the
+   sidecar into the deploy output. **Zero `/tmp` writes.**
 
-2. **Extract-to-`/tmp` fallback** — if the sidecar isn't found on disk (e.g.
-   a single-file bundled Lambda handler with no copyFiles), the SDK writes
-   an embedded copy of the worker source to `mkdtempSync()/sync-worker.mjs`
-   once per process and hands that path to synckit. One ~1-2 MiB write at
-   cold start. Works anywhere with a writable temp dir.
+2. **Extract-to-`/tmp` fallback** — if the sidecar isn't on disk at that path
+   (e.g. a bundler inlined the SDK entry into a single file and didn't copy
+   the sidecar), the SDK writes an embedded copy of the worker source to
+   `mkdtempSync()/sync-worker.mjs` once per process and hands that path to
+   synckit. One ~1-2 MiB write at cold start. Works anywhere with a writable
+   temp dir.
 
-Both paths are transparent — existing code keeps working either way. To keep
-path (1) on AWS Lambda via SST, copy the sidecar alongside each function:
+Both paths are transparent — your code is identical either way. Which path
+you land on depends on how your compute is packaged.
+
+#### Plain Node (no bundling)
+
+Zero config. The SDK resolves `node_modules/@smooai/config/dist/server/sync-worker.mjs`
+directly — path (1) every time.
+
+#### Any bundled compute (Lambda, Cloud Run, ECS, container, Worker, etc.)
+
+The rule is universal: **if your build inlines the SDK entry into a single
+output file, you need to ship `sync-worker.mjs` next to that output** (or accept
+path (2)'s `/tmp` write once per cold start).
+
+The source path is always:
+
+```
+node_modules/@smooai/config/dist/server/sync-worker.mjs
+```
+
+The destination is alongside whichever file ends up being your runtime's
+`import.meta.url` anchor — typically the bundled handler `.mjs` / `.js`.
+
+Recipes for common setups:
+
+**esbuild — explicit copy plugin**
+
+```ts
+// build.ts
+import { build } from 'esbuild';
+import { copy } from 'esbuild-plugin-copy';
+
+await build({
+    entryPoints: ['src/handler.ts'],
+    outdir: 'dist',
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    plugins: [
+        copy({
+            assets: {
+                from: 'node_modules/@smooai/config/dist/server/sync-worker.mjs',
+                to: 'dist/sync-worker.mjs',
+            },
+        }),
+    ],
+});
+```
+
+**tsup — `onSuccess` hook**
+
+```ts
+// tsup.config.ts
+export default defineConfig({
+    entry: ['src/handler.ts'],
+    format: ['esm'],
+    onSuccess: 'cp node_modules/@smooai/config/dist/server/sync-worker.mjs dist/sync-worker.mjs',
+});
+```
+
+**Serverless Framework — `package.include`**
+
+```yaml
+package:
+    patterns:
+        - 'node_modules/@smooai/config/dist/server/sync-worker.mjs'
+```
+
+Or copy into the handler dir as a build step and include from there.
+
+**AWS SAM — `CodeUri` + build script**
+
+Add a `Makefile` / build script that copies `sync-worker.mjs` into the
+`BuildArtifactPath` alongside your handler.
+
+**SST (AWS) — per-function or via `$transform`**
 
 ```typescript
 // sst.config.ts — per function
@@ -292,9 +369,31 @@ $transform(sst.aws.Function, (fn) => {
 });
 ```
 
-Vercel edge runtimes don't expose `worker_threads`, so `.getSync()` is a no-go
-there by design — use `.get()` (async) everywhere that needs to run on the
-edge. The error surface makes this explicit.
+**Docker container (ECS, Cloud Run, anywhere)**
+
+```dockerfile
+# After your main build step, ensure the sidecar is next to the bundled entry.
+COPY --from=build /app/dist/server.mjs /app/
+COPY --from=build /app/node_modules/@smooai/config/dist/server/sync-worker.mjs /app/
+CMD ["node", "server.mjs"]
+```
+
+If your build step keeps `node_modules` in the final image, no extra copy is
+needed — the SDK resolves the sidecar from `node_modules/` path (1) directly.
+
+#### When the sidecar truly can't be shipped
+
+Path (2) — the `/tmp` extraction — is the safety net. One ~1-2 MiB write at
+cold start, then synckit re-uses the file for the rest of the process lifetime.
+Lambda's 512 MiB–10 GiB `/tmp` easily absorbs this; containers with an ephemeral
+`/tmp` work the same way. **You can ignore this whole section and `.getSync()`
+will still work** — you're just paying one filesystem write per cold start.
+
+#### Edge runtimes (Vercel Edge, Cloudflare Workers)
+
+These runtimes don't expose Node's `worker_threads` at all, so `.getSync()` is
+a no-go there by design. Use `.get()` (async) everywhere that needs to run on
+the edge. The error surface makes this explicit if you try.
 
 ---
 
