@@ -105,18 +105,31 @@ export function buildConfig<Schema extends ReturnType<typeof defineConfig>>(sche
     const secretSync = createSyncFn(workerUrl);
     const flagSync = createSyncFn(workerUrl);
 
+    // The synckit worker returns `{ value, source }`. Unpack it, record the
+    // source on the parent-thread's `lastSource` map (each worker has its
+    // own module scope, so without this `getSource` never sees sync reads),
+    // and hand the value back to the caller.
+    type WorkerEnvelope = { value: unknown; source: 'blob' | 'env' | 'http' | 'file' | undefined };
+    const unpack = <T>(envelope: WorkerEnvelope, key: string): T | undefined => {
+        asyncCore.recordSource(key, envelope.source);
+        return envelope.value as T | undefined;
+    };
+
     return {
         publicConfig: {
             get: asyncCore.publicConfig.get,
-            getSync: <K extends PublicKey>(key: K): ConfigType[K] | undefined => publicSync(schema, 'public', key) as ConfigType[K] | undefined,
+            getSync: <K extends PublicKey>(key: K): ConfigType[K] | undefined =>
+                unpack<ConfigType[K]>(publicSync(schema, 'public', key) as WorkerEnvelope, key as string),
         },
         secretConfig: {
             get: asyncCore.secretConfig.get,
-            getSync: <K extends SecretKey>(key: K): ConfigType[K] | undefined => secretSync(schema, 'secret', key) as ConfigType[K] | undefined,
+            getSync: <K extends SecretKey>(key: K): ConfigType[K] | undefined =>
+                unpack<ConfigType[K]>(secretSync(schema, 'secret', key) as WorkerEnvelope, key as string),
         },
         featureFlag: {
             get: asyncCore.featureFlag.get,
-            getSync: <K extends FlagKey>(key: K): ConfigType[K] | undefined => flagSync(schema, 'flag', key) as ConfigType[K] | undefined,
+            getSync: <K extends FlagKey>(key: K): ConfigType[K] | undefined =>
+                unpack<ConfigType[K]>(flagSync(schema, 'flag', key) as WorkerEnvelope, key as string),
         },
         invalidateCaches: asyncCore.invalidateCaches,
         getSource: asyncCore.getSource,
