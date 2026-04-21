@@ -106,11 +106,34 @@ export function withSmooConfig(options: WithSmooConfigOptions, nextConfig: NextC
         process.env[envKey] = String(value);
     }
 
+    // `next.config.env` gives us per-key static substitution of
+    // `process.env.NEXT_PUBLIC_FOO` (the normal Next.js ergonomic). But the
+    // SDK's `getClientPublicConfig(key)` / `getClientFeatureFlag(key)` read
+    // via a dynamic key — `process.env[\`NEXT_PUBLIC_CONFIG_\${computed}\`]`
+    // — which Next.js can't rewrite per-key. On the browser `process.env`
+    // is effectively empty, so dynamic reads return `undefined` → config
+    // values appear "unset".
+    //
+    // Solution: define `__SMOO_CLIENT_ENV__` as a literal object via
+    // webpack's DefinePlugin. The SDK indexes into that constant with its
+    // computed key; each reference in the compiled bundle is replaced
+    // with the literal object at build time (identical shape to what the
+    // Vite plugin emits via `define`).
+    const originalWebpack = nextConfig.webpack as
+        | ((webpackConfig: { plugins: unknown[] }, context: { webpack: { DefinePlugin: new (defs: Record<string, string>) => unknown } }) => unknown)
+        | undefined;
+
+    const webpack = (webpackConfig: { plugins: unknown[] }, context: { webpack: { DefinePlugin: new (defs: Record<string, string>) => unknown } }) => {
+        webpackConfig.plugins.push(new context.webpack.DefinePlugin({ __SMOO_CLIENT_ENV__: JSON.stringify(env) }));
+        return originalWebpack ? originalWebpack(webpackConfig, context) : webpackConfig;
+    };
+
     return {
         ...nextConfig,
         env: {
             ...(nextConfig.env as Record<string, string> | undefined),
             ...env,
         },
+        webpack,
     };
 }
