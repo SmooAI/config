@@ -36,14 +36,14 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ---
 
-### What's New in v3
+### What's in the box
 
-- **`@smooai/config/client`** -- Universal client reader for feature flags and public config. Works in Next.js, Vite, and any browser environment with zero Node.js dependencies.
-- **`@smooai/config/nextjs/withSmooConfig`** -- Inject feature flags _and_ public config into `next.config.ts` as `NEXT_PUBLIC_` env vars. Replaces the deprecated `withFeatureFlags`.
-- **`@smooai/config/feature-flags`** -- Build-time feature flag reader (re-exports from `/client` for convenience).
-- **`@smooai/config/vite/smooConfigPlugin`** -- Vite plugin that injects `VITE_FEATURE_FLAG_*` and `VITE_CONFIG_*` at build time.
-- **Browser/server separation** -- Browser builds ship zero Node.js deps. Every export path has a dedicated `browser` condition in `package.json`.
-- **Typed key objects** -- `defineConfig()` returns `FeatureFlagKeys`, `PublicConfigKeys`, and `SecretConfigKeys` with auto-generated `UPPER_SNAKE_CASE` mappings and full TypeScript inference.
+- **`@smooai/config`** -- Server-side config SDK with the full priority chain (baked blob → env → HTTP → file) and typed sync + async accessors per tier (`publicConfig`, `secretConfig`, `featureFlag`).
+- **`@smooai/config/client`** -- Universal browser reader for feature flags and public config. Zero Node.js dependencies, works identically in Next.js, Vite, and any browser environment.
+- **`@smooai/config/nextjs/withSmooConfig`** -- Next.js config wrapper that bakes public config + feature-flag defaults into the bundle as `NEXT_PUBLIC_*` env vars, and inlines them into a runtime env bag for dynamic-key lookups.
+- **`@smooai/config/vite/smooConfigPlugin`** -- Vite plugin that does the same for `VITE_CONFIG_*` / `VITE_FEATURE_FLAG_*`.
+- **`@smooai/config/react`** -- Framework-agnostic React hooks (`useFeatureFlag`, `usePublicConfig`) + `ConfigProvider` for any React app.
+- **Typed key objects** -- `defineConfig()` returns `FeatureFlagKeys`, `PublicConfigKeys`, and `SecretConfigKeys` with auto-generated `UPPER_SNAKE_CASE` mappings and full TypeScript inference, so every config access is compile-time checked.
 
 ---
 
@@ -261,9 +261,10 @@ const apiKey = await configObj.secretConfig.getAsync(SecretConfigKeys.API_KEY);
 ### How `.getSync()` works (and how to ship it in any bundled compute)
 
 Sync accessors run an async config read to completion on the caller thread via
-`synckit` — a Node `Worker` pool + `Atomics.wait` on a `SharedArrayBuffer`.
-`createSyncFn` only accepts a `file://` URL, so the worker body has to live on
-disk. The SDK resolves it in two stages:
+[`synckit`](https://github.com/un-ts/synckit) — a Node `Worker` pool +
+`Atomics.wait` on a `SharedArrayBuffer`. `createSyncFn` only accepts a
+`file://` URL, so the worker body has to live on disk. The SDK resolves it in
+two stages:
 
 1. **Sidecar file** — `sync-worker.mjs` sitting next to the compiled SDK entry
    (i.e. resolved via `new URL('./sync-worker.mjs', import.meta.url)` from
@@ -276,8 +277,9 @@ disk. The SDK resolves it in two stages:
    (e.g. a bundler inlined the SDK entry into a single file and didn't copy
    the sidecar), the SDK writes an embedded copy of the worker source to
    `mkdtempSync()/sync-worker.mjs` once per process and hands that path to
-   synckit. One ~1-2 MiB write at cold start. Works anywhere with a writable
-   temp dir.
+   synckit. One ~1-2 MiB write at cold start, amortised across every sync
+   read for the lifetime of the process. Works anywhere with a writable temp
+   dir.
 
 Both paths are transparent — your code is identical either way. Which path
 you land on depends on how your compute is packaged.
