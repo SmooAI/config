@@ -75,10 +75,19 @@ export function smooConfigPlugin(options: SmooConfigPluginOptions): Plugin {
                 }
             }
 
-            // Return define map so Vite replaces these at build time
+            // Return define map so Vite replaces these at build time.
+            // We inject under BOTH `import.meta.env.X` (Vite's native pattern,
+            // works in TS/Vite code that reads env directly) AND
+            // `process.env.X` (what @smooai/config/client's
+            // `getClientPublicConfig` / `getClientFeatureFlag` helpers read
+            // — they use a shared `process.env.*` code path across Next.js
+            // and Vite consumers). Without the `process.env` substitution,
+            // the SDK's getters return `undefined` in the browser runtime
+            // because `process.env` is empty once the bundle loads.
             const define: Record<string, string> = {};
             for (const [key, value] of Object.entries(envVars)) {
                 define[`import.meta.env.${key}`] = JSON.stringify(value);
+                define[`process.env.${key}`] = JSON.stringify(value);
             }
 
             return { define };
