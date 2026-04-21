@@ -1,5 +1,33 @@
 # @smooai/library-template
 
+## 4.1.3
+
+### Patch Changes
+
+- 3a029bd: **SMOODEV-645: fix browser bundle pulling Node-only deps via `@smooai/fetch`**
+
+    `@smooai/config/client` (and `/react`) broke Vite / Next.js consumer builds with `Module 'node:v8' has been externalized`. Root cause: `platform/client.ts` does `import fetch from '@smooai/fetch'`, but `@smooai/fetch`'s package.json exposes its browser entry only as the `./browser/*` subpath — it has no top-level `browser` condition. In the tsup browser build, the bare specifier resolved to the Node entry, dragging in `@smooai/logger` + `rotating-file-stream` + `import-meta-resolve`.
+
+    Fix: in the browser tsup build, add `@smooai/fetch` to `noExternal` and alias the bare specifier to `@smooai/fetch/browser/index` via esbuild's native `alias`. Browser chunks now inline the browser-safe fetch implementation.
+
+    Verified:
+
+    ```
+    grep -l "rotating-file-stream\|@smooai/logger" dist/browser/chunk-*.mjs
+    # (no matches)
+
+    grep "@smooai/fetch/dist/browser" dist/browser/chunk-*.mjs
+    # chunk-...: // node_modules/.../@smooai/fetch/dist/browser/index.mjs
+    ```
+
+    Frontend consumers no longer need to manually alias `@smooai/fetch`.
+
+- 3a029bd: **SMOODEV-646: `smooConfigPlugin` — inject `process.env.VITE_*` as well as `import.meta.env.VITE_*`**
+
+    `getClientPublicConfig` / `getClientFeatureFlag` read `process.env.VITE_*` by design (so the same SDK code path works on Next.js + Vite). The Vite plugin previously only substituted `import.meta.env.VITE_*`, so at browser runtime the SDK getters returned `undefined` — no bundle-baked values.
+
+    Fix: the plugin now emits **both** `import.meta.env.VITE_X` and `process.env.VITE_X` define entries. Bundled values finally make it through to `getClientPublicConfig('apiUrl')` / `getClientFeatureFlag('observability')` in Vite apps.
+
 ## 4.1.2
 
 ### Patch Changes
