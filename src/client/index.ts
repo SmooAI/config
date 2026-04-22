@@ -28,7 +28,10 @@
  * module scope — React hooks and legacy call sites depend on them.
  */
 import { defineConfig, InferConfigTypes } from '@/config/config';
-import { ConfigClient, ConfigClientOptions } from '@/platform/client';
+import { ConfigClient, ConfigClientOptions, EvaluateFeatureFlagResponse } from '@/platform/client';
+
+export type { EvaluateFeatureFlagResponse } from '@/platform/client';
+export { FeatureFlagContextError, FeatureFlagEvaluationError, FeatureFlagNotFoundError } from '@/platform/client';
 
 /**
  * Convert a camelCase key to UPPER_SNAKE_CASE.
@@ -117,6 +120,33 @@ export function getClientPublicConfig(key: string): string | undefined {
  */
 export function createFeatureFlagChecker<T extends Record<string, string>>(): (key: T[keyof T]) => boolean {
     return (key: T[keyof T]) => getClientFeatureFlag(key as string);
+}
+
+/**
+ * Create a typed cohort-aware feature-flag evaluator from a config's
+ * FeatureFlagKeys and a `ConfigClient`. Always hits the server-side
+ * evaluator — cohort rules (percentage rollout, attribute matching,
+ * bucketing) live server-side. Use this when the flag result depends on
+ * per-request context.
+ *
+ * @example
+ * ```tsx
+ * import { ConfigClient, createFeatureFlagEvaluator } from '@smooai/config/client';
+ *
+ * const client = new ConfigClient();
+ * export const evaluateFeatureFlag = createFeatureFlagEvaluator<typeof FeatureFlagKeys>(client);
+ *
+ * const { value, source } = await evaluateFeatureFlag('aboutPage', {
+ *   userId: user.id,
+ *   tenantId: tenant.id,
+ *   plan: tenant.plan,
+ * });
+ * ```
+ */
+export function createFeatureFlagEvaluator<T extends Record<string, string>>(
+    client: ConfigClient,
+): (key: T[keyof T], context?: Record<string, unknown>, environment?: string) => Promise<EvaluateFeatureFlagResponse> {
+    return (key, context, environment) => client.evaluateFeatureFlag(key as string, context ?? {}, environment);
 }
 
 export interface BuildClientConfigOptions {
