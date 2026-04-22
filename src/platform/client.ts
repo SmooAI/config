@@ -174,4 +174,93 @@ export class ConfigClient {
             }
         }
     }
+
+    /**
+     * Evaluate a cohort-aware feature flag against the server.
+     *
+     * Unlike `getValue` / `getCachedValue`, this is always a network call:
+     * cohort rules (percentage rollout, attribute matching, bucketing) live
+     * server-side and the response depends on the `context` you pass. Callers
+     * that don't need cohort evaluation should keep using `getValue` for the
+     * static flag value.
+     *
+     * @param key - Feature-flag key.
+     * @param context - Attributes the server's cohort rules may reference
+     *   (e.g. `{ userId, tenantId, plan, country }`). Unreferenced keys are
+     *   ignored by the server. Keep values JSON-serializable — the server
+     *   hashes `bucketBy` values by their string representation, so numbers
+     *   and booleans bucket stably across client rebuilds.
+     * @param environment - Environment name (defaults to the client's default).
+     */
+    async evaluateFeatureFlag(key: string, context: Record<string, unknown> = {}, environment?: string): Promise<EvaluateFeatureFlagResponse> {
+        const env = environment ?? this.defaultEnvironment;
+        const response = await fetch(`${this.baseUrl}/organizations/${this.orgId}/config/feature-flags/${encodeURIComponent(key)}/evaluate`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${this.apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ environment: env, context }),
+        });
+
+        if (response.status === 404) {
+            throw new FeatureFlagNotFoundError(key);
+        }
+        if (response.status === 400) {
+            const text = await response.text().catch(() => '');
+            throw new FeatureFlagContextError(key, text);
+        }
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            throw new FeatureFlagEvaluationError(key, response.status, text);
+        }
+
+        return (await response.json()) as EvaluateFeatureFlagResponse;
+    }
+}
+
+/**
+ * Response from the server-side feature-flag evaluator. Matches the wire
+ * contract defined in `@smooai/schemas/config/feature-flag`.
+ */
+export interface EvaluateFeatureFlagResponse {
+    /** The resolved flag value (post rules + rollout). */
+    value: unknown;
+    /** Id of the rule that fired, if any. */
+    matchedRuleId?: string;
+    /** 0–99 bucket the context was assigned to, if a rollout ran. */
+    rolloutBucket?: number;
+    /** Which branch the evaluator returned from. */
+    source: 'raw' | 'rule' | 'rollout' | 'default';
+}
+
+/**
+ * Base class for errors thrown by `evaluateFeatureFlag`. Subclasses let
+ * callers branch on 404 / 400 / 5xx without parsing messages.
+ */
+export class FeatureFlagEvaluationError extends Error {
+    constructor(
+        public readonly key: string,
+        public readonly statusCode: number,
+        public readonly serverMessage?: string,
+    ) {
+        super(`Feature flag "${key}" evaluation failed: HTTP ${statusCode}${serverMessage ? ` — ${serverMessage}` : ''}`);
+        this.name = 'FeatureFlagEvaluationError';
+    }
+}
+
+/** Server returned 404 — the flag key is not defined in the org's schema. */
+export class FeatureFlagNotFoundError extends FeatureFlagEvaluationError {
+    constructor(key: string) {
+        super(key, 404, 'flag not defined in schema');
+        this.name = 'FeatureFlagNotFoundError';
+    }
+}
+
+/** Server returned 400 — invalid context or missing environment. */
+export class FeatureFlagContextError extends FeatureFlagEvaluationError {
+    constructor(key: string, serverMessage?: string) {
+        super(key, 400, serverMessage ?? 'invalid context or environment');
+        this.name = 'FeatureFlagContextError';
+    }
 }

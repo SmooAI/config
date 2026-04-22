@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ConfigClient } from './client';
+import { ConfigClient, FeatureFlagContextError, FeatureFlagEvaluationError, FeatureFlagNotFoundError } from './client';
 
 // Mock @smooai/fetch module
 const { mockFetch } = vi.hoisted(() => ({
@@ -124,6 +124,125 @@ describe('ConfigClient', () => {
                     }),
                 }),
             );
+        });
+    });
+
+    describe('evaluateFeatureFlag', () => {
+        it('POSTs to the evaluator with environment + context and returns the response', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ value: true, source: 'rule', matchedRuleId: 'rule-123' }),
+            });
+
+            const result = await client.evaluateFeatureFlag('aboutPage', { userId: 'u-1', plan: 'pro' });
+
+            expect(result).toEqual({ value: true, source: 'rule', matchedRuleId: 'rule-123' });
+            expect(mockFetch).toHaveBeenCalledWith(
+                'https://api.smooai.dev/organizations/org-123/config/feature-flags/aboutPage/evaluate',
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({ environment: 'production', context: { userId: 'u-1', plan: 'pro' } }),
+                    headers: expect.objectContaining({
+                        Authorization: 'Bearer test-key',
+                        'Content-Type': 'application/json',
+                    }),
+                }),
+            );
+        });
+
+        it('defaults context to {} when omitted', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ value: false, source: 'default' }),
+            });
+
+            await client.evaluateFeatureFlag('aboutPage');
+
+            expect(mockFetch).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    body: JSON.stringify({ environment: 'production', context: {} }),
+                }),
+            );
+        });
+
+        it('honors an explicit environment override', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ value: true, source: 'raw' }),
+            });
+
+            await client.evaluateFeatureFlag('aboutPage', {}, 'staging');
+
+            expect(mockFetch).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({
+                    body: JSON.stringify({ environment: 'staging', context: {} }),
+                }),
+            );
+        });
+
+        it('URL-encodes flag keys with special characters', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ value: null, source: 'default' }),
+            });
+
+            await client.evaluateFeatureFlag('with spaces/and+slashes');
+
+            expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('with%20spaces%2Fand%2Bslashes'), expect.anything());
+        });
+
+        it('throws FeatureFlagNotFoundError on 404', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                status: 404,
+                text: () => Promise.resolve('flag not defined'),
+            });
+
+            const err = await client.evaluateFeatureFlag('unknown').catch((e) => e);
+            expect(err).toBeInstanceOf(FeatureFlagNotFoundError);
+            expect(err).toBeInstanceOf(FeatureFlagEvaluationError);
+            expect(err.key).toBe('unknown');
+            expect(err.statusCode).toBe(404);
+        });
+
+        it('throws FeatureFlagContextError on 400', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                status: 400,
+                text: () => Promise.resolve('context missing required key'),
+            });
+
+            const err = await client.evaluateFeatureFlag('aboutPage').catch((e) => e);
+            expect(err).toBeInstanceOf(FeatureFlagContextError);
+            expect(err.statusCode).toBe(400);
+            expect(err.serverMessage).toBe('context missing required key');
+        });
+
+        it('throws FeatureFlagEvaluationError on 5xx', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: false,
+                status: 503,
+                text: () => Promise.resolve('evaluator overloaded'),
+            });
+
+            const err = await client.evaluateFeatureFlag('aboutPage').catch((e) => e);
+            expect(err).toBeInstanceOf(FeatureFlagEvaluationError);
+            expect(err).not.toBeInstanceOf(FeatureFlagNotFoundError);
+            expect(err).not.toBeInstanceOf(FeatureFlagContextError);
+            expect(err.statusCode).toBe(503);
         });
     });
 });
