@@ -1,7 +1,10 @@
 package config
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -222,4 +225,176 @@ func (c *ConfigClient) InvalidateCacheForEnvironment(environment string) {
 // Close releases resources held by the client.
 func (c *ConfigClient) Close() {
 	c.client.CloseIdleConnections()
+}
+
+// EvaluateFeatureFlagResponse is the wire contract for the cohort-aware
+// feature-flag evaluator. It mirrors the TS `EvaluateFeatureFlagResponse`
+// and the schema defined in `@smooai/schemas/config/feature-flag`.
+type EvaluateFeatureFlagResponse struct {
+	// Value is the resolved flag value (post rules + rollout).
+	Value any `json:"value"`
+	// MatchedRuleID is the id of the rule that fired, if any.
+	MatchedRuleID *string `json:"matchedRuleId,omitempty"`
+	// RolloutBucket is the 0-99 bucket the context was assigned to, if a rollout ran.
+	RolloutBucket *int `json:"rolloutBucket,omitempty"`
+	// Source is which branch the evaluator returned from: "raw" | "rule" | "rollout" | "default".
+	Source string `json:"source"`
+}
+
+// FeatureFlagErrorKind categorizes errors from EvaluateFeatureFlag so callers
+// can branch on 404 / 400 / 5xx without parsing messages.
+type FeatureFlagErrorKind int
+
+const (
+	// FeatureFlagKindServer covers 5xx responses and any non-404 / non-400 HTTP errors.
+	FeatureFlagKindServer FeatureFlagErrorKind = iota
+	// FeatureFlagKindNotFound is a 404 — the flag key is not defined in the org's schema.
+	FeatureFlagKindNotFound
+	// FeatureFlagKindContext is a 400 — invalid context or missing environment.
+	FeatureFlagKindContext
+)
+
+// String returns the lowercase name of the kind. Handy for logs.
+func (k FeatureFlagErrorKind) String() string {
+	switch k {
+	case FeatureFlagKindNotFound:
+		return "not_found"
+	case FeatureFlagKindContext:
+		return "context"
+	default:
+		return "server"
+	}
+}
+
+// Sentinel errors so callers can use `errors.Is` to match an error category
+// without taking a dependency on the concrete `FeatureFlagEvaluationError`.
+var (
+	// ErrFeatureFlagNotFound matches any FeatureFlagEvaluationError with Kind == FeatureFlagKindNotFound.
+	ErrFeatureFlagNotFound = errors.New("feature flag not found")
+	// ErrFeatureFlagContext matches any FeatureFlagEvaluationError with Kind == FeatureFlagKindContext.
+	ErrFeatureFlagContext = errors.New("feature flag context invalid")
+	// ErrFeatureFlagServer matches any FeatureFlagEvaluationError with Kind == FeatureFlagKindServer.
+	ErrFeatureFlagServer = errors.New("feature flag server error")
+)
+
+// FeatureFlagEvaluationError is returned from EvaluateFeatureFlag when the
+// server rejects the request or returns a non-2xx status. Use the Kind field
+// (or errors.Is with the sentinel vars) to branch on 404 / 400 / 5xx.
+type FeatureFlagEvaluationError struct {
+	// Key is the feature-flag key the caller asked to evaluate.
+	Key string
+	// StatusCode is the HTTP status returned by the server.
+	StatusCode int
+	// Kind categorizes the error (not found / context / server).
+	Kind FeatureFlagErrorKind
+	// ServerMessage is the raw response body text, if any.
+	ServerMessage string
+}
+
+// Error implements the error interface.
+func (e *FeatureFlagEvaluationError) Error() string {
+	if e.ServerMessage != "" {
+		return fmt.Sprintf("feature flag %q evaluation failed: HTTP %d — %s", e.Key, e.StatusCode, e.ServerMessage)
+	}
+	return fmt.Sprintf("feature flag %q evaluation failed: HTTP %d", e.Key, e.StatusCode)
+}
+
+// Is supports errors.Is matching against the sentinel errors above.
+func (e *FeatureFlagEvaluationError) Is(target error) bool {
+	switch target {
+	case ErrFeatureFlagNotFound:
+		return e.Kind == FeatureFlagKindNotFound
+	case ErrFeatureFlagContext:
+		return e.Kind == FeatureFlagKindContext
+	case ErrFeatureFlagServer:
+		return e.Kind == FeatureFlagKindServer
+	}
+	return false
+}
+
+// EvaluateFeatureFlag evaluates a cohort-aware feature flag against the server.
+//
+// Unlike GetValue, this is always a network call: cohort rules (percentage
+// rollout, attribute matching, bucketing) live server-side and the response
+// depends on the `evalContext` you pass. Callers that don't need cohort
+// evaluation should keep using GetValue for the static flag value.
+//
+// Parameters:
+//   - ctx: standard context for cancellation / deadline.
+//   - key: feature-flag key.
+//   - evalContext: attributes the server's cohort rules may reference
+//     (e.g. {userId, tenantId, plan, country}). Unreferenced keys are ignored
+//     by the server. Keep values JSON-serializable — the server hashes
+//     `bucketBy` values by their string representation, so numbers and
+//     booleans bucket stably across client rebuilds. A nil map is sent as {}.
+//   - environment: environment name. Pass an empty string to use the client's
+//     default environment.
+//
+// Errors:
+//   - *FeatureFlagEvaluationError with Kind == FeatureFlagKindNotFound on 404.
+//   - *FeatureFlagEvaluationError with Kind == FeatureFlagKindContext on 400.
+//   - *FeatureFlagEvaluationError with Kind == FeatureFlagKindServer for 5xx
+//     and other non-2xx responses.
+//   - Wrapped network / decode errors from the underlying HTTP client.
+func (c *ConfigClient) EvaluateFeatureFlag(
+	ctx context.Context,
+	key string,
+	evalContext map[string]any,
+	environment string,
+) (*EvaluateFeatureFlagResponse, error) {
+	env := c.resolveEnv(environment)
+
+	if evalContext == nil {
+		evalContext = map[string]any{}
+	}
+
+	body, err := json.Marshal(struct {
+		Environment string         `json:"environment"`
+		Context     map[string]any `json:"context"`
+	}{
+		Environment: env,
+		Context:     evalContext,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag %q: marshal body: %w", key, err)
+	}
+
+	u := fmt.Sprintf("%s/organizations/%s/config/feature-flags/%s/evaluate",
+		c.baseURL, c.orgID, url.PathEscape(key))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag %q: build request: %w", key, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag %q: %w", key, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		kind := FeatureFlagKindServer
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			kind = FeatureFlagKindNotFound
+		case http.StatusBadRequest:
+			kind = FeatureFlagKindContext
+		}
+		return nil, &FeatureFlagEvaluationError{
+			Key:           key,
+			StatusCode:    resp.StatusCode,
+			Kind:          kind,
+			ServerMessage: strings.TrimSpace(string(msg)),
+		}
+	}
+
+	var result EvaluateFeatureFlagResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("config evaluate feature flag %q: decode response: %w", key, err)
+	}
+
+	return &result, nil
 }

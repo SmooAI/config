@@ -10,10 +10,11 @@
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::time::{Duration, Instant};
+use thiserror::Error;
 
 /// Characters to percent-encode in URL path segments.
 /// Encodes everything except unreserved characters (RFC 3986): A-Z a-z 0-9 - . _ ~
@@ -60,6 +61,73 @@ struct ValueResponse {
 #[derive(Deserialize)]
 struct ValuesResponse {
     values: HashMap<String, serde_json::Value>,
+}
+
+/// Response from the server-side feature-flag evaluator.
+///
+/// Matches the wire contract defined by the TS / Python / Go clients and
+/// the `/organizations/{org_id}/config/feature-flags/{key}/evaluate` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvaluateFeatureFlagResponse {
+    /// The resolved flag value (post rules + rollout).
+    pub value: serde_json::Value,
+    /// Id of the rule that fired, if any.
+    #[serde(rename = "matchedRuleId", skip_serializing_if = "Option::is_none")]
+    pub matched_rule_id: Option<String>,
+    /// 0–99 bucket the context was assigned to, if a rollout ran.
+    #[serde(rename = "rolloutBucket", skip_serializing_if = "Option::is_none")]
+    pub rollout_bucket: Option<u32>,
+    /// Which branch the evaluator returned from: `"raw"`, `"rule"`,
+    /// `"rollout"`, or `"default"`.
+    pub source: String,
+}
+
+/// Errors produced by [`ConfigClient::evaluate_feature_flag`].
+///
+/// Mirrors the TS `FeatureFlagEvaluationError` hierarchy: callers can match
+/// on `NotFound` / `ContextError` / `Evaluation` without parsing messages.
+/// `Request` wraps underlying transport / deserialization failures.
+#[derive(Debug, Error)]
+pub enum FeatureFlagEvaluationError {
+    /// Server returned 404 — the flag key is not defined in the org's schema.
+    #[error("Feature flag \"{key}\" evaluation failed: HTTP 404 — flag not defined in schema")]
+    NotFound { key: String },
+    /// Server returned 400 — invalid context or environment.
+    #[error("Feature flag \"{key}\" evaluation failed: HTTP 400 — {message}")]
+    ContextError { key: String, message: String },
+    /// Server returned a non-success status other than 400 / 404.
+    #[error("Feature flag \"{key}\" evaluation failed: HTTP {status}{}", if .message.is_empty() { String::new() } else { format!(" — {}", .message) })]
+    Evaluation { key: String, status: u16, message: String },
+    /// Underlying HTTP transport or JSON deserialization failure.
+    #[error("Feature flag \"{key}\" evaluation failed: {source}")]
+    Request {
+        key: String,
+        #[source]
+        source: reqwest::Error,
+    },
+}
+
+impl FeatureFlagEvaluationError {
+    /// The flag key the failed evaluation was for.
+    pub fn key(&self) -> &str {
+        match self {
+            Self::NotFound { key } => key,
+            Self::ContextError { key, .. } => key,
+            Self::Evaluation { key, .. } => key,
+            Self::Request { key, .. } => key,
+        }
+    }
+
+    /// The HTTP status code, if the failure came from a server response.
+    /// Returns `None` for transport / parse errors.
+    pub fn status_code(&self) -> Option<u16> {
+        match self {
+            Self::NotFound { .. } => Some(404),
+            Self::ContextError { .. } => Some(400),
+            Self::Evaluation { status, .. } => Some(*status),
+            Self::Request { .. } => None,
+        }
+    }
 }
 
 impl ConfigClient {
@@ -203,6 +271,87 @@ impl ConfigClient {
         }
 
         Ok(response.values)
+    }
+
+    /// Evaluate a cohort-aware feature flag on the server.
+    ///
+    /// Unlike [`get_value`](Self::get_value), this is always a network call —
+    /// cohort rules (percentage rollout, attribute matching, bucketing) live
+    /// server-side and the response depends on the `context` you pass. Callers
+    /// that don't need cohort evaluation should keep using `get_value` for the
+    /// static flag value.
+    ///
+    /// # Arguments
+    /// * `key` — Feature-flag key. URL-encoded before being placed in the path.
+    /// * `context` — Attributes the server's cohort rules may reference
+    ///   (e.g. `{ "userId": ..., "plan": ... }`). `None` is equivalent to an
+    ///   empty map. Values must be JSON-serializable — the server hashes
+    ///   `bucketBy` values by their string representation, so numbers and
+    ///   booleans bucket stably across client rebuilds.
+    /// * `environment` — Environment name (defaults to the client's default
+    ///   environment when `None`).
+    ///
+    /// # Errors
+    /// * [`FeatureFlagEvaluationError::NotFound`] — 404, flag not defined.
+    /// * [`FeatureFlagEvaluationError::ContextError`] — 400, bad context.
+    /// * [`FeatureFlagEvaluationError::Evaluation`] — other non-2xx status.
+    /// * [`FeatureFlagEvaluationError::Request`] — transport / parse failure.
+    pub async fn evaluate_feature_flag(
+        &self,
+        key: &str,
+        context: Option<HashMap<String, serde_json::Value>>,
+        environment: Option<&str>,
+    ) -> Result<EvaluateFeatureFlagResponse, FeatureFlagEvaluationError> {
+        let env = self.resolve_env(environment).to_string();
+        let encoded_key = utf8_percent_encode(key, PATH_SEGMENT_ENCODE_SET).to_string();
+        let url = format!(
+            "{}/organizations/{}/config/feature-flags/{}/evaluate",
+            self.base_url, self.org_id, encoded_key
+        );
+
+        let body = serde_json::json!({
+            "environment": env,
+            "context": context.unwrap_or_default(),
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|source| FeatureFlagEvaluationError::Request {
+                key: key.to_string(),
+                source,
+            })?;
+
+        let status = response.status();
+        if status.is_success() {
+            return response.json::<EvaluateFeatureFlagResponse>().await.map_err(|source| {
+                FeatureFlagEvaluationError::Request {
+                    key: key.to_string(),
+                    source,
+                }
+            });
+        }
+
+        // Non-2xx — read body as text (best-effort) and map to typed error.
+        let status_code = status.as_u16();
+        let message = response.text().await.unwrap_or_default();
+
+        Err(match status_code {
+            404 => FeatureFlagEvaluationError::NotFound { key: key.to_string() },
+            400 => FeatureFlagEvaluationError::ContextError {
+                key: key.to_string(),
+                message,
+            },
+            _ => FeatureFlagEvaluationError::Evaluation {
+                key: key.to_string(),
+                status: status_code,
+                message,
+            },
+        })
     }
 
     /// Clear the entire local cache.

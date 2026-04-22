@@ -10,9 +10,13 @@ Environment variables (used as defaults when constructor args are omitted):
 import os
 import threading
 import time
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import quote
 
 import httpx
+from pydantic import BaseModel, Field
+
+from smooai_config.utils import SmooaiConfigError
 
 
 class ConfigClient:
@@ -141,6 +145,58 @@ class ConfigClient:
             for k in keys_to_remove:
                 del self._cache[k]
 
+    def evaluate_feature_flag(
+        self,
+        key: str,
+        context: dict[str, Any] | None = None,
+        environment: str | None = None,
+    ) -> "EvaluateFeatureFlagResponse":
+        """Evaluate a cohort-aware feature flag against the server.
+
+        Unlike :meth:`get_value` / the local cache, this is always a network
+        call: cohort rules (percentage rollout, attribute matching, bucketing)
+        live server-side and the response depends on the ``context`` passed.
+        Callers that don't need cohort evaluation should keep using
+        :meth:`get_value` for the static flag value.
+
+        Args:
+            key: Feature-flag key.
+            context: Attributes the server's cohort rules may reference
+                (e.g. ``{"userId": ..., "tenantId": ..., "plan": ..., "country": ...}``).
+                Unreferenced keys are ignored by the server. Keep values
+                JSON-serializable — the server hashes ``bucketBy`` values by
+                their string representation, so numbers and booleans bucket
+                stably across client rebuilds. Defaults to an empty dict.
+            environment: Environment name (defaults to the client's default).
+
+        Raises:
+            FeatureFlagNotFoundError: Server returned 404 — flag not defined
+                in the org's schema.
+            FeatureFlagContextError: Server returned 400 — invalid context or
+                missing environment.
+            FeatureFlagEvaluationError: Server returned any other non-2xx
+                status code.
+        """
+        env = environment or self._default_environment
+        ctx = context if context is not None else {}
+
+        # Match the TS client's `encodeURIComponent` behavior so flag keys
+        # containing slashes, spaces, or reserved characters are escaped.
+        encoded_key = quote(key, safe="")
+        response = self._client.post(
+            f"/organizations/{self._org_id}/config/feature-flags/{encoded_key}/evaluate",
+            json={"environment": env, "context": ctx},
+        )
+
+        if response.status_code == 404:
+            raise FeatureFlagNotFoundError(key)
+        if response.status_code == 400:
+            raise FeatureFlagContextError(key, _safe_text(response))
+        if not response.is_success:
+            raise FeatureFlagEvaluationError(key, response.status_code, _safe_text(response))
+
+        return EvaluateFeatureFlagResponse.model_validate(response.json())
+
     def close(self) -> None:
         """Close the HTTP client."""
         self._client.close()
@@ -150,3 +206,60 @@ class ConfigClient:
 
     def __exit__(self, *args: object) -> None:
         self.close()
+
+
+def _safe_text(response: httpx.Response) -> str:
+    """Read response body as text, swallowing decode errors."""
+    try:
+        return response.text
+    except Exception:
+        return ""
+
+
+class EvaluateFeatureFlagResponse(BaseModel):
+    """Response from the server-side feature-flag evaluator.
+
+    Matches the wire contract defined in ``@smooai/schemas/config/feature-flag``.
+    """
+
+    value: Any = None
+    """The resolved flag value (post rules + rollout)."""
+
+    matched_rule_id: str | None = Field(default=None, alias="matchedRuleId")
+    """Id of the rule that fired, if any."""
+
+    rollout_bucket: int | None = Field(default=None, alias="rolloutBucket")
+    """0–99 bucket the context was assigned to, if a rollout ran."""
+
+    source: Literal["raw", "rule", "rollout", "default"]
+    """Which branch the evaluator returned from."""
+
+    model_config = {"populate_by_name": True}
+
+
+class FeatureFlagEvaluationError(SmooaiConfigError):
+    """Base class for errors raised by :meth:`ConfigClient.evaluate_feature_flag`.
+
+    Subclasses let callers branch on 404 / 400 / 5xx without parsing messages.
+    """
+
+    def __init__(self, key: str, status_code: int, server_message: str | None = None) -> None:
+        self.key = key
+        self.status_code = status_code
+        self.server_message = server_message
+        suffix = f" — {server_message}" if server_message else ""
+        super().__init__(f'Feature flag "{key}" evaluation failed: HTTP {status_code}{suffix}')
+
+
+class FeatureFlagNotFoundError(FeatureFlagEvaluationError):
+    """Server returned 404 — the flag key is not defined in the org's schema."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(key, 404, "flag not defined in schema")
+
+
+class FeatureFlagContextError(FeatureFlagEvaluationError):
+    """Server returned 400 — invalid context or missing environment."""
+
+    def __init__(self, key: str, server_message: str | None = None) -> None:
+        super().__init__(key, 400, server_message or "invalid context or environment")
