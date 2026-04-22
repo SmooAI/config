@@ -1,7 +1,13 @@
 """Smoo AI Configuration Management Library - Python SDK."""
 
 from smooai_config.build import BuildBundleResult, build_bundle, classify_from_schema
-from smooai_config.client import ConfigClient
+from smooai_config.client import (
+    ConfigClient,
+    EvaluateFeatureFlagResponse,
+    FeatureFlagContextError,
+    FeatureFlagEvaluationError,
+    FeatureFlagNotFoundError,
+)
 from smooai_config.cloud_region import CloudRegionResult, get_cloud_region
 from smooai_config.config_manager import ConfigManager
 from smooai_config.env_config import find_and_process_env_config
@@ -18,6 +24,10 @@ __all__ = [
     "ConfigClient",
     "ConfigManager",
     "ConfigTier",
+    "EvaluateFeatureFlagResponse",
+    "FeatureFlagContextError",
+    "FeatureFlagEvaluationError",
+    "FeatureFlagNotFoundError",
     "LocalConfigManager",
     "SmooaiConfigError",
     "build_bundle",

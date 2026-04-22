@@ -10,10 +10,11 @@
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
 use std::time::{Duration, Instant};
+use thiserror::Error;
 
 /// Characters to percent-encode in URL path segments.
 /// Encodes everything except unreserved characters (RFC 3986): A-Z a-z 0-9 - . _ ~
@@ -60,6 +61,73 @@ struct ValueResponse {
 #[derive(Deserialize)]
 struct ValuesResponse {
     values: HashMap<String, serde_json::Value>,
+}
+
+/// Response from the server-side feature-flag evaluator.
+///
+/// Matches the wire contract defined by the TS / Python / Go clients and
+/// the `/organizations/{org_id}/config/feature-flags/{key}/evaluate` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvaluateFeatureFlagResponse {
+    /// The resolved flag value (post rules + rollout).
+    pub value: serde_json::Value,
+    /// Id of the rule that fired, if any.
+    #[serde(rename = "matchedRuleId", skip_serializing_if = "Option::is_none")]
+    pub matched_rule_id: Option<String>,
+    /// 0–99 bucket the context was assigned to, if a rollout ran.
+    #[serde(rename = "rolloutBucket", skip_serializing_if = "Option::is_none")]
+    pub rollout_bucket: Option<u32>,
+    /// Which branch the evaluator returned from: `"raw"`, `"rule"`,
+    /// `"rollout"`, or `"default"`.
+    pub source: String,
+}
+
+/// Errors produced by [`ConfigClient::evaluate_feature_flag`].
+///
+/// Mirrors the TS `FeatureFlagEvaluationError` hierarchy: callers can match
+/// on `NotFound` / `ContextError` / `Evaluation` without parsing messages.
+/// `Request` wraps underlying transport / deserialization failures.
+#[derive(Debug, Error)]
+pub enum FeatureFlagEvaluationError {
+    /// Server returned 404 — the flag key is not defined in the org's schema.
+    #[error("Feature flag \"{key}\" evaluation failed: HTTP 404 — flag not defined in schema")]
+    NotFound { key: String },
+    /// Server returned 400 — invalid context or environment.
+    #[error("Feature flag \"{key}\" evaluation failed: HTTP 400 — {message}")]
+    ContextError { key: String, message: String },
+    /// Server returned a non-success status other than 400 / 404.
+    #[error("Feature flag \"{key}\" evaluation failed: HTTP {status}{}", if .message.is_empty() { String::new() } else { format!(" — {}", .message) })]
+    Evaluation { key: String, status: u16, message: String },
+    /// Underlying HTTP transport or JSON deserialization failure.
+    #[error("Feature flag \"{key}\" evaluation failed: {source}")]
+    Request {
+        key: String,
+        #[source]
+        source: reqwest::Error,
+    },
+}
+
+impl FeatureFlagEvaluationError {
+    /// The flag key the failed evaluation was for.
+    pub fn key(&self) -> &str {
+        match self {
+            Self::NotFound { key } => key,
+            Self::ContextError { key, .. } => key,
+            Self::Evaluation { key, .. } => key,
+            Self::Request { key, .. } => key,
+        }
+    }
+
+    /// The HTTP status code, if the failure came from a server response.
+    /// Returns `None` for transport / parse errors.
+    pub fn status_code(&self) -> Option<u16> {
+        match self {
+            Self::NotFound { .. } => Some(404),
+            Self::ContextError { .. } => Some(400),
+            Self::Evaluation { status, .. } => Some(*status),
+            Self::Request { .. } => None,
+        }
+    }
 }
 
 impl ConfigClient {
@@ -203,6 +271,87 @@ impl ConfigClient {
         }
 
         Ok(response.values)
+    }
+
+    /// Evaluate a cohort-aware feature flag on the server.
+    ///
+    /// Unlike [`get_value`](Self::get_value), this is always a network call —
+    /// cohort rules (percentage rollout, attribute matching, bucketing) live
+    /// server-side and the response depends on the `context` you pass. Callers
+    /// that don't need cohort evaluation should keep using `get_value` for the
+    /// static flag value.
+    ///
+    /// # Arguments
+    /// * `key` — Feature-flag key. URL-encoded before being placed in the path.
+    /// * `context` — Attributes the server's cohort rules may reference
+    ///   (e.g. `{ "userId": ..., "plan": ... }`). `None` is equivalent to an
+    ///   empty map. Values must be JSON-serializable — the server hashes
+    ///   `bucketBy` values by their string representation, so numbers and
+    ///   booleans bucket stably across client rebuilds.
+    /// * `environment` — Environment name (defaults to the client's default
+    ///   environment when `None`).
+    ///
+    /// # Errors
+    /// * [`FeatureFlagEvaluationError::NotFound`] — 404, flag not defined.
+    /// * [`FeatureFlagEvaluationError::ContextError`] — 400, bad context.
+    /// * [`FeatureFlagEvaluationError::Evaluation`] — other non-2xx status.
+    /// * [`FeatureFlagEvaluationError::Request`] — transport / parse failure.
+    pub async fn evaluate_feature_flag(
+        &self,
+        key: &str,
+        context: Option<HashMap<String, serde_json::Value>>,
+        environment: Option<&str>,
+    ) -> Result<EvaluateFeatureFlagResponse, FeatureFlagEvaluationError> {
+        let env = self.resolve_env(environment).to_string();
+        let encoded_key = utf8_percent_encode(key, PATH_SEGMENT_ENCODE_SET).to_string();
+        let url = format!(
+            "{}/organizations/{}/config/feature-flags/{}/evaluate",
+            self.base_url, self.org_id, encoded_key
+        );
+
+        let body = serde_json::json!({
+            "environment": env,
+            "context": context.unwrap_or_default(),
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|source| FeatureFlagEvaluationError::Request {
+                key: key.to_string(),
+                source,
+            })?;
+
+        let status = response.status();
+        if status.is_success() {
+            return response.json::<EvaluateFeatureFlagResponse>().await.map_err(|source| {
+                FeatureFlagEvaluationError::Request {
+                    key: key.to_string(),
+                    source,
+                }
+            });
+        }
+
+        // Non-2xx — read body as text (best-effort) and map to typed error.
+        let status_code = status.as_u16();
+        let message = response.text().await.unwrap_or_default();
+
+        Err(match status_code {
+            404 => FeatureFlagEvaluationError::NotFound { key: key.to_string() },
+            400 => FeatureFlagEvaluationError::ContextError {
+                key: key.to_string(),
+                message,
+            },
+            _ => FeatureFlagEvaluationError::Evaluation {
+                key: key.to_string(),
+                status: status_code,
+                message,
+            },
+        })
     }
 
     /// Clear the entire local cache.
@@ -596,5 +745,295 @@ mod integration_tests {
         // Fetch staging again — should come from cache (mock expects only 1 call)
         let staging_cached = client.get_value("SHARED_KEY", Some("staging")).await.unwrap();
         assert_eq!(staging_cached, serde_json::json!("staging-value"));
+    }
+
+    // -----------------------------------------------------------------------
+    // evaluate_feature_flag
+    // -----------------------------------------------------------------------
+
+    use wiremock::matchers::{body_json, path as path_matcher};
+
+    // --- Evaluate: POST with environment + context, returns parsed response ---
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_posts_body_and_returns_response() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/aboutPage/evaluate",
+            ))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .and(header("content-type", "application/json"))
+            .and(body_json(serde_json::json!({
+                "environment": "production",
+                "context": { "userId": "u-1", "plan": "pro" }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": true,
+                "source": "rule",
+                "matchedRuleId": "rule-123"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut ctx = HashMap::new();
+        ctx.insert("userId".to_string(), serde_json::json!("u-1"));
+        ctx.insert("plan".to_string(), serde_json::json!("pro"));
+
+        let result = client
+            .evaluate_feature_flag("aboutPage", Some(ctx), None)
+            .await
+            .expect("evaluator returns 200");
+
+        assert_eq!(result.value, serde_json::json!(true));
+        assert_eq!(result.source, "rule");
+        assert_eq!(result.matched_rule_id.as_deref(), Some("rule-123"));
+        assert_eq!(result.rollout_bucket, None);
+    }
+
+    // --- Evaluate: None context defaults to empty object ---
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_defaults_context_to_empty() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/aboutPage/evaluate",
+            ))
+            .and(body_json(serde_json::json!({
+                "environment": "production",
+                "context": {}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": false,
+                "source": "default"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let result = client
+            .evaluate_feature_flag("aboutPage", None, None)
+            .await
+            .expect("evaluator returns 200");
+        assert_eq!(result.value, serde_json::json!(false));
+        assert_eq!(result.source, "default");
+    }
+
+    // --- Evaluate: explicit environment override wins over default ---
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_honors_environment_override() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/aboutPage/evaluate",
+            ))
+            .and(body_json(serde_json::json!({
+                "environment": "staging",
+                "context": {}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": true,
+                "source": "raw"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let result = client
+            .evaluate_feature_flag("aboutPage", None, Some("staging"))
+            .await
+            .expect("evaluator returns 200");
+        assert_eq!(result.source, "raw");
+    }
+
+    // --- Evaluate: flag keys with special chars are percent-encoded in path ---
+    // Uses the same `PATH_SEGMENT_ENCODE_SET` as `get_value` — RFC 3986 unreserved
+    // chars pass through, reserved chars (space, slash, ? etc.) are percent-encoded.
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_url_encodes_key() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/with%20spaces%2Fand%3Fquestion/evaluate",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": null,
+                "source": "default"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let result = client
+            .evaluate_feature_flag("with spaces/and?question", None, None)
+            .await
+            .expect("evaluator returns 200");
+        assert_eq!(result.value, serde_json::Value::Null);
+    }
+
+    // --- Evaluate: 404 → NotFound ---
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_404_not_found() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/unknown/evaluate",
+            ))
+            .respond_with(ResponseTemplate::new(404).set_body_string("flag not defined"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let err = client
+            .evaluate_feature_flag("unknown", None, None)
+            .await
+            .expect_err("expected NotFound");
+
+        match &err {
+            FeatureFlagEvaluationError::NotFound { key } => assert_eq!(key, "unknown"),
+            other => panic!("expected NotFound, got {:?}", other),
+        }
+        assert_eq!(err.status_code(), Some(404));
+        assert_eq!(err.key(), "unknown");
+    }
+
+    // --- Evaluate: 400 → ContextError with server message ---
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_400_context_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/aboutPage/evaluate",
+            ))
+            .respond_with(ResponseTemplate::new(400).set_body_string("context missing required key"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let err = client
+            .evaluate_feature_flag("aboutPage", None, None)
+            .await
+            .expect_err("expected ContextError");
+
+        match &err {
+            FeatureFlagEvaluationError::ContextError { key, message } => {
+                assert_eq!(key, "aboutPage");
+                assert_eq!(message, "context missing required key");
+            }
+            other => panic!("expected ContextError, got {:?}", other),
+        }
+        assert_eq!(err.status_code(), Some(400));
+    }
+
+    // --- Evaluate: 5xx → Evaluation ---
+    #[tokio::test]
+    async fn test_evaluate_feature_flag_5xx_evaluation_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/feature-flags/aboutPage/evaluate",
+            ))
+            .respond_with(ResponseTemplate::new(503).set_body_string("evaluator overloaded"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let err = client
+            .evaluate_feature_flag("aboutPage", None, None)
+            .await
+            .expect_err("expected Evaluation");
+
+        match &err {
+            FeatureFlagEvaluationError::Evaluation { key, status, message } => {
+                assert_eq!(key, "aboutPage");
+                assert_eq!(*status, 503);
+                assert_eq!(message, "evaluator overloaded");
+            }
+            other => panic!("expected Evaluation, got {:?}", other),
+        }
+        assert_eq!(err.status_code(), Some(503));
+    }
+}
+
+#[cfg(test)]
+mod evaluate_response_tests {
+    use super::*;
+
+    #[test]
+    fn test_response_deserializes_full_payload() {
+        let json = r#"{"value": true, "matchedRuleId": "r-1", "rolloutBucket": 42, "source": "rollout"}"#;
+        let resp: EvaluateFeatureFlagResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.value, serde_json::json!(true));
+        assert_eq!(resp.matched_rule_id.as_deref(), Some("r-1"));
+        assert_eq!(resp.rollout_bucket, Some(42));
+        assert_eq!(resp.source, "rollout");
+    }
+
+    #[test]
+    fn test_response_deserializes_minimal_payload() {
+        let json = r#"{"value": "x", "source": "raw"}"#;
+        let resp: EvaluateFeatureFlagResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.matched_rule_id, None);
+        assert_eq!(resp.rollout_bucket, None);
+    }
+
+    #[test]
+    fn test_response_serializes_with_camel_case_fields() {
+        let resp = EvaluateFeatureFlagResponse {
+            value: serde_json::json!(true),
+            matched_rule_id: Some("r-1".to_string()),
+            rollout_bucket: Some(7),
+            source: "rule".to_string(),
+        };
+        let s = serde_json::to_string(&resp).unwrap();
+        assert!(s.contains("\"matchedRuleId\":\"r-1\""));
+        assert!(s.contains("\"rolloutBucket\":7"));
+    }
+
+    #[test]
+    fn test_response_skips_none_optional_fields_on_serialize() {
+        let resp = EvaluateFeatureFlagResponse {
+            value: serde_json::json!(false),
+            matched_rule_id: None,
+            rollout_bucket: None,
+            source: "default".to_string(),
+        };
+        let s = serde_json::to_string(&resp).unwrap();
+        assert!(!s.contains("matchedRuleId"));
+        assert!(!s.contains("rolloutBucket"));
+    }
+
+    #[test]
+    fn test_error_helpers() {
+        let err = FeatureFlagEvaluationError::NotFound { key: "k".into() };
+        assert_eq!(err.key(), "k");
+        assert_eq!(err.status_code(), Some(404));
+
+        let err = FeatureFlagEvaluationError::ContextError {
+            key: "k".into(),
+            message: "bad".into(),
+        };
+        assert_eq!(err.status_code(), Some(400));
+
+        let err = FeatureFlagEvaluationError::Evaluation {
+            key: "k".into(),
+            status: 502,
+            message: "bg".into(),
+        };
+        assert_eq!(err.status_code(), Some(502));
     }
 }

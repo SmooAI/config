@@ -18,7 +18,7 @@ pub mod schema_validator;
 pub mod utils;
 
 pub use build::{build_bundle, BuildBundleOptions, BuildBundleResult, BuildError, Classification, Classifier};
-pub use client::ConfigClient;
+pub use client::{ConfigClient, EvaluateFeatureFlagResponse, FeatureFlagEvaluationError};
 pub use cloud_region::{get_cloud_region, get_cloud_region_from_env, CloudRegionResult};
 pub use config_manager::ConfigManager;
 pub use env_config::find_and_process_env_config;

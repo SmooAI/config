@@ -1,9 +1,17 @@
 """Tests for ConfigClient."""
 
+import json
+
 import httpx
 import pytest
 
-from smooai_config.client import ConfigClient
+from smooai_config.client import (
+    ConfigClient,
+    EvaluateFeatureFlagResponse,
+    FeatureFlagContextError,
+    FeatureFlagEvaluationError,
+    FeatureFlagNotFoundError,
+)
 
 
 @pytest.fixture
@@ -289,3 +297,165 @@ class TestErrorHandling:
             )
             with pytest.raises(httpx.HTTPStatusError):
                 client.get_value("nonexistent", environment="prod")
+
+
+def _make_client_with_transport(transport: httpx.MockTransport, *, environment: str = "production") -> ConfigClient:
+    """Build a ConfigClient whose internal httpx.Client uses the given mock transport."""
+    client = ConfigClient(
+        base_url="https://config.smooai.dev",
+        api_key="test-api-key",
+        org_id="org-123",
+        environment=environment,
+    )
+    client._client = httpx.Client(
+        base_url="https://config.smooai.dev",
+        headers={"Authorization": "Bearer test-api-key"},
+        transport=transport,
+    )
+    return client
+
+
+class TestEvaluateFeatureFlag:
+    """Tests for ConfigClient.evaluate_feature_flag()."""
+
+    def test_posts_body_with_environment_and_context(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(
+                200,
+                json={"value": True, "source": "rule", "matchedRuleId": "rule-123"},
+            )
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            result = client.evaluate_feature_flag("aboutPage", {"userId": "u-1", "plan": "pro"})
+
+        assert isinstance(result, EvaluateFeatureFlagResponse)
+        assert result.value is True
+        assert result.source == "rule"
+        assert result.matched_rule_id == "rule-123"
+        assert result.rollout_bucket is None
+
+        req = captured["request"]
+        assert req.method == "POST"
+        assert str(req.url) == (
+            "https://config.smooai.dev/organizations/org-123/config/feature-flags/aboutPage/evaluate"
+        )
+        assert req.headers["authorization"] == "Bearer test-api-key"
+        assert json.loads(req.content) == {
+            "environment": "production",
+            "context": {"userId": "u-1", "plan": "pro"},
+        }
+
+    def test_defaults_context_to_empty_dict(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"value": False, "source": "default"})
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            result = client.evaluate_feature_flag("aboutPage")
+
+        assert result.value is False
+        assert result.source == "default"
+        assert json.loads(captured["request"].content) == {
+            "environment": "production",
+            "context": {},
+        }
+
+    def test_honors_explicit_environment_override(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"value": True, "source": "raw"})
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            client.evaluate_feature_flag("aboutPage", {}, environment="staging")
+
+        assert json.loads(captured["request"].content) == {
+            "environment": "staging",
+            "context": {},
+        }
+
+    def test_url_encodes_flag_key_with_special_characters(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"value": None, "source": "default"})
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            client.evaluate_feature_flag("with spaces/and+slashes")
+
+        assert "with%20spaces%2Fand%2Bslashes" in str(captured["request"].url)
+
+    def test_parses_rollout_bucket(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"value": True, "source": "rollout", "rolloutBucket": 42},
+            )
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            result = client.evaluate_feature_flag("aboutPage", {"userId": "u-1"})
+
+        assert result.source == "rollout"
+        assert result.rollout_bucket == 42
+
+    def test_raises_feature_flag_not_found_on_404(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, text="flag not defined")
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            with pytest.raises(FeatureFlagNotFoundError) as exc_info:
+                client.evaluate_feature_flag("unknown")
+
+        err = exc_info.value
+        assert isinstance(err, FeatureFlagEvaluationError)
+        assert err.key == "unknown"
+        assert err.status_code == 404
+
+    def test_raises_feature_flag_context_error_on_400(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, text="context missing required key")
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            with pytest.raises(FeatureFlagContextError) as exc_info:
+                client.evaluate_feature_flag("aboutPage")
+
+        err = exc_info.value
+        assert isinstance(err, FeatureFlagEvaluationError)
+        assert err.status_code == 400
+        assert err.server_message == "context missing required key"
+
+    def test_raises_feature_flag_evaluation_error_on_5xx(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="evaluator overloaded")
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            with pytest.raises(FeatureFlagEvaluationError) as exc_info:
+                client.evaluate_feature_flag("aboutPage")
+
+        err = exc_info.value
+        assert not isinstance(err, FeatureFlagNotFoundError)
+        assert not isinstance(err, FeatureFlagContextError)
+        assert err.status_code == 503
+        assert err.server_message == "evaluator overloaded"
+
+    def test_uses_default_environment_from_constructor(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"value": True, "source": "raw"})
+
+        with _make_client_with_transport(
+            httpx.MockTransport(handler),
+            environment="development",
+        ) as client:
+            client.evaluate_feature_flag("aboutPage")
+
+        assert json.loads(captured["request"].content)["environment"] == "development"
