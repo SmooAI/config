@@ -323,6 +323,27 @@ impl ConfigManager {
             inner.feature_flag_cache.clear();
         }
     }
+
+    /// Seed the manager's merged config map directly and mark it initialized.
+    ///
+    /// Used by the bake-aware runtime ([`crate::runtime::build_config_runtime`])
+    /// to hydrate public + secret values from a pre-decrypted blob, bypassing
+    /// the normal file/env/remote merge pipeline. After seeding, public and
+    /// secret lookups hit the in-memory map synchronously. Feature flags are
+    /// intentionally omitted from the blob and still fall through to whatever
+    /// live-fetch path the consumer has configured.
+    pub fn seed_from_baked(&self, values: HashMap<String, Value>) -> Result<(), SmooaiConfigError> {
+        let mut inner = self
+            .inner
+            .write()
+            .map_err(|_| SmooaiConfigError::new("Failed to acquire write lock"))?;
+        inner.config = values;
+        inner.public_cache.clear();
+        inner.secret_cache.clear();
+        inner.feature_flag_cache.clear();
+        inner.initialized = true;
+        Ok(())
+    }
 }
 
 impl Default for ConfigManager {
