@@ -41,6 +41,13 @@ type ConfigManager struct {
 
 	// Deferred config values
 	deferred map[string]DeferredValue
+
+	// bakedConfig is an optional pre-decrypted map of remote values,
+	// seeded by NewRuntimeConfigManager from an AES-256-GCM blob. When
+	// set, initialize() uses it in place of the live remote fetch —
+	// env-var overrides still apply on top, file config still layers
+	// underneath, and deferred resolution still runs.
+	bakedConfig map[string]any
 }
 
 // ConfigManagerOption is a functional option for ConfigManager.
@@ -151,42 +158,48 @@ func (m *ConfigManager) initialize() error {
 	}
 	envConfig := findAndProcessEnvConfigWithEnv(schemaKeys, m.envPrefix, m.schemaTypes, env)
 
-	// 3. Try remote fetch if API creds are available
+	// 3. Resolve the "remote" tier — either from a baked blob (when
+	// NewRuntimeConfigManager pre-seeded m.bakedConfig) or via a live
+	// HTTP fetch. Env-var overrides still win on top of this.
 	remoteConfig := make(map[string]any)
 
-	apiKey := m.apiKey
-	baseURL := m.baseURL
-	orgID := m.orgID
+	if m.bakedConfig != nil {
+		remoteConfig = m.bakedConfig
+	} else {
+		apiKey := m.apiKey
+		baseURL := m.baseURL
+		orgID := m.orgID
 
-	// Check env vars as fallback for API credentials
-	if apiKey == "" {
-		apiKey = m.getEnvVal("SMOOAI_CONFIG_API_KEY")
-	}
-	if baseURL == "" {
-		baseURL = m.getEnvVal("SMOOAI_CONFIG_API_URL")
-	}
-	if orgID == "" {
-		orgID = m.getEnvVal("SMOOAI_CONFIG_ORG_ID")
-	}
-
-	if apiKey != "" && baseURL != "" && orgID != "" {
-		// Resolve environment
-		configEnv := m.environment
-		if configEnv == "" {
-			configEnv = m.getEnvVal("SMOOAI_CONFIG_ENV")
+		// Check env vars as fallback for API credentials
+		if apiKey == "" {
+			apiKey = m.getEnvVal("SMOOAI_CONFIG_API_KEY")
 		}
-		if configEnv == "" {
-			configEnv = "development"
+		if baseURL == "" {
+			baseURL = m.getEnvVal("SMOOAI_CONFIG_API_URL")
+		}
+		if orgID == "" {
+			orgID = m.getEnvVal("SMOOAI_CONFIG_ORG_ID")
 		}
 
-		client := NewConfigClient(baseURL, apiKey, orgID)
-		defer client.Close()
+		if apiKey != "" && baseURL != "" && orgID != "" {
+			// Resolve environment
+			configEnv := m.environment
+			if configEnv == "" {
+				configEnv = m.getEnvVal("SMOOAI_CONFIG_ENV")
+			}
+			if configEnv == "" {
+				configEnv = "development"
+			}
 
-		values, err := client.GetAllValues(configEnv)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[Smooai Config] Warning: Failed to fetch remote config: %v\n", err)
-		} else {
-			remoteConfig = values
+			client := NewConfigClient(baseURL, apiKey, orgID)
+			defer client.Close()
+
+			values, err := client.GetAllValues(configEnv)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[Smooai Config] Warning: Failed to fetch remote config: %v\n", err)
+			} else {
+				remoteConfig = values
+			}
 		}
 	}
 
