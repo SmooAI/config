@@ -1,9 +1,9 @@
-# SMOODEV-624 — Cohort-aware feature-flag evaluation client API
+# SMOODEV-624 — Segment-aware feature-flag evaluation client API
 
-> Design notes for adding cohort / context-aware feature-flag evaluation to
+> Design notes for adding segment / context-aware feature-flag evaluation to
 > the `@smooai/config` client libraries (TS, Python, Rust, Go). Background:
 > SMOODEV-614 already landed the server-side evaluator endpoint and the
-> schema-level cohort rule definitions (`$cohort` envelope, `rules`,
+> schema-level segment rule definitions (`$cohort` envelope, `rules`,
 > `defaultValue`, `bucketBy`, `rollout`). The client side currently
 > only supports fetching static feature-flag values from cache; this doc
 > specifies how to expose cohort-evaluated values.
@@ -31,7 +31,7 @@ Rationale:
 - `getFeatureFlag` is sync today; callers across the codebase rely on that
   (no `await` at every call site). Making it async would be a breaking
   change for every caller. We don't have a deprecation runway.
-- Cohort evaluation is fundamentally a network call — the server does the
+- Segment evaluation is fundamentally a network call — the server does the
   rule matching, rollout bucketing, and audit logging. Hiding the network
   behind a name that used to be sync is a footgun.
 - The evaluator response is richer than a boolean (it returns
@@ -93,7 +93,7 @@ includes canonicalized context so toggling context re-fetches.
 ### Context shape guidance
 
 Context is `Record<string, unknown>`. Server only reads keys that the
-specific flag's cohort rules reference (e.g. `userId`, `tenantId`,
+specific flag's segment rules reference (e.g. `userId`, `tenantId`,
 `plan`, `country`, `$cohort.bucketBy`). Clients can over-provide context
 freely — unused keys are ignored.
 

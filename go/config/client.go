@@ -227,7 +227,7 @@ func (c *ConfigClient) Close() {
 	c.client.CloseIdleConnections()
 }
 
-// EvaluateFeatureFlagResponse is the wire contract for the cohort-aware
+// EvaluateFeatureFlagResponse is the wire contract for the segment-aware
 // feature-flag evaluator. It mirrors the TS `EvaluateFeatureFlagResponse`
 // and the schema defined in `@smooai/schemas/config/feature-flag`.
 type EvaluateFeatureFlagResponse struct {
@@ -312,17 +312,17 @@ func (e *FeatureFlagEvaluationError) Is(target error) bool {
 	return false
 }
 
-// EvaluateFeatureFlag evaluates a cohort-aware feature flag against the server.
+// EvaluateFeatureFlag evaluates a segment-aware feature flag against the server.
 //
-// Unlike GetValue, this is always a network call: cohort rules (percentage
+// Unlike GetValue, this is always a network call: segment rules (percentage
 // rollout, attribute matching, bucketing) live server-side and the response
-// depends on the `evalContext` you pass. Callers that don't need cohort
+// depends on the `evalContext` you pass. Callers that don't need segment
 // evaluation should keep using GetValue for the static flag value.
 //
 // Parameters:
 //   - ctx: standard context for cancellation / deadline.
 //   - key: feature-flag key.
-//   - evalContext: attributes the server's cohort rules may reference
+//   - evalContext: attributes the server's segment rules may reference
 //     (e.g. {userId, tenantId, plan, country}). Unreferenced keys are ignored
 //     by the server. Keep values JSON-serializable — the server hashes
 //     `bucketBy` values by their string representation, so numbers and

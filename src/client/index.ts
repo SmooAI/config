@@ -123,9 +123,9 @@ export function createFeatureFlagChecker<T extends Record<string, string>>(): (k
 }
 
 /**
- * Create a typed cohort-aware feature-flag evaluator from a config's
+ * Create a typed segment-aware feature-flag evaluator from a config's
  * FeatureFlagKeys and a `ConfigClient`. Always hits the server-side
- * evaluator — cohort rules (percentage rollout, attribute matching,
+ * evaluator — segment rules (percentage rollout, attribute matching,
  * bucketing) live server-side. Use this when the flag result depends on
  * per-request context.
  *

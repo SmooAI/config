@@ -176,16 +176,16 @@ export class ConfigClient {
     }
 
     /**
-     * Evaluate a cohort-aware feature flag against the server.
+     * Evaluate a segment-aware feature flag against the server.
      *
      * Unlike `getValue` / `getCachedValue`, this is always a network call:
-     * cohort rules (percentage rollout, attribute matching, bucketing) live
+     * segment rules (percentage rollout, attribute matching, bucketing) live
      * server-side and the response depends on the `context` you pass. Callers
-     * that don't need cohort evaluation should keep using `getValue` for the
+     * that don't need segment evaluation should keep using `getValue` for the
      * static flag value.
      *
      * @param key - Feature-flag key.
-     * @param context - Attributes the server's cohort rules may reference
+     * @param context - Attributes the server's segment rules may reference
      *   (e.g. `{ userId, tenantId, plan, country }`). Unreferenced keys are
      *   ignored by the server. Keep values JSON-serializable — the server
      *   hashes `bucketBy` values by their string representation, so numbers
