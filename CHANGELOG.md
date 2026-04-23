@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 4.3.1
+
+### Patch Changes
+
+- 42206e5: Docstring-only rename: "cohort" → "segment" across TS/Python/Rust/Go feature-flag evaluator surfaces. The underlying API (`evaluateFeatureFlag(key, context)`, `createFeatureFlagEvaluator`) is unchanged; only prose and JSDoc/comments pick up the more industry-standard "segment" terminology. Design doc renamed `DESIGN-cohort-context.md` → `DESIGN-segment-context.md`.
+
 ## 4.3.0
 
 ### Minor Changes
