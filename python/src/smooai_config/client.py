@@ -151,17 +151,17 @@ class ConfigClient:
         context: dict[str, Any] | None = None,
         environment: str | None = None,
     ) -> "EvaluateFeatureFlagResponse":
-        """Evaluate a cohort-aware feature flag against the server.
+        """Evaluate a segment-aware feature flag against the server.
 
         Unlike :meth:`get_value` / the local cache, this is always a network
-        call: cohort rules (percentage rollout, attribute matching, bucketing)
+        call: segment rules (percentage rollout, attribute matching, bucketing)
         live server-side and the response depends on the ``context`` passed.
-        Callers that don't need cohort evaluation should keep using
+        Callers that don't need segment evaluation should keep using
         :meth:`get_value` for the static flag value.
 
         Args:
             key: Feature-flag key.
-            context: Attributes the server's cohort rules may reference
+            context: Attributes the server's segment rules may reference
                 (e.g. ``{"userId": ..., "tenantId": ..., "plan": ..., "country": ...}``).
                 Unreferenced keys are ignored by the server. Keep values
                 JSON-serializable — the server hashes ``bucketBy`` values by

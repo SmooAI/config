@@ -273,17 +273,17 @@ impl ConfigClient {
         Ok(response.values)
     }
 
-    /// Evaluate a cohort-aware feature flag on the server.
+    /// Evaluate a segment-aware feature flag on the server.
     ///
     /// Unlike [`get_value`](Self::get_value), this is always a network call —
-    /// cohort rules (percentage rollout, attribute matching, bucketing) live
+    /// segment rules (percentage rollout, attribute matching, bucketing) live
     /// server-side and the response depends on the `context` you pass. Callers
-    /// that don't need cohort evaluation should keep using `get_value` for the
+    /// that don't need segment evaluation should keep using `get_value` for the
     /// static flag value.
     ///
     /// # Arguments
     /// * `key` — Feature-flag key. URL-encoded before being placed in the path.
-    /// * `context` — Attributes the server's cohort rules may reference
+    /// * `context` — Attributes the server's segment rules may reference
     ///   (e.g. `{ "userId": ..., "plan": ... }`). `None` is equivalent to an
     ///   empty map. Values must be JSON-serializable — the server hashes
     ///   `bucketBy` values by their string representation, so numbers and
