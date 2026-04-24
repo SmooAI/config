@@ -57,6 +57,13 @@ rust/config/target
 # Go
 go/config/config
 
+# .NET
+dotnet/**/bin/
+dotnet/**/obj/
+dotnet/dist/
+*.nupkg
+*.snupkg
+
 # Smoo AI logs
 .smooai-logs
 
