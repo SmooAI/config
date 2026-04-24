@@ -24,7 +24,7 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ## About @smooai/config
 
-**Type-safe configuration management for every layer of your stack** -- Define configuration schemas once, validate everywhere, and manage public settings, secrets, and feature flags with full TypeScript inference.
+**Type-safe config, secrets, and feature flags for every layer of your stack** -- One schema, one API, every language. Rename a key and every call site is a compile error, not a 3 AM page.
 
 ![NPM Version](https://img.shields.io/npm/v/%40smooai%2Fconfig?style=for-the-badge)
 ![NPM Downloads](https://img.shields.io/npm/dw/%40smooai%2Fconfig?style=for-the-badge)
@@ -36,14 +36,15 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ---
 
-### What's in the box
+### What you get
 
-- **`@smooai/config`** -- Server-side config SDK with the full priority chain (baked blob → env → HTTP → file) and typed sync + async accessors per tier (`publicConfig`, `secretConfig`, `featureFlag`).
-- **`@smooai/config/client`** -- Universal browser reader for feature flags and public config. Zero Node.js dependencies, works identically in Next.js, Vite, and any browser environment.
-- **`@smooai/config/nextjs/withSmooConfig`** -- Next.js config wrapper that bakes public config + feature-flag defaults into the bundle as `NEXT_PUBLIC_*` env vars, and inlines them into a runtime env bag for dynamic-key lookups.
-- **`@smooai/config/vite/smooConfigPlugin`** -- Vite plugin that does the same for `VITE_CONFIG_*` / `VITE_FEATURE_FLAG_*`.
-- **`@smooai/config/react`** -- Framework-agnostic React hooks (`useFeatureFlag`, `usePublicConfig`) + `ConfigProvider` for any React app.
-- **Typed key objects** -- `defineConfig()` returns `FeatureFlagKeys`, `PublicConfigKeys`, and `SecretConfigKeys` with auto-generated `UPPER_SNAKE_CASE` mappings and full TypeScript inference, so every config access is compile-time checked.
+- **Three tiers, one schema** -- public config, secrets, and feature flags defined once with Zod/Valibot/ArkType/Effect, validated everywhere they're read.
+- **Strongly-typed keys** -- `defineConfig()` gives you `PublicConfigKeys`, `SecretConfigKeys`, and `FeatureFlagKeys` with full inference. Mis-typed keys fail at compile time, not at runtime.
+- **Any environment, any key** -- same API for `development`, `staging`, `production`. Override per-stage without touching code.
+- **Zero-latency cold starts** -- values are baked into the bundle as env vars (Next.js, Vite) or resolved in-memory from a local runtime (server). No network round-trip on the hot path.
+- **Browser, server, framework-native** -- the same typed keys read cleanly from React client components, Server Components, Next.js, Vite, or plain Node.
+- **Live feature flags** -- toggled from the dashboard without a redeploy, but still typed.
+- **Native clients in every language** -- TypeScript, Python, Rust, Go, .NET (C#) all read from the same source of truth.
 
 ---
 
