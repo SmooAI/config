@@ -152,6 +152,65 @@ export function serializeConfigSchema<T extends ConfigSchema>(configSchema: T) {
     }, {} as ZodOutputType<T>);
 }
 
+/**
+ * Convert a single-tier `ConfigSchema` to a JSON Schema object node with
+ * `type: 'object'` + per-key `properties`. This is the SMOODEV-671 wire
+ * format: each key gets a real JSON Schema node (e.g. `{ type: 'string' }`)
+ * instead of the internal `'stringSchema'` sentinel string used by
+ * `serializeConfigSchema`.
+ */
+function tierConfigSchemaToJsonSchema<T extends ConfigSchema>(configSchema: T): Record<string, unknown> {
+    const properties: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(configSchema)) {
+        if (value === StringSchema) {
+            properties[key] = { type: 'string' };
+        } else if (value === BooleanSchema) {
+            properties[key] = { type: 'boolean' };
+        } else if (value === NumberSchema) {
+            properties[key] = { type: 'number' };
+        } else if (value && typeof value === 'object' && '~standard' in (value as object)) {
+            properties[key] = standardSchemaToJson(value as StandardSchemaV1);
+        }
+    }
+    return { type: 'object', properties };
+}
+
+/**
+ * Build the tiered JSON Schema used as the CLI push wire format
+ * (SMOODEV-671). The /apps/config dashboard renders the schemas / feature
+ * flags / values tabs off this shape — it expects three top-level tier
+ * nodes, each a proper JSON Schema object with nested per-key schemas.
+ *
+ * Shape:
+ *   {
+ *     type: 'object',
+ *     properties: {
+ *       publicConfigSchema:  { type: 'object', properties: { apiUrl: { type: 'string' }, ... } },
+ *       secretConfigSchema:  { type: 'object', properties: { ... } },
+ *       featureFlagSchema:   { type: 'object', properties: { ... } }
+ *     }
+ *   }
+ *
+ * This is kept separate from `serializeConfigSchema` (which still emits the
+ * flat `{ key: 'stringSchema' }` internal form) so local-runtime / source-
+ * generator consumers that read `serializedAllConfigSchema` are unaffected.
+ */
+export function serializeConfigSchemaToJsonSchema<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>(tiers: {
+    publicConfigSchema?: Pub | undefined;
+    secretConfigSchema?: Sec | undefined;
+    featureFlagSchema?: FF | undefined;
+}): Record<string, unknown> {
+    const { publicConfigSchema, secretConfigSchema, featureFlagSchema } = tiers;
+    return {
+        type: 'object',
+        properties: {
+            publicConfigSchema: tierConfigSchemaToJsonSchema(publicConfigSchema ?? ({} as Pub)),
+            secretConfigSchema: tierConfigSchemaToJsonSchema(secretConfigSchema ?? ({} as Sec)),
+            featureFlagSchema: tierConfigSchemaToJsonSchema(featureFlagSchema ?? ({} as FF)),
+        },
+    };
+}
+
 export function deserializeConfigSchema<T extends SeralizedConfigSchema>(configSchema: T) {
     return Object.entries(configSchema).reduce((acc, [key, value]) => {
         if (value === 'stringSchema') {
@@ -245,7 +304,8 @@ export /**
  *   - PublicConfigKeys: Object mapping public configuration keys to their snake_case versions
  *   - SecretConfigKeys: Object mapping secret configuration keys to their snake_case versions
  *   - FeatureFlagKeys: Object mapping feature flag keys to their snake_case versions
- *   - serializedAllConfigSchema: Serialized version of the complete configuration schema
+ *   - serializedAllConfigSchema: Flat internal serialization (e.g. `{ apiUrl: 'stringSchema' }`) — kept for local runtime, source generators, and the Zod-regen path
+ *   - serializedAllConfigSchemaJsonSchema: Tiered JSON Schema wire format used by `smooai-config push` and the /apps/config dashboard
  *   - _configTypeInput: Type helper for input configuration
  *   - _configTypeOutput: Type helper for output configuration
  *   - _configType: Type helper for configuration
@@ -364,6 +424,16 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
 
     const serializedAllConfigSchema = serializeConfigSchema(allConfigSchema);
 
+    // SMOODEV-671: CLI `smooai-config push` reads this tiered JSON Schema
+    // (not the flat `serializedAllConfigSchema`) so the /apps/config UI can
+    // render proper schemas / feature-flag / values tabs. The flat form
+    // stays intact for local-runtime and source-generator consumers.
+    const serializedAllConfigSchemaJsonSchema = serializeConfigSchemaToJsonSchema({
+        publicConfigSchema: allPublicConfigSchema as Pub,
+        secretConfigSchema,
+        featureFlagSchema,
+    });
+
     // const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions, object: allConfigZodSchema } = generateConfigSchema(allConfigSchema);
 
     // const parseConfig = (
@@ -398,6 +468,7 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
         SecretConfigKeys,
         FeatureFlagKeys,
         serializedAllConfigSchema,
+        serializedAllConfigSchemaJsonSchema,
         _configTypeInput,
         _configTypeOutput,
         _configType,
@@ -480,6 +551,7 @@ export type InferConfigTypes<T> = T extends {
     SecretConfigKeys: infer SK;
     FeatureFlagKeys: infer FK;
     serializedAllConfigSchema: infer _SACS;
+    serializedAllConfigSchemaJsonSchema?: infer _SJS;
     _configType: infer CT;
     _configTypeInput: infer CIT;
     _configTypeOutput: infer COT;

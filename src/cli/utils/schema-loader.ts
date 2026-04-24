@@ -128,10 +128,18 @@ export async function loadLocalSchema(configDir?: string): Promise<LoadedSchema 
             const mod = await loadTsConfigModule(tsPath);
             const configDef = ((mod as { default?: Record<string, unknown> }).default ?? mod) as Record<string, unknown>;
 
-            if (configDef.serializedAllConfigSchema) {
+            // SMOODEV-671: prefer the tiered JSON Schema wire format when the
+            // config module exposes it. Older `@smooai/config` versions only
+            // exported the flat `serializedAllConfigSchema` (internal
+            // `{key: 'stringSchema'}` form); fall back to that so legacy
+            // configs still push — though the UI won't render flat shapes
+            // correctly until the producer bumps past 4.x.
+            const tieredJsonSchema = configDef.serializedAllConfigSchemaJsonSchema as Record<string, unknown> | undefined;
+            const flatSchema = configDef.serializedAllConfigSchema as Record<string, unknown> | undefined;
+            if (tieredJsonSchema || flatSchema) {
                 return {
                     format: 'typescript',
-                    jsonSchema: configDef.serializedAllConfigSchema as Record<string, unknown>,
+                    jsonSchema: (tieredJsonSchema ?? flatSchema) as Record<string, unknown>,
                     filePath: tsPath,
                     schemaName: pickSchemaName(mod, configDef),
                 };
