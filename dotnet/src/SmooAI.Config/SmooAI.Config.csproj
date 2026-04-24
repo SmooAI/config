@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -12,7 +12,7 @@
 
   <PropertyGroup>
     <PackageId>SmooAI.Config</PackageId>
-    <Version>4.5.1</Version>
+    <Version>4.5.2</Version>
     <Authors>SmooAI</Authors>
     <Company>SmooAI</Company>
     <Product>SmooAI.Config</Product>
