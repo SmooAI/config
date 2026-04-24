@@ -132,6 +132,22 @@ jobs:
                   git push origin "${TAG}"
                   echo "Go module tagged and pushed: ${TAG}"
 
+            - name: Publish SmooAI.Config to NuGet
+              if: steps.changesets.outputs.published == 'true'
+              working-directory: dotnet
+              env:
+                  NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+              run: |
+                  if [ -z "${NUGET_API_KEY}" ]; then
+                      echo "::error::NUGET_API_KEY secret is not set"
+                      exit 1
+                  fi
+                  dotnet pack src/SmooAI.Config/SmooAI.Config.csproj -c Release --no-build -o dist
+                  dotnet nuget push "dist/*.nupkg" \
+                      --api-key "${NUGET_API_KEY}" \
+                      --source https://api.nuget.org/v3/index.json \
+                      --skip-duplicate
+
             - name: Auto-Merge Changeset PR
               run: |
                   PR_NUMBER=$(gh pr list --state open --head changeset-release/main --json number --jq '.[0].number')

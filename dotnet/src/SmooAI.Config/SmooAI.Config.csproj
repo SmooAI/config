@@ -12,12 +12,12 @@
 
   <PropertyGroup>
     <PackageId>SmooAI.Config</PackageId>
-    <Version>0.1.0</Version>
+    <Version>4.4.0</Version>
     <Authors>SmooAI</Authors>
     <Company>SmooAI</Company>
     <Product>SmooAI.Config</Product>
-    <Description>.NET client for the Smoo AI config platform — read and write typed configuration values and secrets with OAuth2 client-credentials authentication.</Description>
-    <PackageTags>smooai;config;configuration;secrets;feature-flags</PackageTags>
+    <Description>.NET client for the Smoo AI config platform — typed configuration values, secrets, and feature flags with OAuth2 auth, a local AES-GCM baked runtime for zero-latency cold starts, and a Roslyn source generator for compile-time-safe key access. Wire-compatible with the TypeScript, Python, Rust, and Go clients.</Description>
+    <PackageTags>smooai;config;configuration;secrets;feature-flags;source-generator;roslyn</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/SmooAI/config</PackageProjectUrl>
     <RepositoryUrl>https://github.com/SmooAI/config</RepositoryUrl>
@@ -39,8 +39,31 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
+  <!--
+    Ship the Roslyn source generator as an analyzer inside this package.
+    Consumers get typed `ConfigKey<T>` properties via a single
+    `dotnet add package SmooAI.Config`. The generator DLL is packed but NOT
+    referenced at compile time — ReferenceOutputAssembly=false avoids leaking
+    Microsoft.CodeAnalysis into consumer apps.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\SmooAI.Config.SourceGenerator\SmooAI.Config.SourceGenerator.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Analyzer" />
+  </ItemGroup>
+
+  <Target Name="PackAnalyzer" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <None Include="..\SmooAI.Config.SourceGenerator\bin\$(Configuration)\netstandard2.0\SmooAI.Config.SourceGenerator.dll"
+            Pack="true"
+            PackagePath="analyzers/dotnet/cs"
+            Visible="false" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <InternalsVisibleTo Include="SmooAI.Config.Tests" />
+    <InternalsVisibleTo Include="SmooAI.Config.SourceGenerator.Tests" />
   </ItemGroup>
 
 </Project>

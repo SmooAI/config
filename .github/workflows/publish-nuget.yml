@@ -3,7 +3,13 @@ name: Publish NuGet (SmooAI.Config)
 on:
     push:
         tags:
+            # Primary — matches the npm release tag produced by Changesets.
+            # Version stays in lockstep with every other language client.
+            - 'v*'
+            # Legacy — kept so manually-pushed dotnet-only releases still work.
             - 'dotnet-v*'
+            # Per-package Changesets tag (`@smooai/config@<version>`).
+            - '@smooai/config@*'
     workflow_dispatch:
 
 jobs:
