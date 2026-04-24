@@ -254,6 +254,7 @@
         "ink-big-text": "^2.0.0",
         "ink-gradient": "^3.0.0",
         "ink-spinner": "^5.0.0",
+        "jiti": "^2.6.1",
         "json-schema-to-zod": "^2.6.1",
         "lru-cache": "^11.1.0",
         "synckit": "^0.11.12",

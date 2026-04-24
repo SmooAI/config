@@ -1,7 +1,8 @@
-import { basename } from 'path';
 import { render, Box, Text } from 'ink';
 import React, { useEffect, useState } from 'react';
 import { Banner } from '../components/Banner';
+import { BRAND } from '../components/brand';
+import { ErrorPanel, SuccessPanel, SummaryPanel } from '../components/Panels';
 import { TaskList, type TaskItem } from '../components/TaskList';
 import { CliApiClient } from '../utils/api-client';
 import { getCredentialsOrExit } from '../utils/credentials';
@@ -36,7 +37,47 @@ function computeSchemaDiff(local: Record<string, unknown>, remote: Record<string
     return { added, removed, changed };
 }
 
-export async function pushLogic(options: PushOptions): Promise<{ success: boolean; schema?: unknown; version?: unknown; diff?: SchemaDiff }> {
+export interface PushResolution {
+    schemaName: string;
+    source: 'flag' | 'config' | 'schema';
+    /** Set when --schema-name disagrees with a name declared inside the config. */
+    warning?: string;
+}
+
+/**
+ * SMOODEV-643: resolve the schema name deterministically. Never fall back to
+ * cwd basename — that silently created bogus schemas server-side. Either the
+ * user passes `--schema-name`, or the config module exports a top-level
+ * `schemaName` / `name`, or the JSON Schema carries `$smooaiName`. If neither
+ * is present, fail with an actionable error.
+ */
+export function resolveSchemaName(flag: string | undefined, schemaNameFromFile: string | undefined): PushResolution {
+    if (flag && schemaNameFromFile && flag !== schemaNameFromFile) {
+        return {
+            schemaName: flag,
+            source: 'flag',
+            warning: `--schema-name=${flag} overrides schemaName=${schemaNameFromFile} declared in the config file`,
+        };
+    }
+    if (flag) return { schemaName: flag, source: 'flag' };
+    if (schemaNameFromFile) return { schemaName: schemaNameFromFile, source: 'config' };
+    throw new Error(
+        'Schema name is required. Pass --schema-name <name> or export `schemaName` (or `$smooaiName` in schema.json) from your .smooai-config file. ' +
+            'We no longer fall back to the directory name — that previously created bogus schemas server-side.',
+    );
+}
+
+export interface PushLogicResult {
+    success: boolean;
+    schema?: unknown;
+    version?: unknown;
+    diff?: SchemaDiff;
+    schemaName: string;
+    created: boolean;
+    warning?: string;
+}
+
+export async function pushLogic(options: PushOptions): Promise<PushLogicResult> {
     const creds = getCredentialsOrExit();
     const client = new CliApiClient(creds);
 
@@ -59,7 +100,8 @@ export async function pushLogic(options: PushOptions): Promise<{ success: boolea
         throw new Error(`Schema uses unsupported JSON Schema features:\n${errorMessages.join('\n')}`);
     }
 
-    const schemaName = options.schemaName ?? basename(process.cwd());
+    const resolution = resolveSchemaName(options.schemaName, loaded.schemaName);
+    const schemaName = resolution.schemaName;
 
     // Check if schema already exists
     const existingSchema = await client.getSchemaByName(schemaName).catch(() => null);
@@ -69,46 +111,53 @@ export async function pushLogic(options: PushOptions): Promise<{ success: boolea
     if (existingSchema) {
         diff = computeSchemaDiff(loaded.jsonSchema, existingSchema.jsonSchema);
 
-        // Push new version
         const result = await client.pushSchemaVersion(existingSchema.id, {
             jsonSchema: loaded.jsonSchema,
             changeDescription: options.description,
         });
 
-        return { success: true, schema: result.schema, version: result.version, diff };
+        return { success: true, schema: result.schema, version: result.version, diff, schemaName, created: false, warning: resolution.warning };
     }
 
-    // Create new schema
     const schema = await client.createSchema({
         name: schemaName,
         jsonSchema: loaded.jsonSchema,
         description: options.description,
     });
 
-    return { success: true, schema };
+    return { success: true, schema, schemaName, created: true, warning: resolution.warning };
 }
 
 function DiffDisplay({ diff }: { diff: SchemaDiff }) {
     if (diff.added.length === 0 && diff.removed.length === 0 && diff.changed.length === 0) {
-        return <Text color="gray">No changes detected.</Text>;
+        return (
+            <Box marginTop={1}>
+                <Text color={BRAND.gray}>No changes detected.</Text>
+            </Box>
+        );
     }
 
     return (
-        <Box flexDirection="column" marginTop={1}>
-            <Text bold>Schema Changes:</Text>
+        <Box flexDirection="column" borderStyle="round" borderColor={BRAND.darkBlue} paddingX={1} marginY={1}>
+            <Text color={BRAND.darkBlue} bold>
+                Schema diff
+            </Text>
             {diff.added.map((k) => (
-                <Text key={k} color="green">
-                    + {k}
+                <Text key={k} color={BRAND.teal}>
+                    {'  + '}
+                    {k}
                 </Text>
             ))}
             {diff.removed.map((k) => (
-                <Text key={k} color="red">
-                    - {k}
+                <Text key={k} color={BRAND.red}>
+                    {'  - '}
+                    {k}
                 </Text>
             ))}
             {diff.changed.map((k) => (
-                <Text key={k} color="yellow">
-                    ~ {k}
+                <Text key={k} color={BRAND.yellow}>
+                    {'  ~ '}
+                    {k}
                 </Text>
             ))}
         </Box>
@@ -121,18 +170,16 @@ function PushUI({ options }: { options: PushOptions }) {
         { label: 'Validating schema', status: 'pending' },
         { label: 'Pushing to platform', status: 'pending' },
     ]);
-    const [result, setResult] = useState<{ schema?: unknown; version?: unknown; diff?: SchemaDiff } | null>(null);
+    const [result, setResult] = useState<PushLogicResult | null>(null);
+    const [error, setError] = useState<{ message: string; hint?: string } | null>(null);
 
     useEffect(() => {
         (async () => {
-            setTasks((t) => t.map((task, i) => (i === 0 ? { ...task, status: 'running' } : task)));
-
+            const now = Date.now();
+            setTasks((t) => t.map((task, i) => (i === 0 ? { ...task, status: 'running', startedAt: now } : task)));
             try {
-                // Simulate step progression
-                setTasks((t) => [{ ...t[0], status: 'done' }, { ...t[1], status: 'running' }, t[2]]);
-
+                setTasks((t) => [{ ...t[0], status: 'done' }, { ...t[1], status: 'running', startedAt: Date.now() }, t[2]]);
                 const res = await pushLogic(options);
-
                 setTasks([
                     { label: 'Loading local schema', status: 'done' },
                     { label: 'Validating schema', status: 'done' },
@@ -140,25 +187,60 @@ function PushUI({ options }: { options: PushOptions }) {
                 ]);
                 setResult(res);
             } catch (err) {
-                setTasks((t) =>
-                    t.map((task) => (task.status === 'running' ? { ...task, status: 'error', error: err instanceof Error ? err.message : String(err) } : task)),
-                );
+                const message = err instanceof Error ? err.message : String(err);
+                setTasks((t) => t.map((task) => (task.status === 'running' ? { ...task, status: 'error', error: message } : task)));
+                setError({
+                    message,
+                    hint: /schema name/i.test(message)
+                        ? 'Pass --schema-name, or add `export const schemaName = "your-schema"` to .smooai-config/config.ts.'
+                        : /Invalid JSON Schema/i.test(message)
+                          ? 'Check .smooai-config/schema.json is a valid JSON Schema draft-07 document.'
+                          : undefined,
+                });
             }
         })();
     }, []);
 
+    const keyCount = (() => {
+        const schema = result?.schema as { jsonSchema?: { properties?: Record<string, unknown> } } | undefined;
+        return Object.keys(schema?.jsonSchema?.properties ?? {}).length;
+    })();
+
     return (
         <Box flexDirection="column">
-            <Banner title="Push Schema" />
+            <Banner title="Push schema" subtitle={options.schemaName ?? '(auto-detected name)'} />
+            <SummaryPanel
+                title="Target"
+                rows={[
+                    { label: 'name', value: options.schemaName ?? '(from config.ts)', color: BRAND.teal },
+                    ...(options.description ? [{ label: 'desc', value: options.description, color: BRAND.darkBlue }] : []),
+                ]}
+            />
             <TaskList tasks={tasks} />
-            {result?.diff && <DiffDisplay diff={result.diff} />}
-            {result && (
+            {result?.warning && (
                 <Box marginTop={1}>
-                    <Text color="green" bold>
-                        Schema pushed successfully!
-                    </Text>
+                    <Text color={BRAND.yellow}>{'⚠ '}</Text>
+                    <Text color={BRAND.yellow}>{result.warning}</Text>
                 </Box>
             )}
+            {result?.diff && <DiffDisplay diff={result.diff} />}
+            {result && (
+                <SuccessPanel title={result.created ? 'Schema created' : 'Schema updated'}>
+                    <Text>
+                        <Text color={BRAND.gray}>{'name   '}</Text>
+                        <Text color={BRAND.teal} bold>
+                            {result.schemaName}
+                        </Text>
+                    </Text>
+                    {keyCount > 0 && (
+                        <Text>
+                            <Text color={BRAND.gray}>{'keys   '}</Text>
+                            <Text color={BRAND.orange}>{keyCount}</Text>
+                        </Text>
+                    )}
+                </SuccessPanel>
+            )}
+            {error && <ErrorPanel title="Push failed" message={error.message} hint={error.hint} />}
         </Box>
     );
 }

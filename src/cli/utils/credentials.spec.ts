@@ -1,68 +1,69 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs';
-import { homedir } from 'os';
-import { join } from 'path';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { deriveAuthUrlFromBaseUrl, isOAuthCredentials, maskSecret } from './credentials';
 
-// Test with a temp dir inside the real homedir to avoid mock complexity
-const testSmooaiDir = join(homedir(), '.smooai-test-cli');
-const testCredFile = join(testSmooaiDir, 'credentials.json');
-
-// Override the module's constants by providing a wrapper
-// Since we can't easily mock the module's internal constants,
-// we test the core logic patterns directly
-
-describe('credentials logic', () => {
-    beforeAll(() => {
-        mkdirSync(testSmooaiDir, { recursive: true });
+describe('deriveAuthUrlFromBaseUrl', () => {
+    it('swaps api.* for auth.*', () => {
+        expect(deriveAuthUrlFromBaseUrl('https://api.smoo.ai')).toBe('https://auth.smoo.ai');
     });
 
-    afterAll(() => {
-        try {
-            rmSync(testSmooaiDir, { recursive: true });
-        } catch {
-            // ignore
-        }
+    it('preserves path and port', () => {
+        expect(deriveAuthUrlFromBaseUrl('https://api.smoo.ai:8443')).toBe('https://auth.smoo.ai:8443');
     });
 
-    describe('credential file read/write', () => {
-        it('round-trips credentials through JSON', () => {
-            const creds = { apiKey: 'test-key', orgId: 'test-org', baseUrl: 'https://api.test.com' };
-            writeFileSync(testCredFile, JSON.stringify(creds, null, 2), { mode: 0o600 });
-
-            const raw = readFileSync(testCredFile, 'utf-8');
-            const parsed = JSON.parse(raw);
-            expect(parsed).toEqual(creds);
-        });
-
-        it('detects missing required fields', () => {
-            writeFileSync(testCredFile, JSON.stringify({ apiKey: 'only-key' }));
-            const parsed = JSON.parse(readFileSync(testCredFile, 'utf-8'));
-            expect(!parsed.apiKey || !parsed.orgId || !parsed.baseUrl).toBe(true);
-        });
-
-        it('handles missing file gracefully', () => {
-            const nonExistent = join(testSmooaiDir, 'nonexistent.json');
-            expect(existsSync(nonExistent)).toBe(false);
-        });
-
-        it('handles invalid JSON gracefully', () => {
-            writeFileSync(testCredFile, 'not valid json');
-            expect(() => JSON.parse(readFileSync(testCredFile, 'utf-8'))).toThrow();
-        });
+    it('returns localhost unchanged', () => {
+        expect(deriveAuthUrlFromBaseUrl('http://localhost:4000')).toBe('http://localhost:4000');
     });
 
-    describe('loadCredentials integration', () => {
-        it('loads and saves from the real module', async () => {
-            // Import the real module
-            const { loadCredentials, saveCredentials } = await import('./credentials');
+    it('returns 127.0.0.1 unchanged', () => {
+        expect(deriveAuthUrlFromBaseUrl('http://127.0.0.1:4000')).toBe('http://127.0.0.1:4000');
+    });
 
-            // Save real credentials
-            const creds = { apiKey: 'integration-key', orgId: 'integration-org', baseUrl: 'https://api.integration.com' };
-            saveCredentials(creds);
+    it('strips trailing slashes from the derived URL', () => {
+        expect(deriveAuthUrlFromBaseUrl('https://api.smoo.ai/')).toBe('https://auth.smoo.ai');
+    });
 
-            // Load them back
-            const loaded = loadCredentials();
-            expect(loaded).toEqual(creds);
-        });
+    it('returns a normalized url when the host does not start with api.', () => {
+        expect(deriveAuthUrlFromBaseUrl('https://gateway.smoo.ai')).toBe('https://gateway.smoo.ai');
+    });
+
+    it('falls back to original string on malformed URL', () => {
+        expect(deriveAuthUrlFromBaseUrl('not a url')).toBe('not a url');
+    });
+});
+
+describe('isOAuthCredentials', () => {
+    it('returns true when both clientId and clientSecret are present', () => {
+        expect(
+            isOAuthCredentials({
+                clientId: 'cid',
+                clientSecret: 'sk_secret',
+                orgId: 'org',
+                baseUrl: 'https://api.smoo.ai',
+                authUrl: 'https://auth.smoo.ai',
+            }),
+        ).toBe(true);
+    });
+
+    it('returns false for api-key credentials', () => {
+        expect(isOAuthCredentials({ apiKey: 'key', orgId: 'org', baseUrl: 'https://api.smoo.ai' })).toBe(false);
+    });
+});
+
+describe('maskSecret', () => {
+    it('masks after first 4 chars', () => {
+        expect(maskSecret('sk_abcdefghij')).toBe('sk_a' + '•'.repeat(9));
+    });
+
+    it('returns dots for short inputs', () => {
+        expect(maskSecret('abc')).toBe('•'.repeat(8));
+    });
+
+    it('handles empty input', () => {
+        expect(maskSecret('')).toBe('');
+    });
+
+    it('caps the dot run at 16', () => {
+        const masked = maskSecret('sk_' + 'x'.repeat(100));
+        expect(masked).toBe('sk_x' + '•'.repeat(16));
     });
 });
