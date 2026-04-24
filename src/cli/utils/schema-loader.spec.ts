@@ -1,8 +1,8 @@
 import { mkdirSync, rmSync, realpathSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { findLocalConfigDir } from './schema-loader';
+import { findLocalConfigDir, loadLocalSchema } from './schema-loader';
 
 describe('schema-loader', () => {
     describe('findLocalConfigDir', () => {
@@ -12,7 +12,6 @@ describe('schema-loader', () => {
 
         beforeAll(() => {
             mkdirSync(rawTestDir, { recursive: true });
-            // Resolve macOS /var -> /private/var symlink
             testDir = realpathSync(rawTestDir);
         });
 
@@ -59,6 +58,33 @@ describe('schema-loader', () => {
             mkdirSync(plainDir);
             process.chdir(subDir);
             expect(findLocalConfigDir()).toBe(dotDir);
+        });
+    });
+
+    describe('loadLocalSchema (TypeScript via jiti)', () => {
+        const FIXTURES = resolve(__dirname, '../../../test-fixtures/cli-schema-loader');
+
+        it('loads a TS config with explicit ReturnType<typeof defineConfig> annotation', async () => {
+            // SMOODEV-643: this annotation previously crashed tsx's stripper.
+            const loaded = await loadLocalSchema(join(FIXTURES, 'annotated/.smooai-config'));
+            expect(loaded).not.toBeNull();
+            expect(loaded!.format).toBe('typescript');
+            expect(loaded!.jsonSchema).toMatchObject({ type: 'object', properties: { API_URL: { type: 'string' } } });
+            expect(loaded!.schemaName).toBe('fixture-annotated');
+        });
+
+        it('reads schemaName from the default-export object when present', async () => {
+            const loaded = await loadLocalSchema(join(FIXTURES, 'named/.smooai-config'));
+            expect(loaded).not.toBeNull();
+            expect(loaded!.schemaName).toBe('fixture-via-default');
+            expect(loaded!.jsonSchema).toMatchObject({ properties: { DEBUG: { type: 'boolean' } } });
+        });
+
+        it('reads $smooaiName from schema.json', async () => {
+            const loaded = await loadLocalSchema(join(FIXTURES, 'json-named/.smooai-config'));
+            expect(loaded).not.toBeNull();
+            expect(loaded!.format).toBe('json-schema');
+            expect(loaded!.schemaName).toBe('fixture-json');
         });
     });
 });

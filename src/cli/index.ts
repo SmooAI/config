@@ -18,10 +18,13 @@ program
 
 program
     .command('login')
-    .description('Store credentials for CLI access')
-    .option('--api-key <key>', 'API key for authentication')
+    .description('Store credentials for CLI access (OAuth client-credentials or legacy API key)')
+    .option('--client-id <id>', 'OAuth2 client_id (uuid) — use with --client-secret')
+    .option('--client-secret <secret>', 'OAuth2 client_secret (sk_...) — use with --client-id')
+    .option('--api-key <key>', 'Legacy API key (fallback mode)')
     .option('--org-id <id>', 'Organization ID')
     .option('--base-url <url>', 'API base URL', 'https://api.smoo.ai')
+    .option('--auth-url <url>', 'OAuth token endpoint base URL (auto-derived from --base-url when omitted)')
     .action(async (opts) => {
         const { runLogin } = await import('./commands/login');
         runLogin({ ...opts, json: program.opts().json ?? opts.json });
@@ -71,6 +74,7 @@ program
     .command('list')
     .description('List all config values for an environment')
     .option('--environment <env>', 'Environment name', 'development')
+    .option('--show-secrets', 'Show secret-looking values in plaintext (off by default)')
     .action(async (opts) => {
         const { runList } = await import('./commands/list');
         runList({ ...opts, json: program.opts().json ?? opts.json });

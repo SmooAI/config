@@ -7,11 +7,18 @@
 import { execSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 
 export interface LoadedSchema {
     format: 'typescript' | 'json-schema' | 'python-generator' | 'go-generator' | 'rust-generator';
     jsonSchema: Record<string, unknown>;
     filePath: string;
+    /**
+     * Optional canonical schema name declared by the config module itself
+     * (e.g. `export const schemaName = 'smooai'`). When present, the `push`
+     * command uses this instead of a cwd-basename fallback.
+     */
+    schemaName?: string;
 }
 
 /**
@@ -55,6 +62,35 @@ function runGenerator(command: string, filePath: string, format: LoadedSchema['f
 }
 
 /**
+ * SMOODEV-643: load a TypeScript config module through `jiti`.
+ *
+ * Why jiti and not tsx's `tsImport`: the explicit type annotation
+ *   `const config: ReturnType<typeof defineConfig> = defineConfig({...})`
+ * — added in the smooai monorepo to work around a tsgo issue — trips tsx's
+ * lightweight stripper with `SyntaxError: Missing initializer in const
+ * declaration`. jiti uses a full TypeScript compiler path that handles
+ * arbitrary TS, including complex type annotations and re-exports.
+ */
+async function loadTsConfigModule(tsPath: string): Promise<Record<string, unknown>> {
+    // Dynamic import so the CLI bundle doesn't resolve jiti at import-graph
+    // time (it's only needed when a project has a .ts config). We keep
+    // `interopDefault: false` so named exports like `schemaName` survive — we
+    // manually unwrap the default in `loadLocalSchema`.
+    const { createJiti } = await import('jiti');
+    const jiti = createJiti(pathToFileURL(tsPath).href, { interopDefault: false, moduleCache: false });
+    const mod = (await jiti.import(tsPath)) as Record<string, unknown>;
+    return mod;
+}
+
+function pickSchemaName(mod: Record<string, unknown>, configDef: Record<string, unknown>): string | undefined {
+    const candidates = [configDef.schemaName, configDef.name, mod.schemaName, mod.name];
+    for (const v of candidates) {
+        if (typeof v === 'string' && v.trim()) return v.trim();
+    }
+    return undefined;
+}
+
+/**
  * Load config schema from .smooai-config/.
  *
  * Detection order:
@@ -72,10 +108,13 @@ export async function loadLocalSchema(configDir?: string): Promise<LoadedSchema 
     const jsonSchemaPath = join(dir, 'schema.json');
     if (existsSync(jsonSchemaPath)) {
         const raw = readFileSync(jsonSchemaPath, 'utf-8');
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const schemaName = typeof parsed.$smooaiName === 'string' ? parsed.$smooaiName : undefined;
         return {
             format: 'json-schema',
-            jsonSchema: JSON.parse(raw),
+            jsonSchema: parsed,
             filePath: jsonSchemaPath,
+            schemaName,
         };
     }
 
@@ -86,24 +125,20 @@ export async function loadLocalSchema(configDir?: string): Promise<LoadedSchema 
 
     if (tsPath) {
         try {
-            // SMOODEV-602: use tsx's `tsImport` to load `.ts` at runtime. A bare
-            // `await import(tsPath)` hits ERR_UNKNOWN_FILE_EXTENSION under Node
-            // because .ts has no built-in loader. `tsx` is already a dependency
-            // of this package — routing the dynamic import through it lets
-            // `smooai-config diff/push/pull` work out of the box in any project
-            // whose `.smooai-config/config.ts` is actual TypeScript.
-            const { tsImport } = await import('tsx/esm/api');
-            const mod = await tsImport(tsPath, import.meta.url);
-            const configDef = mod.default ?? mod;
+            const mod = await loadTsConfigModule(tsPath);
+            const configDef = ((mod as { default?: Record<string, unknown> }).default ?? mod) as Record<string, unknown>;
+
             if (configDef.serializedAllConfigSchema) {
                 return {
                     format: 'typescript',
-                    jsonSchema: configDef.serializedAllConfigSchema,
+                    jsonSchema: configDef.serializedAllConfigSchema as Record<string, unknown>,
                     filePath: tsPath,
+                    schemaName: pickSchemaName(mod, configDef),
                 };
             }
         } catch (err) {
-            throw new Error(`Failed to load TypeScript config from ${tsPath}: ${err}`);
+            const msg = err instanceof Error ? err.message : String(err);
+            throw new Error(`Failed to load TypeScript config from ${tsPath}: ${msg}`);
         }
     }
 

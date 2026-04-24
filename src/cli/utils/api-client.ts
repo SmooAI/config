@@ -1,14 +1,18 @@
 /**
  * API client wrapper for CLI commands.
- * Extends ConfigClient with schema and environment management methods.
  *
  * SMOODEV-602: routes HTTP through `@smooai/fetch` so flaky-network retries,
- * 429 back-off, and clearer error surfaces apply to every CLI call — same
- * resilience the SmooAI platform ships for its own HTTP callers.
+ * 429 back-off, and clearer error surfaces apply to every CLI call.
+ *
+ * SMOODEV-643: adds OAuth2 client-credentials exchange. When credentials carry
+ * a `clientId`/`clientSecret`, we mint an access token via auth.smoo.ai and
+ * auto-refresh when it's within 60s of expiry. Legacy `apiKey` credentials are
+ * still supported and used as a raw `Authorization: Bearer` header.
  */
 
 import fetch from '@smooai/fetch';
-import { type Credentials } from './credentials';
+import { isOAuthCredentials, saveCredentials, type Credentials, type OAuthCredentials } from './credentials';
+import { exchangeClientCredentials, shouldRefreshToken } from './oauth';
 
 export interface ConfigSchema {
     id: string;
@@ -45,22 +49,74 @@ export interface PushVersionResponse {
     };
 }
 
+export interface CliApiClientOptions {
+    /**
+     * Called after a successful token refresh so callers can persist the new
+     * `accessToken` + `accessTokenExpiresAt` to disk. Defaults to writing
+     * `~/.smooai/credentials.json` via `saveCredentials`.
+     */
+    onCredentialsChange?: (creds: Credentials) => void;
+}
+
 export class CliApiClient {
     private baseUrl: string;
-    private apiKey: string;
     private orgId: string;
+    private credentials: Credentials;
+    private onCredentialsChange: (creds: Credentials) => void;
 
-    constructor(credentials: Credentials) {
+    constructor(credentials: Credentials, options: CliApiClientOptions = {}) {
         this.baseUrl = credentials.baseUrl.replace(/\/+$/, '');
-        this.apiKey = credentials.apiKey;
         this.orgId = credentials.orgId;
+        this.credentials = { ...credentials } as Credentials;
+        this.onCredentialsChange = options.onCredentialsChange ?? ((c) => saveCredentials(c));
+    }
+
+    /** Return a shallow copy of the current credentials (including any refreshed token). */
+    getCredentials(): Credentials {
+        return { ...this.credentials } as Credentials;
+    }
+
+    private async ensureAccessToken(): Promise<string> {
+        if (!isOAuthCredentials(this.credentials)) {
+            // Legacy: apiKey is used directly.
+            const apiKey = (this.credentials as { apiKey: string }).apiKey;
+            if (!apiKey) throw new Error('Missing API key or OAuth client credentials');
+            return apiKey;
+        }
+
+        const oauth = this.credentials;
+        if (oauth.accessToken && !shouldRefreshToken(oauth.accessTokenExpiresAt)) {
+            return oauth.accessToken;
+        }
+
+        const token = await exchangeClientCredentials({
+            authUrl: oauth.authUrl,
+            clientId: oauth.clientId,
+            clientSecret: oauth.clientSecret,
+        });
+
+        const updated: OAuthCredentials = {
+            ...oauth,
+            accessToken: token.accessToken,
+            accessTokenExpiresAt: token.expiresAt,
+        };
+
+        this.credentials = updated;
+        try {
+            this.onCredentialsChange(updated);
+        } catch {
+            // Non-fatal: we still have the in-memory token.
+        }
+
+        return token.accessToken;
     }
 
     private async fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
+        const token = await this.ensureAccessToken();
         const response = await fetch(`${this.baseUrl}${path}`, {
             ...options,
             headers: {
-                Authorization: `Bearer ${this.apiKey}`,
+                Authorization: `Bearer ${token}`,
                 'Content-Type': 'application/json',
                 ...options?.headers,
             },
@@ -99,10 +155,17 @@ export class CliApiClient {
     }
 
     async getAllValues(environment: string): Promise<Record<string, unknown>> {
-        const result = await this.fetchJson<{ values: Record<string, unknown> }>(
+        // SMOODEV-643: the server may return wrapper envelopes like
+        // `{ success: false, error: ... }` or legacy `{ values: ... }`. Surface
+        // any explicit `success: false` as an error so debugging is loud, not
+        // silent-empty-list.
+        const result = await this.fetchJson<{ values?: Record<string, unknown>; success?: boolean; error?: string }>(
             `/organizations/${this.orgId}/config/values?environment=${encodeURIComponent(environment)}`,
         );
-        return result.values;
+        if (result && typeof result === 'object' && result.success === false) {
+            throw new Error(`API error: ${result.error ?? 'unknown error returned by values endpoint'}`);
+        }
+        return result.values ?? {};
     }
 
     async getValue(key: string, environment: string): Promise<unknown> {
