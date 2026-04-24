@@ -30,6 +30,12 @@ const files = [
         pattern: /^version = ".*"$/m,
         replacement: `version = "${version}"`,
     },
+    {
+        path: join(rootDir, 'dotnet', 'src', 'SmooAI.Config', 'SmooAI.Config.csproj'),
+        // Match only the top-level <Version> (not <PackageReference Version="..." />).
+        pattern: /<Version>[^<]*<\/Version>/,
+        replacement: `<Version>${version}</Version>`,
+    },
 ];
 
 // Go doesn't have a version file in go.mod, but we can add a version.go constant

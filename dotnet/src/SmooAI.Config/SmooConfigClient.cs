@@ -27,7 +27,7 @@ public sealed class SmooConfigClient : IDisposable
     private readonly string _defaultEnvironment;
 
     /// <summary>JSON options used for both request and response bodies.</summary>
-    internal static readonly JsonSerializerOptions JsonOptions = new()
+    public static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
