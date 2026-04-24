@@ -86,5 +86,37 @@ describe('schema-loader', () => {
             expect(loaded!.format).toBe('json-schema');
             expect(loaded!.schemaName).toBe('fixture-json');
         });
+
+        it('prefers serializedAllConfigSchemaJsonSchema (tiered) over serializedAllConfigSchema (flat) — SMOODEV-671', async () => {
+            const loaded = await loadLocalSchema(join(FIXTURES, 'tiered/.smooai-config'));
+            expect(loaded).not.toBeNull();
+            expect(loaded!.format).toBe('typescript');
+            expect(loaded!.schemaName).toBe('fixture-tiered');
+
+            // The tiered property wins — we should see the nested
+            // publicConfigSchema node, not the flat API_URL key.
+            expect(loaded!.jsonSchema).toMatchObject({
+                type: 'object',
+                properties: {
+                    publicConfigSchema: {
+                        type: 'object',
+                        properties: { API_URL: { type: 'string' } },
+                    },
+                },
+            });
+            // Sanity: the flat property should NOT have been picked up.
+            expect((loaded!.jsonSchema as any).API_URL).toBeUndefined();
+        });
+
+        it('falls back to serializedAllConfigSchema when tiered form is absent — SMOODEV-671', async () => {
+            const loaded = await loadLocalSchema(join(FIXTURES, 'legacy-flat/.smooai-config'));
+            expect(loaded).not.toBeNull();
+            expect(loaded!.format).toBe('typescript');
+            expect(loaded!.schemaName).toBe('fixture-legacy-flat');
+            expect(loaded!.jsonSchema).toMatchObject({
+                type: 'object',
+                properties: { LEGACY_KEY: { type: 'string' } },
+            });
+        });
     });
 });

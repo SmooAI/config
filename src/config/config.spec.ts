@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { describe, expect, it } from 'vitest';
 import z from 'zod';
-import { defineConfig, InferConfigTypes, StringSchema, NumberSchema, BooleanSchema } from './config';
+import { defineConfig, InferConfigTypes, StringSchema, NumberSchema, BooleanSchema, serializeConfigSchemaToJsonSchema } from './config';
 import { generateZodSchemas, parseConfig } from './parseConfigSchema';
 
 describe('defineConfig', () => {
@@ -275,5 +275,112 @@ describe('defineConfig', () => {
             expect(parsedConfig.enableLogging).toBe(true);
             expect(typeof parsedConfig.loggingConfig).toBe('function');
         }
+    });
+});
+
+describe('serializeConfigSchemaToJsonSchema (SMOODEV-671 tiered wire format)', () => {
+    it('wraps all three tiers under their canonical keys', () => {
+        const jsonSchema = serializeConfigSchemaToJsonSchema({
+            publicConfigSchema: { apiUrl: StringSchema, debugMode: BooleanSchema, maxRetries: NumberSchema },
+            secretConfigSchema: { apiKey: StringSchema },
+            featureFlagSchema: { enableNewUI: BooleanSchema },
+        });
+
+        expect(jsonSchema).toEqual({
+            type: 'object',
+            properties: {
+                publicConfigSchema: {
+                    type: 'object',
+                    properties: {
+                        apiUrl: { type: 'string' },
+                        debugMode: { type: 'boolean' },
+                        maxRetries: { type: 'number' },
+                    },
+                },
+                secretConfigSchema: {
+                    type: 'object',
+                    properties: {
+                        apiKey: { type: 'string' },
+                    },
+                },
+                featureFlagSchema: {
+                    type: 'object',
+                    properties: {
+                        enableNewUI: { type: 'boolean' },
+                    },
+                },
+            },
+        });
+    });
+
+    it('emits an empty tier node when a schema is missing', () => {
+        const jsonSchema = serializeConfigSchemaToJsonSchema({
+            publicConfigSchema: { apiUrl: StringSchema },
+        }) as any;
+
+        expect(jsonSchema.properties.publicConfigSchema.properties).toEqual({ apiUrl: { type: 'string' } });
+        expect(jsonSchema.properties.secretConfigSchema).toEqual({ type: 'object', properties: {} });
+        expect(jsonSchema.properties.featureFlagSchema).toEqual({ type: 'object', properties: {} });
+    });
+
+    it('nests real JSON Schema for zod standard-schema fields', () => {
+        const jsonSchema = serializeConfigSchemaToJsonSchema({
+            publicConfigSchema: {
+                database: z.object({
+                    host: z.string(),
+                    port: z.number(),
+                }),
+            },
+        }) as any;
+
+        const dbNode = jsonSchema.properties.publicConfigSchema.properties.database;
+        expect(dbNode.type).toBe('object');
+        expect(dbNode.properties.host).toMatchObject({ type: 'string' });
+        expect(dbNode.properties.port).toMatchObject({ type: 'number' });
+    });
+});
+
+describe('defineConfig exposes serializedAllConfigSchemaJsonSchema (SMOODEV-671)', () => {
+    it('attaches the tiered JSON Schema alongside the flat serialization', () => {
+        const config = defineConfig({
+            publicConfigSchema: { apiUrl: StringSchema },
+            secretConfigSchema: { apiKey: StringSchema },
+            featureFlagSchema: { enableNewUI: BooleanSchema },
+        });
+
+        // Flat internal form preserved for local runtime / source generator.
+        expect(config.serializedAllConfigSchema).toMatchObject({
+            apiUrl: 'stringSchema',
+            apiKey: 'stringSchema',
+            enableNewUI: 'booleanSchema',
+        });
+
+        // Tiered form shipped to the server for the /apps/config UI.
+        const wire = (config as any).serializedAllConfigSchemaJsonSchema;
+        expect(wire).toBeDefined();
+        expect(wire.type).toBe('object');
+        expect(wire.properties.publicConfigSchema.properties.apiUrl).toEqual({ type: 'string' });
+        expect(wire.properties.secretConfigSchema.properties.apiKey).toEqual({ type: 'string' });
+        expect(wire.properties.featureFlagSchema.properties.enableNewUI).toEqual({ type: 'boolean' });
+
+        // Standard public keys (ENV, CLOUD_PROVIDER, REGION, IS_LOCAL) are
+        // merged into the public tier on the wire so the UI sees every key
+        // the runtime will load.
+        expect(wire.properties.publicConfigSchema.properties.ENV).toEqual({ type: 'string' });
+        expect(wire.properties.publicConfigSchema.properties.IS_LOCAL).toEqual({ type: 'boolean' });
+
+        type Types = InferConfigTypes<typeof config>;
+        const _type: Types = {} as any; // type-level smoke check: compiles
+        void _type;
+    });
+
+    it('tolerates missing optional tiers', () => {
+        const config = defineConfig({
+            publicConfigSchema: { apiUrl: StringSchema },
+        });
+
+        const wire = (config as any).serializedAllConfigSchemaJsonSchema;
+        expect(wire.properties.secretConfigSchema.properties).toEqual({});
+        expect(wire.properties.featureFlagSchema.properties).toEqual({});
     });
 });
