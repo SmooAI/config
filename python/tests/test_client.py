@@ -108,15 +108,25 @@ class TestConfigClientInit:
             assert c._base_url == "https://explicit.example.com"
             assert c._org_id == "explicit-org"
 
-    def test_raises_without_base_url(self) -> None:
+    @staticmethod
+    def _scrub_env(monkeypatch: pytest.MonkeyPatch) -> None:
+        """Remove any SMOOAI_CONFIG_* env vars that might otherwise satisfy
+        the required-arg checks when a developer has them set locally."""
+        for var in ("SMOOAI_CONFIG_API_URL", "SMOOAI_CONFIG_API_KEY", "SMOOAI_CONFIG_ORG_ID", "SMOOAI_CONFIG_ENV"):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_raises_without_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._scrub_env(monkeypatch)
         with pytest.raises(ValueError, match="base_url is required"):
             ConfigClient(api_key="key", org_id="org")
 
-    def test_raises_without_api_key(self) -> None:
+    def test_raises_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._scrub_env(monkeypatch)
         with pytest.raises(ValueError, match="api_key is required"):
             ConfigClient(base_url="https://example.com", org_id="org")
 
-    def test_raises_without_org_id(self) -> None:
+    def test_raises_without_org_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._scrub_env(monkeypatch)
         with pytest.raises(ValueError, match="org_id is required"):
             ConfigClient(base_url="https://example.com", api_key="key")
 
