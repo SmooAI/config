@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 4.5.1
+
+### Patch Changes
+
+- 0fe4ae8: SMOODEV-664: Rewrite READMEs to value-frame the package — lead with strongly-typed config/secrets/feature flags, cross-language parity, and zero-latency cold starts. Move HTTP/OAuth/AES-GCM protocol detail to an "Under the hood" section so the first scroll sells the outcome, not the plumbing. Applies to the npm, NuGet, PyPI, crates.io, and Go docs.
+
 ## 4.5.0
 
 ### Minor Changes
