@@ -24,7 +24,7 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ## About smooai-config (Rust)
 
-**Type-safe configuration management for Rust services** - Define configuration schemas with native Rust structs and schemars, validate for cross-language interoperability, and fetch values from the centralized Smoo AI config server with async reqwest and local caching.
+**Type-safe config, secrets, and feature flags for Rust** - Same schema, same keys, same source of truth as your TypeScript, Python, Go, and .NET services. All strongly typed, all async.
 
 ![Crates.io Version](https://img.shields.io/crates/v/smooai-config?style=for-the-badge)
 ![Crates.io Downloads](https://img.shields.io/crates/d/smooai-config?style=for-the-badge)
@@ -36,21 +36,16 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ### Rust Crate
 
-A Rust port of [@smooai/config](https://www.npmjs.com/package/@smooai/config) that mirrors the feature set of the TypeScript and Python versions. The crate exposes a type-driven configuration API using `schemars` for JSON Schema generation, an async `reqwest`-based runtime client with local caching, and a local config manager that merges file and environment variable sources.
+Rust port of [@smooai/config](https://www.npmjs.com/package/@smooai/config). Derive `JsonSchema` on your own Rust structs, generate the exact schema every other service in your stack reads, and resolve values through a cached async client.
 
-### Why smooai-config?
+### What you get
 
-Ever hardcoded configuration values across your Rust services or fought to keep configuration in sync between Rust backends and TypeScript frontends? Traditional config management gives you the values, but not the safety or cross-language consistency.
-
-**smooai-config provides:**
-
-- **Three configuration tiers** - Separate public config, secrets, and feature flags with distinct schema types
-- **Native Rust structs** - Derive `JsonSchema` on your own types via `schemars` for automatic JSON Schema generation
-- **`define_config_typed` API** - Idiomatic generic function that converts Rust struct types to validated JSON Schema
-- **Cross-language compatibility validation** - Catches unsupported JSON Schema features at schema definition time
-- **Async runtime client** - Fetch configuration from the Smoo AI config server with `tokio` + `reqwest` and local caching
-- **Environment variable fallback** - Zero-config client setup via `SMOOAI_CONFIG_*` environment variables
-- **`from_env()` constructor** - Load all credentials from environment with a single call
+- **Three tiers, one schema** - public config, secrets, and feature flags as three Rust structs with `#[derive(JsonSchema)]`.
+- **Strongly-typed, idiomatic Rust** - `define_config_typed::<Public, Secret, Flags>()` turns your structs into the schema every other service reads.
+- **Any environment, any key** - same API for `development`, `staging`, `production` with per-stage overrides.
+- **Cross-language source of truth** - the same schema lives in TypeScript, Python, Go, and .NET services.
+- **Zero-config client setup** - `ConfigClient::from_env()` picks up `SMOOAI_CONFIG_*` and goes.
+- **Async + cached** - fetched values stay in-process between calls; invalidate on demand or set a TTL.
 
 ### Install
 

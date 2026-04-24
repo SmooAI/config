@@ -24,7 +24,7 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ## About smooai-config (Go)
 
-**Type-safe configuration management for Go services** - Define configuration schemas with Go structs and struct tags, validate for cross-language interoperability, and fetch values from the centralized Smoo AI config server with a thread-safe client and local caching.
+**Type-safe config, secrets, and feature flags for Go** - Same schema, same keys, same source of truth as your TypeScript, Python, Rust, and .NET services. All typed, all thread-safe.
 
 ![GitHub License](https://img.shields.io/github/license/SmooAI/config?style=for-the-badge)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/SmooAI/config/release.yml?style=for-the-badge)
@@ -32,21 +32,16 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ### Go Package
 
-A Go port of [@smooai/config](https://www.npmjs.com/package/@smooai/config) that mirrors the feature set of the TypeScript, Python, and Rust versions. The package exposes a struct-driven configuration API using `invopop/jsonschema` for JSON Schema reflection, a thread-safe HTTP client with `sync.RWMutex`-protected local caching, and a unified config manager that merges file config, remote API, and environment variables.
+Go port of [@smooai/config](https://www.npmjs.com/package/@smooai/config). Define your config with Go structs and tags — the same schema your TypeScript frontend or Rust service reads.
 
-### Why smooai-config?
+### What you get
 
-Ever scattered configuration across hardcoded values, config files, and environment variables across your Go services? Or struggled to keep configuration consistent between Go backends and TypeScript frontends? Traditional config management gives you the values, but not the cross-language safety.
-
-**smooai-config provides:**
-
-- **Three configuration tiers** - Separate public config, secrets, and feature flags with distinct schema types
-- **Native Go structs** - Use struct tags (`json`, `jsonschema`) for automatic JSON Schema generation via reflection
-- **`DefineConfigTyped` API** - Idiomatic Go API that generates JSON Schema from struct types with cross-language compatibility validation
-- **Thread-safe runtime client** - Fetch configuration from the Smoo AI config server with `sync.RWMutex`-protected caching
-- **Functional options pattern** - Configure the client and managers with idiomatic Go `...Option` parameters
-- **Environment variable fallback** - Zero-config client setup via `SMOOAI_CONFIG_*` environment variables
-- **`NewConfigClientFromEnv` constructor** - Load all credentials from environment with a single call
+- **Three tiers, one schema** - public config, secrets, and feature flags as three Go structs with struct tags.
+- **Native Go structs** - `json` and `jsonschema` tags are all you need; `DefineConfigTyped` generates the schema every other service reads.
+- **Any environment, any key** - same API for `development`, `staging`, `production` with per-stage overrides.
+- **Cross-language source of truth** - same schema lives in TypeScript, Python, Rust, and .NET services.
+- **Zero-config client setup** - `NewConfigClientFromEnv` picks up `SMOOAI_CONFIG_*` and goes.
+- **Thread-safe caching** - fetched values stay in-process between calls; invalidate on demand or set a TTL via `WithCacheTTL`.
 
 ### Install
 

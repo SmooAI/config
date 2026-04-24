@@ -24,7 +24,7 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ## About smooai-config (Python)
 
-**Type-safe configuration management for Python services** - Define configuration schemas with Pydantic, validate across tiers, and fetch values from the centralized Smoo AI config server with local caching and thread safety.
+**Type-safe config, secrets, and feature flags for Python** - Same schema, same keys, same source of truth as your TypeScript, Rust, Go, and .NET services. Validated by Pydantic at the edge.
 
 ![PyPI Version](https://img.shields.io/pypi/v/smooai-config?style=for-the-badge)
 ![PyPI Downloads](https://img.shields.io/pypi/dw/smooai-config?style=for-the-badge)
@@ -36,21 +36,16 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ### Python Package
 
-This is the Python port of [@smooai/config](https://www.npmjs.com/package/@smooai/config), mirroring the TypeScript feature set for backend services. Define schemas with familiar Pydantic models, generate JSON Schema for cross-language interoperability, and use the runtime client to fetch live configuration values from any Python environment.
+The Python port of [@smooai/config](https://www.npmjs.com/package/@smooai/config). Define your schema with Pydantic `BaseModel` classes once and every Python service in your stack reads the same typed values as your TypeScript frontend or Go backend.
 
-### Why smooai-config?
+### What you get
 
-Ever scattered configuration across environment variables, dotenv files, and hardcoded values across your Python microservices? Or struggled to keep configuration consistent between TypeScript frontends and Python backends? Traditional config management gives you the values, but not the safety.
-
-**smooai-config provides:**
-
-- **Three configuration tiers** - Separate public config, secrets, and feature flags with distinct Pydantic schemas
-- **Pydantic-native schemas** - Use familiar `BaseModel` definitions with full type validation
-- **JSON Schema generation** - Export schemas for cross-language consumption by TypeScript, Rust, and Go services
-- **Cross-language compatibility validation** - Catches unsupported JSON Schema features at schema definition time
-- **Thread-safe runtime client** - Fetch configuration from the Smoo AI config server with local caching and `RLock` safety
-- **Context manager support** - Clean `with ConfigClient(...) as client:` usage with automatic HTTP connection cleanup
-- **Environment variable fallback** - Zero-config client setup via `SMOOAI_CONFIG_*` environment variables
+- **Three tiers, one schema** - public config, secrets, and feature flags separated cleanly as three Pydantic `BaseModel` classes.
+- **Pydantic-validated at the edge** - invalid values raise before they land in business logic.
+- **Any environment, any key** - same API for `development`, `staging`, `production` with per-stage overrides.
+- **Cross-language source of truth** - the schemas you define in Python are the same ones your TypeScript, Rust, Go, and .NET services read.
+- **Zero-config client setup** - pick up `SMOOAI_CONFIG_*` from env vars and go.
+- **Thread-safe + context-managed** - `with ConfigClient(...) as client:` handles caching and connection cleanup for you.
 
 ### Install
 
