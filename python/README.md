@@ -67,6 +67,7 @@ uv add smooai-config
 | Python     | [`smooai-config`](https://pypi.org/project/smooai-config/)       | `pip install smooai-config`                 |
 | Rust       | [`smooai-config`](https://crates.io/crates/smooai-config)        | `cargo add smooai-config`                   |
 | Go         | `github.com/SmooAI/config/go/config`                             | `go get github.com/SmooAI/config/go/config` |
+| .NET       | [`SmooAI.Config`](https://www.nuget.org/packages/SmooAI.Config)  | `dotnet add package SmooAI.Config`          |
 
 ## Usage
 
@@ -194,6 +195,64 @@ manager = ConfigManager(
 value = manager.get_public_config("API_URL")
 ```
 
+### Baked Runtime — zero-network cold starts
+
+For Lambda / ECS / long-lived services, bake every public + secret value into an AES-256-GCM blob at deploy time and decrypt it at cold start. Reads then resolve from in-memory cache with no HTTP round-trip. Feature flags are intentionally skipped — they stay live-fetched so you can toggle without a redeploy.
+
+The runtime is a thin hydrator on top of `ConfigClient`: it decrypts the blob and pre-seeds the client cache. Subsequent `client.get_value(key)` calls resolve sync from cache.
+
+```python
+from smooai_config.runtime import build_config_runtime
+
+# At process boot (cold start). Reads SMOO_CONFIG_KEY_FILE + SMOO_CONFIG_KEY,
+# decrypts the blob, and seeds an internal ConfigClient cache.
+client = build_config_runtime()
+
+# Public + secret values come from the in-memory cache (no network).
+api_url = client.get_value("apiUrl")
+sendgrid = client.get_value("sendgridApiKey")
+
+# Feature flags are not baked — these still hit the API.
+new_flow = client.get_value("newFlow")
+```
+
+Bake the bundle at deploy time:
+
+```python
+from smooai_config.build import build_bundle, classify_from_schema
+
+result = build_bundle(
+    base_url="https://config.smooai.dev",
+    api_key="your-api-key",
+    org_id="your-org-id",
+    environment="production",
+    classify=classify_from_schema(
+        public_keys={"apiUrl"},
+        secret_keys={"sendgridApiKey"},
+        feature_flag_keys={"newFlow"},  # skipped (stays live)
+    ),
+)
+
+# Write the blob next to your deploy artifact and set both env vars on the
+# function. The blob layout is wire-compatible with every other SDK.
+with open("smoo-config.enc", "wb") as fh:
+    fh.write(result.bundle)
+
+print(f"SMOO_CONFIG_KEY_FILE=/abs/path/to/smoo-config.enc")
+print(f"SMOO_CONFIG_KEY={result.key_b64}")
+```
+
+#### Blob env vars
+
+| Variable               | Value                                      |
+| ---------------------- | ------------------------------------------ |
+| `SMOO_CONFIG_KEY_FILE` | Absolute path to the `.enc` bundle on disk |
+| `SMOO_CONFIG_KEY`      | Base64-encoded 32-byte AES-256 key         |
+
+Without both set, `build_config_runtime()` falls back to a plain `ConfigClient` so dev machines without a baked blob still work — the API stays uniform either way.
+
+The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wire-identical to the TypeScript, Rust, Go, and .NET runtimes. A blob baked in any language decrypts in any other.
+
 ## Environment Variables
 
 All clients read from the same set of environment variables:
@@ -222,6 +281,12 @@ export SMOOAI_CONFIG_ENV="production"
 | **Secret**        | Server-side only        | Database URLs, API keys, JWT secrets     |
 | **Feature Flags** | Runtime toggles         | A/B tests, gradual rollouts, beta access |
 
+## Common errors
+
+### `Cannot read properties of undefined` / passing `None` to `get_value`
+
+If you read `SecretConfigKeys.X` (or `PublicConfigKeys.X` / `FeatureFlagKeys.X`) for a key that wasn't declared in the schema your service was built against, the constant resolves to `None` / `undefined` and you'll see a typed error pointing at the missing key. The common cause is a schema rebase mismatch — the consumer was built against an older `schema.json` than the one declared in your config repo. Re-run `smooai-config push` (or the equivalent generator step) to pick up the new keys, or add the missing key to your schema.
+
 ## Built With
 
 - Python 3.13+ - Full type hints and Pydantic v2 support
@@ -235,6 +300,8 @@ export SMOOAI_CONFIG_ENV="production"
 - [@smooai/config](https://www.npmjs.com/package/@smooai/config) - TypeScript/JavaScript version
 - [smooai-config (Python)](https://pypi.org/project/smooai-config/) - This package
 - [smooai-config (Rust)](https://crates.io/crates/smooai-config) - Rust version
+- `github.com/SmooAI/config/go/config` - Go version
+- [SmooAI.Config (NuGet)](https://www.nuget.org/packages/SmooAI.Config) - .NET version
 - [SmooAI/config](https://github.com/SmooAI/config) - GitHub repository
 
 ## Development

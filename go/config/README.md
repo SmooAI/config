@@ -57,6 +57,7 @@ go get github.com/SmooAI/config/go/config
 | Python     | [`smooai-config`](https://pypi.org/project/smooai-config/)       | `pip install smooai-config`                 |
 | Rust       | [`smooai-config`](https://crates.io/crates/smooai-config)        | `cargo add smooai-config`                   |
 | Go         | `github.com/SmooAI/config/go/config`                             | `go get github.com/SmooAI/config/go/config` |
+| .NET       | [`SmooAI.Config`](https://www.nuget.org/packages/SmooAI.Config)  | `dotnet add package SmooAI.Config`          |
 
 ## Usage
 
@@ -226,6 +227,59 @@ value, err := manager.GetPublicConfig("API_URL")
 derived, err := manager.GetPublicConfig("DERIVED_URL")
 ```
 
+### Baked Runtime — zero-network cold starts
+
+For Lambda / ECS / long-lived services, bake every public + secret value into an AES-256-GCM blob at deploy time and decrypt it at cold start. `NewRuntimeConfigManager` decrypts the blob and installs the values as the manager's "remote" tier — public/secret reads then resolve from in-memory cache with no HTTP round-trip. Env vars still win on top, file config still layers underneath. Feature flags are skipped (the baker drops them) so they stay live-fetched.
+
+```go
+import "github.com/SmooAI/config/go/config"
+
+// At process boot. Reads SMOO_CONFIG_KEY_FILE + SMOO_CONFIG_KEY, decrypts
+// the blob, and uses it as the "remote" tier of the manager.
+mgr, err := config.NewRuntimeConfigManager(config.RuntimeOptions{
+    Environment: "production",
+})
+if err != nil { log.Fatal(err) }
+
+// Public + secret values come from the in-memory cache (no network).
+apiURL, _ := mgr.GetPublicConfig("apiUrl")
+sendgrid, _ := mgr.GetSecretConfig("sendgridApiKey")
+```
+
+Bake the bundle at deploy time:
+
+```go
+import "github.com/SmooAI/config/go/config"
+
+result, err := config.BuildBundle(context.Background(), config.BuildBundleOptions{
+    BaseURL:     "https://config.smooai.dev",
+    APIKey:      "your-api-key",
+    OrgID:       "your-org-id",
+    Environment: "production",
+    Classify: config.ClassifyFromSchema(
+        map[string]bool{"apiUrl": true},          // public
+        map[string]bool{"sendgridApiKey": true},  // secret
+        map[string]bool{"newFlow": true},         // feature flag — skipped
+    ),
+})
+if err != nil { log.Fatal(err) }
+
+os.WriteFile("smoo-config.enc", result.Blob, 0o600)
+fmt.Printf("SMOO_CONFIG_KEY_FILE=/abs/path/to/smoo-config.enc\n")
+fmt.Printf("SMOO_CONFIG_KEY=%s\n", result.KeyB64)
+```
+
+#### Blob env vars
+
+| Variable               | Value                                      |
+| ---------------------- | ------------------------------------------ |
+| `SMOO_CONFIG_KEY_FILE` | Absolute path to the `.enc` bundle on disk |
+| `SMOO_CONFIG_KEY`      | Base64-encoded 32-byte AES-256 key         |
+
+Without both set, `NewRuntimeConfigManager` returns a regular `*ConfigManager` configured from the same `RuntimeOptions`, so dev machines without a baked blob still work.
+
+The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wire-identical to the TypeScript, Python, Rust, and .NET runtimes. A blob baked in any language decrypts in any other.
+
 ## Environment Variables
 
 All clients read from the same set of environment variables:
@@ -253,6 +307,12 @@ export SMOOAI_CONFIG_ENV="production"
 | **Public**        | Client-visible settings | API URLs, feature toggles, UI config     |
 | **Secret**        | Server-side only        | Database URLs, API keys, JWT secrets     |
 | **Feature Flags** | Runtime toggles         | A/B tests, gradual rollouts, beta access |
+
+## Common errors
+
+### `GetValue` / `GetPublicConfig` returning empty string for a known key
+
+If you read `PublicConfigKeys.X` (or `SecretConfigKeys.X` / `FeatureFlagKeys.X`) for a key that wasn't declared in the schema your service was built against, the constant resolves to its zero value (empty string) and the manager returns `nil` from the merged map. The common cause is a schema rebase mismatch — the consumer was built against an older `schema.json` than what's in your config repo. Re-run the schema generator to pick up the new keys, or add the missing key to your schema.
 
 ## Built With
 
@@ -287,6 +347,7 @@ gofmt -w .
 - [@smooai/config](https://www.npmjs.com/package/@smooai/config) - TypeScript/JavaScript version
 - [smooai-config (Python)](https://pypi.org/project/smooai-config/) - Python version
 - [smooai-config (Rust)](https://crates.io/crates/smooai-config) - Rust version
+- [SmooAI.Config (NuGet)](https://www.nuget.org/packages/SmooAI.Config) - .NET version
 - [SmooAI/config](https://github.com/SmooAI/config) - GitHub repository
 
 <!-- CONTACT -->

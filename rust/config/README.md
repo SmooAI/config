@@ -70,6 +70,7 @@ cargo add smooai-config
 | Python     | [`smooai-config`](https://pypi.org/project/smooai-config/)       | `pip install smooai-config`                 |
 | Rust       | [`smooai-config`](https://crates.io/crates/smooai-config)        | `cargo add smooai-config`                   |
 | Go         | `github.com/SmooAI/config/go/config`                             | `go get github.com/SmooAI/config/go/config` |
+| .NET       | [`SmooAI.Config`](https://www.nuget.org/packages/SmooAI.Config)  | `dotnet add package SmooAI.Config`          |
 
 ## Usage
 
@@ -215,6 +216,75 @@ let db_url = manager.get_secret_config("DATABASE_URL")?;
 let new_ui = manager.get_feature_flag("ENABLE_NEW_UI")?;
 ```
 
+### Baked Runtime — zero-network cold starts
+
+For Lambda / ECS / long-lived services, bake every public + secret value into an AES-256-GCM blob at deploy time and decrypt it at cold start. `build_config_runtime` decrypts the blob and seeds the manager's merged config map, so public/secret reads resolve from in-memory cache with no HTTP round-trip. Feature flags are skipped (the baker drops them) so they stay live-fetched.
+
+```rust
+use smooai_config::{build_config_runtime, RuntimeOptions};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Reads SMOO_CONFIG_KEY_FILE + SMOO_CONFIG_KEY, decrypts the blob, and
+    // seeds the manager. With no env vars set, returns a regular live-fetch
+    // ConfigManager — same API either way.
+    let manager = build_config_runtime(RuntimeOptions {
+        environment: Some("production".to_string()),
+        ..Default::default()
+    })
+    .await?;
+
+    let api_url = manager.get_public_config("apiUrl")?;
+    let sendgrid = manager.get_secret_config("sendgridApiKey")?;
+    Ok(())
+}
+```
+
+Bake the bundle at deploy time:
+
+```rust
+use std::collections::HashSet;
+use smooai_config::{build_bundle, BuildBundleOptions, Classification};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Schema-driven classifier — feature flags must return Skip so they stay live.
+    let public_keys: HashSet<String> = ["apiUrl"].into_iter().map(String::from).collect();
+    let secret_keys: HashSet<String> = ["sendgridApiKey"].into_iter().map(String::from).collect();
+    let flag_keys: HashSet<String> = ["newFlow"].into_iter().map(String::from).collect();
+
+    let result = build_bundle(BuildBundleOptions {
+        base_url: "https://config.smooai.dev".to_string(),
+        api_key: "your-api-key".to_string(),
+        org_id: "your-org-id".to_string(),
+        environment: Some("production".to_string()),
+        classify: Some(Box::new(move |key, _v| {
+            if secret_keys.contains(key) { Classification::Secret }
+            else if flag_keys.contains(key) { Classification::Skip }
+            else if public_keys.contains(key) { Classification::Public }
+            else { Classification::Public }
+        })),
+    })
+    .await?;
+
+    std::fs::write("smoo-config.enc", &result.blob)?;
+    println!("SMOO_CONFIG_KEY_FILE=/abs/path/to/smoo-config.enc");
+    println!("SMOO_CONFIG_KEY={}", result.key_b64);
+    Ok(())
+}
+```
+
+#### Blob env vars
+
+| Variable               | Value                                      |
+| ---------------------- | ------------------------------------------ |
+| `SMOO_CONFIG_KEY_FILE` | Absolute path to the `.enc` bundle on disk |
+| `SMOO_CONFIG_KEY`      | Base64-encoded 32-byte AES-256 key         |
+
+Without both set, `build_config_runtime` returns a plain `ConfigManager` so dev machines without a baked blob still work — the API stays uniform either way.
+
+The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wire-identical to the TypeScript, Python, Go, and .NET runtimes. A blob baked in any language decrypts in any other.
+
 ## Environment Variables
 
 All clients read from the same set of environment variables:
@@ -242,6 +312,12 @@ export SMOOAI_CONFIG_ENV="production"
 | **Public**        | Client-visible settings | API URLs, feature toggles, UI config     |
 | **Secret**        | Server-side only        | Database URLs, API keys, JWT secrets     |
 | **Feature Flags** | Runtime toggles         | A/B tests, gradual rollouts, beta access |
+
+## Common errors
+
+### `get_public_config` / `get_secret_config` returning `Ok(None)` for a known key
+
+If you read a key that wasn't declared in the schema your service was built against, the manager's merged map has no entry and lookups return `Ok(None)`. The common cause is a schema rebase mismatch — the consumer was built against an older `schema.json` than what's in your config repo. Re-run the schema generator to pick up the new keys, or add the missing key to your schema.
 
 ## Built With
 
@@ -277,6 +353,8 @@ cargo fmt
 - [@smooai/config](https://www.npmjs.com/package/@smooai/config) - TypeScript/JavaScript version
 - [smooai-config (Python)](https://pypi.org/project/smooai-config/) - Python version
 - [smooai-config (Rust)](https://crates.io/crates/smooai-config) - This package
+- `github.com/SmooAI/config/go/config` - Go version
+- [SmooAI.Config (NuGet)](https://www.nuget.org/packages/SmooAI.Config) - .NET version
 - [SmooAI/config](https://github.com/SmooAI/config) - GitHub repository
 
 <!-- CONTACT -->
