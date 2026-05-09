@@ -42,6 +42,25 @@ export function toUpperSnakeCase(key: string): string {
 }
 
 /**
+ * Guard for the client get() / getSync() entry points: throw a clear error
+ * if a caller passes `undefined` / `null`. Most common cause: reading
+ * `PublicConfigKeys.<X>` / `FeatureFlagKeys.<X>` for a key that wasn't
+ * declared in the schema — the index lookup returns `undefined` and
+ * without this guard `toUpperSnakeCase(undefined)` crashes with the
+ * cryptic "Cannot read properties of undefined (reading 'replace')".
+ * Mirrors `assertKeyDefined` in `@/server/internal` (SMOODEV-841).
+ */
+function assertClientKeyDefined(key: unknown, tier: 'public' | 'featureFlag'): asserts key is string {
+    if (typeof key === 'string' && key.length > 0) return;
+    const tierEnum = tier === 'public' ? 'PublicConfigKeys' : 'FeatureFlagKeys';
+    throw new Error(
+        `@smooai/config (client): ${tier}Config.get() called with ${key === undefined ? 'undefined' : key === null ? 'null' : `non-string (${typeof key})`} key. ` +
+            `Most common cause: reading \`${tierEnum}.<X>\` for a key that's not declared in your schema. ` +
+            `Add it to .smooai-config/config.ts and run \`smooai-config push\`.`,
+    );
+}
+
+/**
  * Read the unified bundler-baked env bag.
  *
  * Both `smooConfigPlugin` (Vite) and `withSmooConfig` (Next.js) replace
@@ -180,6 +199,7 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
     const httpClient = options?.httpClient ?? new ConfigClient({ cacheTtlMs: 30_000, ...(options?.httpClientOptions ?? {}) });
 
     async function getPublic<K extends PublicKey>(key: K): Promise<ConfigType[K] | undefined> {
+        assertClientKeyDefined(key, 'public');
         const fromBundle = getClientPublicConfig(key as string);
         if (fromBundle !== undefined) return fromBundle as unknown as ConfigType[K];
 
@@ -193,6 +213,7 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
     }
 
     async function getFlag<K extends FlagKey>(key: K): Promise<ConfigType[K] | undefined> {
+        assertClientKeyDefined(key, 'featureFlag');
         try {
             const fromHttp = await httpClient.getValue(key as string);
             if (fromHttp !== undefined && fromHttp !== null && fromHttp !== '') return fromHttp as ConfigType[K];
@@ -208,6 +229,7 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
         publicConfig: {
             get: getPublic,
             getSync: <K extends PublicKey>(key: K): ConfigType[K] | undefined => {
+                assertClientKeyDefined(key, 'public');
                 const v = getClientPublicConfig(key as string);
                 return v as unknown as ConfigType[K] | undefined;
             },
@@ -215,6 +237,7 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
         featureFlag: {
             get: getFlag,
             getSync: <K extends FlagKey>(key: K): ConfigType[K] | undefined => {
+                assertClientKeyDefined(key, 'featureFlag');
                 const v = getClientFeatureFlag(key as string);
                 return v as unknown as ConfigType[K] | undefined;
             },

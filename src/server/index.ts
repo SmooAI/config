@@ -46,7 +46,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { defineConfig, InferConfigTypes } from '@/config/config';
 import { createSyncFn } from 'synckit';
-import { buildConfigAsync, BuildConfigAsyncOptions } from './internal';
+import { assertKeyDefined, buildConfigAsync, BuildConfigAsyncOptions } from './internal';
 import { WORKER_SOURCE } from './sync-worker-source.generated';
 
 export type { BuildConfigAsyncOptions as BuildConfigOptions } from './internal';
@@ -152,18 +152,24 @@ export function buildConfig<Schema extends ReturnType<typeof defineConfig>>(sche
     return {
         publicConfig: {
             get: asyncCore.publicConfig.get,
-            getSync: <K extends PublicKey>(key: K): ConfigType[K] | undefined =>
-                unpack<ConfigType[K]>(publicSync(schema, 'public', key) as WorkerEnvelope, key as string),
+            getSync: <K extends PublicKey>(key: K): ConfigType[K] | undefined => {
+                assertKeyDefined(key, 'public');
+                return unpack<ConfigType[K]>(publicSync(schema, 'public', key) as WorkerEnvelope, key as string);
+            },
         },
         secretConfig: {
             get: asyncCore.secretConfig.get,
-            getSync: <K extends SecretKey>(key: K): ConfigType[K] | undefined =>
-                unpack<ConfigType[K]>(secretSync(schema, 'secret', key) as WorkerEnvelope, key as string),
+            getSync: <K extends SecretKey>(key: K): ConfigType[K] | undefined => {
+                assertKeyDefined(key, 'secret');
+                return unpack<ConfigType[K]>(secretSync(schema, 'secret', key) as WorkerEnvelope, key as string);
+            },
         },
         featureFlag: {
             get: asyncCore.featureFlag.get,
-            getSync: <K extends FlagKey>(key: K): ConfigType[K] | undefined =>
-                unpack<ConfigType[K]>(flagSync(schema, 'flag', key) as WorkerEnvelope, key as string),
+            getSync: <K extends FlagKey>(key: K): ConfigType[K] | undefined => {
+                assertKeyDefined(key, 'featureFlag');
+                return unpack<ConfigType[K]>(flagSync(schema, 'flag', key) as WorkerEnvelope, key as string);
+            },
         },
         invalidateCaches: asyncCore.invalidateCaches,
         getSource: asyncCore.getSource,
