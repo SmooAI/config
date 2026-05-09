@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -104,6 +105,12 @@ func (m *LocalConfigManager) initialize() error {
 }
 
 func (m *LocalConfigManager) getValue(key string, cache map[string]localCacheEntry) (any, error) {
+	// SMOODEV-847 — guard against empty keys (matches ConfigManager.getFromTier).
+	if key == "" {
+		return nil, fmt.Errorf("@smooai/config: get() called with empty key. " +
+			"Most common cause: reading a typed-keys constant for a key that's not declared in your schema. " +
+			"Add it to .smooai-config/config.ts and run `smooai-config push`")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

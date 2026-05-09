@@ -69,6 +69,15 @@ class LocalConfigManager:
 
     def _get_value(self, key: str, cache: dict[str, tuple[Any, float]]) -> Any | None:
         """Get config value. File config takes precedence over env config."""
+        # SMOODEV-847 — guard against None / empty / non-string keys. See the
+        # equivalent assertKeyDefined in src/server/internal.ts for the
+        # original incident (Derek's ICVR dashboard).
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                f"@smooai/config: get() called with {type(key).__name__ if key is None or not isinstance(key, str) else 'empty string'} key. "
+                "Most common cause: reading a typed-keys constant for a key that's not declared in your schema. "
+                "Add it to .smooai-config/config.ts and run `smooai-config push`."
+            )
         with self._lock:
             hit, value = self._get_from_cache(cache, key)
             if hit:

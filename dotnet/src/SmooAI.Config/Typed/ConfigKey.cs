@@ -21,7 +21,7 @@ public sealed class ConfigKey<T>
     /// <summary>Create a typed key. Normally called by generated code.</summary>
     public ConfigKey(string key, ConfigTier tier)
     {
-        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Key is required.", nameof(key));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("@smooai/config: get() called with null/empty key. Most common cause: reading a typed-keys constant for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`.", nameof(key));
         Key = key;
         Tier = tier;
     }

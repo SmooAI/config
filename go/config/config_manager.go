@@ -219,6 +219,14 @@ func (m *ConfigManager) initialize() error {
 }
 
 func (m *ConfigManager) getFromTier(key string, cache map[string]localCacheEntry) (any, error) {
+	// SMOODEV-847 — guard against empty keys. Matches the assertKeyDefined
+	// behavior in the TypeScript SDK; surfaces a clear error instead of
+	// silently returning nil from the merged config map.
+	if key == "" {
+		return nil, fmt.Errorf("@smooai/config: get() called with empty key. " +
+			"Most common cause: reading a typed-keys constant for a key that's not declared in your schema. " +
+			"Add it to .smooai-config/config.ts and run `smooai-config push`")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

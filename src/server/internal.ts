@@ -106,6 +106,26 @@ function envVarNameFor(key: string): string {
     return key.replace(/([A-Z])/g, '_$1').toUpperCase();
 }
 
+/**
+ * Guard for the get() / getSync() entry points: throw a clear error if a
+ * caller passes `undefined` / `null`. The most common cause is reading
+ * `SecretConfigKeys.<X>` (or `PublicConfigKeys.<X>` / `FeatureFlagKeys.<X>`)
+ * for a key that wasn't declared in the schema — the index lookup then
+ * returns `undefined` and the value flows in here. Without this guard the
+ * next line is `key.replace(...)` and you get the cryptic "Cannot read
+ * properties of undefined (reading 'replace')" stack from envVarNameFor,
+ * which has cost real prod debug time (SMOODEV-841).
+ */
+export function assertKeyDefined(key: unknown, tier: 'public' | 'secret' | 'featureFlag'): asserts key is string {
+    if (typeof key === 'string' && key.length > 0) return;
+    const tierEnum = tier === 'public' ? 'PublicConfigKeys' : tier === 'secret' ? 'SecretConfigKeys' : 'FeatureFlagKeys';
+    throw new Error(
+        `@smooai/config: ${tier}Config.get() called with ${key === undefined ? 'undefined' : key === null ? 'null' : `non-string (${typeof key})`} key. ` +
+            `Most common cause: reading \`${tierEnum}.<X>\` for a key that's not declared in your schema. ` +
+            `Add it to .smooai-config/config.ts and run \`smooai-config push\`.`,
+    );
+}
+
 function readFromEnv<Schema extends ReturnType<typeof defineConfig>>(schema: Schema, key: string): unknown {
     const raw = process.env[envVarNameFor(key)];
     if (raw === undefined) return undefined;
@@ -178,6 +198,7 @@ export function buildConfigAsync<Schema extends ReturnType<typeof defineConfig>>
     }
 
     async function getPublic<K extends PublicKey>(key: K): Promise<ConfigType[K] | undefined> {
+        assertKeyDefined(key, 'public');
         const keyStr = key as unknown as string;
         const cached = publicValueCache.get(keyStr);
         if (cached !== undefined) return cached as ConfigType[K];
@@ -215,6 +236,7 @@ export function buildConfigAsync<Schema extends ReturnType<typeof defineConfig>>
     }
 
     async function getSecret<K extends SecretKey>(key: K): Promise<ConfigType[K] | undefined> {
+        assertKeyDefined(key, 'secret');
         const keyStr = key as unknown as string;
         const cached = secretValueCache.get(keyStr);
         if (cached !== undefined) return cached as ConfigType[K];
@@ -252,6 +274,7 @@ export function buildConfigAsync<Schema extends ReturnType<typeof defineConfig>>
     }
 
     async function getFlag<K extends FlagKey>(key: K): Promise<ConfigType[K] | undefined> {
+        assertKeyDefined(key, 'featureFlag');
         const keyStr = key as unknown as string;
         const cached = flagValueCache.get(keyStr);
         if (cached !== undefined) return cached as ConfigType[K];
