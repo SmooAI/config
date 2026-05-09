@@ -48,6 +48,20 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 ---
 
+### Languages / SDKs
+
+Pick the SDK that matches your service. Every client reads the same schema, the same encrypted bundle, and the same config API — so a key renamed in one language ripples through all of them.
+
+| SDK            | One-liner                                                                                               | README                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| **TypeScript** | Primary SDK. Schema definition, Next.js / Vite plugins, server runtime, React hooks.                    | [`README.md` (this file)](#about-smooaiconfig)   |
+| **Python**     | Pydantic-validated schemas, sync `ConfigClient`, `LocalConfigManager` + `ConfigManager`, baked runtime. | [`python/README.md`](python/README.md)           |
+| **Go**         | Native struct schemas, thread-safe `ConfigClient` / `ConfigManager`, baked-blob runtime.                | [`go/config/README.md`](go/config/README.md)     |
+| **Rust**       | `JsonSchema`-derived schemas, async `ConfigClient`, sync `ConfigManager`, baked-blob runtime.           | [`rust/config/README.md`](rust/config/README.md) |
+| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`.             | [`dotnet/README.md`](dotnet/README.md)           |
+
+---
+
 ### Install
 
 ```sh
@@ -494,9 +508,9 @@ client.invalidateCache();
 
 ## Multi-Language Support
 
-@smooai/config has native implementations in Python, Rust, and Go alongside the primary TypeScript package.
+@smooai/config has native implementations in Python, Rust, Go, and .NET (C#) alongside the primary TypeScript package. Every client reads the same encrypted bundle, the same schema, and the same config API. See the per-SDK READMEs linked above for full usage docs — the snippets below are five-line orientation only.
 
-### Python
+### Python — see [`python/README.md`](python/README.md)
 
 ```sh
 pip install smooai-config
@@ -504,41 +518,26 @@ pip install smooai-config
 ```
 
 ```python
-from pydantic import BaseModel
-from smooai_config import define_config
 from smooai_config.client import ConfigClient
 
-class PublicConfig(BaseModel):
-    api_url: str = "https://api.example.com"
-    max_retries: int = 3
-
-class SecretConfig(BaseModel):
-    database_url: str
-    api_key: str
-
-config = define_config(public=PublicConfig, secret=SecretConfig)
-
-with ConfigClient() as client:  # reads from env vars
+with ConfigClient() as client:  # reads SMOOAI_CONFIG_* env vars
     value = client.get_value("API_URL", environment="production")
-    all_values = client.get_all_values()
 ```
 
-### Rust
+### Rust — see [`rust/config/README.md`](rust/config/README.md)
 
-```toml
-[dependencies]
-smooai-config = { git = "https://github.com/SmooAI/config", package = "smooai-config" }
+```sh
+cargo add smooai-config
 ```
 
 ```rust
-use smooai_config::client::ConfigClient;
+use smooai_config::ConfigClient;
 
 let mut client = ConfigClient::from_env();
 let value = client.get_value("API_URL", None).await?;
-let all = client.get_all_values(Some("production")).await?;
 ```
 
-### Go
+### Go — see [`go/config/README.md`](go/config/README.md)
 
 ```sh
 go get github.com/SmooAI/config/go/config
@@ -549,9 +548,22 @@ import "github.com/SmooAI/config/go/config"
 
 client := config.NewConfigClientFromEnv()
 defer client.Close()
+value, _ := client.GetValue("API_URL", "production")
+```
 
-value, err := client.GetValue("API_URL", "production")
-allValues, err := client.GetAllValues("")
+### .NET — see [`dotnet/README.md`](dotnet/README.md)
+
+```sh
+dotnet add package SmooAI.Config
+```
+
+```csharp
+using SmooAI.Config;
+using SmooAI.Config.Runtime;
+
+var runtime = SmooConfigRuntime.Load();  // reads SMOO_CONFIG_KEY_FILE + SMOO_CONFIG_KEY
+using var client = new SmooConfigClient(options);
+var apiUrl = await Public.ApiUrl.ResolveAsync(runtime, client);
 ```
 
 ---
