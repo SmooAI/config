@@ -158,6 +158,21 @@ as every other SmooAI.Config language client:
 
 You can bake the bundle in any language and decrypt it in any other.
 
+## Common errors
+
+### `Public.X` / `Secrets.X` / `FeatureFlags.X` won't compile
+
+The Roslyn source generator only emits typed key properties for keys declared in the `schema.json` file marked `SmooConfigSchema="true"` in your csproj. If a key compiles in TypeScript but doesn't appear here, the schema your .NET project sees is stale. Either:
+
+1. Re-run your generator step (`smooai-config push` or equivalent) so `schema.json` picks up the new key, then rebuild — or
+2. Add the key to your config schema in the source repo and regenerate.
+
+A `dotnet build` after pulling latest is enough to refresh the generated keys.
+
+### `SmooConfigRuntimeException: AES-GCM decryption failed`
+
+The blob and key don't match. Check that `SMOO_CONFIG_KEY_FILE` points at the bundle baked with the key in `SMOO_CONFIG_KEY` — mismatched key/blob pairs surface as a tag-verification failure, which is what GCM is supposed to do. Re-bake the bundle and re-set both env vars together.
+
 ## Links
 
 - **Homepage**: [smoo.ai](https://smoo.ai)
