@@ -172,6 +172,17 @@ class ConfigManager:
 
     def _get_value(self, key: str, cache: dict[str, tuple[Any, float]]) -> Any | None:
         """Get config value from merged config with per-tier caching."""
+        # SMOODEV-847 — guard against None / empty / non-string keys. Most
+        # common cause is reading a typed-keys constant for a key that
+        # wasn't declared in the schema and resolves to None. Without this
+        # guard the call would later flow into env-var-name conversion that
+        # crashes with a cryptic AttributeError.
+        if not isinstance(key, str) or not key:
+            raise ValueError(
+                f"@smooai/config: get() called with {type(key).__name__ if key is None or not isinstance(key, str) else 'empty string'} key. "
+                "Most common cause: reading SecretConfigKeys.<X> / PublicConfigKeys.<X> / FeatureFlagKeys.<X> "
+                "for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`."
+            )
         with self._lock:
             hit, value = self._get_from_cache(cache, key)
             if hit:

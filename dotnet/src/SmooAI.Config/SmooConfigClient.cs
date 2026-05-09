@@ -95,7 +95,7 @@ public sealed class SmooConfigClient : IDisposable
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<JsonElement> GetValueAsync(string key, string? environment = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Key is required.", nameof(key));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("@smooai/config: get() called with null/empty key. Most common cause: reading a typed-keys constant for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`.", nameof(key));
         var env = ResolveEnv(environment);
 
         var url = $"{_baseUrl}/organizations/{_orgId}/config/values/{Uri.EscapeDataString(key)}?environment={Uri.EscapeDataString(env)}";
@@ -136,7 +136,7 @@ public sealed class SmooConfigClient : IDisposable
     {
         if (string.IsNullOrWhiteSpace(schemaId)) throw new ArgumentException("SchemaId is required.", nameof(schemaId));
         if (string.IsNullOrWhiteSpace(environmentId)) throw new ArgumentException("EnvironmentId is required.", nameof(environmentId));
-        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Key is required.", nameof(key));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("@smooai/config: get() called with null/empty key. Most common cause: reading a typed-keys constant for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`.", nameof(key));
 
         var body = new SetValueRequest
         {

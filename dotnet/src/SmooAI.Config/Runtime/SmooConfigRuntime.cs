@@ -125,7 +125,7 @@ public sealed class SmooConfigRuntime
     /// </summary>
     public JsonElement? GetValue(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Key is required.", nameof(key));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("@smooai/config: get() called with null/empty key. Most common cause: reading a typed-keys constant for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`.", nameof(key));
 
         if (Baked.Secret.TryGetValue(key, out var secret)) return secret;
         if (Baked.Public.TryGetValue(key, out var pub)) return pub;
@@ -138,7 +138,7 @@ public sealed class SmooConfigRuntime
     /// </summary>
     public JsonElement? GetPublic(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Key is required.", nameof(key));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("@smooai/config: get() called with null/empty key. Most common cause: reading a typed-keys constant for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`.", nameof(key));
         return Baked.Public.TryGetValue(key, out var v) ? v : null;
     }
 
@@ -148,7 +148,7 @@ public sealed class SmooConfigRuntime
     /// </summary>
     public JsonElement? GetSecret(string key)
     {
-        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("Key is required.", nameof(key));
+        if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("@smooai/config: get() called with null/empty key. Most common cause: reading a typed-keys constant for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`.", nameof(key));
         return Baked.Secret.TryGetValue(key, out var v) ? v : null;
     }
 

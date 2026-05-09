@@ -265,6 +265,15 @@ impl ConfigManager {
         key: &str,
         cache_selector: fn(&mut ManagerInner) -> &mut HashMap<String, CacheEntry>,
     ) -> Result<Option<Value>, SmooaiConfigError> {
+        // SMOODEV-847 — guard against empty keys (matches LocalConfigManager
+        // and the TS assertKeyDefined). See SMOODEV-841 incident.
+        if key.is_empty() {
+            return Err(SmooaiConfigError::new(
+                "@smooai/config: get() called with empty key. \
+                 Most common cause: reading a typed-keys constant for a key that's not declared in your schema. \
+                 Add it to .smooai-config/config.ts and run `smooai-config push`",
+            ));
+        }
         let mut inner = self
             .inner
             .write()
