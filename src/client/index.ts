@@ -102,6 +102,7 @@ function readClientEnv(): Record<string, string> {
  * e.g., `"aboutPage"` → `NEXT_PUBLIC_FEATURE_FLAG_ABOUT_PAGE`
  */
 export function getClientFeatureFlag(key: string): boolean {
+    assertClientKeyDefined(key, 'featureFlag');
     const envKey = toUpperSnakeCase(key);
     const env = readClientEnv();
     const raw = env[`NEXT_PUBLIC_FEATURE_FLAG_${envKey}`] ?? env[`VITE_FEATURE_FLAG_${envKey}`];
@@ -120,6 +121,7 @@ export function getClientFeatureFlag(key: string): boolean {
  * e.g., `"apiBaseUrl"` → `NEXT_PUBLIC_CONFIG_API_BASE_URL`
  */
 export function getClientPublicConfig(key: string): string | undefined {
+    assertClientKeyDefined(key, 'public');
     const envKey = toUpperSnakeCase(key);
     const env = readClientEnv();
     return env[`NEXT_PUBLIC_CONFIG_${envKey}`] ?? env[`VITE_CONFIG_${envKey}`];
