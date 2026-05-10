@@ -114,11 +114,27 @@ export function withSmooConfig(options: WithSmooConfigOptions, nextConfig: NextC
     // is effectively empty, so dynamic reads return `undefined` → config
     // values appear "unset".
     //
-    // Solution: define `__SMOO_CLIENT_ENV__` as a literal object via
-    // webpack's DefinePlugin. The SDK indexes into that constant with its
-    // computed key; each reference in the compiled bundle is replaced
-    // with the literal object at build time (identical shape to what the
-    // Vite plugin emits via `define`).
+    // Solution: define `__SMOO_CLIENT_ENV__` as a literal object — bundlers
+    // index into the constant via the computed key, each reference is
+    // replaced with the literal object at build time. We feed the value
+    // through TWO complementary mechanisms so the same SDK works in
+    // webpack-mode AND turbopack-mode without requiring consumer flags:
+    //
+    //   1. `nextConfig.compiler.define` (Next 16+, both bundlers).
+    //      Native cross-bundler "free variable" replacement in the same
+    //      shape webpack's DefinePlugin uses — values are code fragments,
+    //      so JSON.stringify(env) becomes a literal object expression in
+    //      the compiled output. Works under `next dev` (turbopack default)
+    //      and `next dev --webpack`.
+    //
+    //   2. Webpack `DefinePlugin` via `nextConfig.webpack` hook.
+    //      Defense-in-depth: ensures the substitution lands even if a
+    //      consumer is on a Next version that hasn't shipped
+    //      `compiler.define` yet, or has an older webpack pipeline.
+    //
+    // The Vite plugin (`smooConfigPlugin`) emits the same `__SMOO_CLIENT_ENV__`
+    // global through Vite's `define` — identical shape across all three
+    // bundlers (webpack, turbopack, vite).
     const originalWebpack = nextConfig.webpack as
         | ((webpackConfig: { plugins: unknown[] }, context: { webpack: { DefinePlugin: new (defs: Record<string, string>) => unknown } }) => unknown)
         | undefined;
@@ -128,12 +144,22 @@ export function withSmooConfig(options: WithSmooConfigOptions, nextConfig: NextC
         return originalWebpack ? originalWebpack(webpackConfig, context) : webpackConfig;
     };
 
+    const existingCompiler = ((nextConfig as { compiler?: Record<string, unknown> }).compiler ?? {}) as { define?: Record<string, string | number | boolean> };
+    const mergedCompiler = {
+        ...existingCompiler,
+        define: {
+            ...(existingCompiler.define ?? {}),
+            __SMOO_CLIENT_ENV__: JSON.stringify(env),
+        },
+    };
+
     return {
         ...nextConfig,
         env: {
             ...(nextConfig.env as Record<string, string> | undefined),
             ...env,
         },
+        compiler: mergedCompiler,
         webpack,
     };
 }
