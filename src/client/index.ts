@@ -77,16 +77,28 @@ function assertClientKeyDefined(key: unknown, tier: 'public' | 'featureFlag'): a
  * run (e.g. plain tsc/ts-node), preserving the old "return undefined"
  * behaviour in unconfigured environments.
  */
-declare const __SMOO_CLIENT_ENV__: Record<string, string> | undefined;
+declare const __SMOO_CLIENT_ENV__: Record<string, string> | string | undefined;
 
 function readClientEnv(): Record<string, string> {
     try {
-        // Each bundler's define/DefinePlugin rewrites this to the literal object.
-        if (typeof __SMOO_CLIENT_ENV__ !== 'undefined' && __SMOO_CLIENT_ENV__) {
-            return __SMOO_CLIENT_ENV__;
+        if (typeof __SMOO_CLIENT_ENV__ === 'undefined' || __SMOO_CLIENT_ENV__ === null) return {};
+        // Webpack DefinePlugin and Vite `define` substitute the value as a
+        // CODE FRAGMENT — `JSON.stringify(env)` parses to an object literal
+        // at compile time. We get a plain object back here.
+        if (typeof __SMOO_CLIENT_ENV__ === 'object') return __SMOO_CLIENT_ENV__ as Record<string, string>;
+        // Next.js Turbopack's `compiler.define` substitutes the value as a
+        // STRING LITERAL — the same JSON we passed comes through verbatim
+        // as a string. Parse it once on first access; subsequent calls hit
+        // the cached object via the surrounding closure.
+        if (typeof __SMOO_CLIENT_ENV__ === 'string') {
+            try {
+                return JSON.parse(__SMOO_CLIENT_ENV__) as Record<string, string>;
+            } catch {
+                return {};
+            }
         }
     } catch {
-        // ReferenceError when neither plugin ran — fall through.
+        // ReferenceError when no plugin ran — fall through.
     }
     return {};
 }
