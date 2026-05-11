@@ -73,9 +73,11 @@ class LocalConfigManager:
         # equivalent assertKeyDefined in src/server/internal.ts for the
         # original incident (Derek's ICVR dashboard).
         if not isinstance(key, str) or not key:
+            kind = type(key).__name__ if key is None or not isinstance(key, str) else "empty string"
             raise ValueError(
-                f"@smooai/config: get() called with {type(key).__name__ if key is None or not isinstance(key, str) else 'empty string'} key. "
-                "Most common cause: reading a typed-keys constant for a key that's not declared in your schema. "
+                f"@smooai/config: get() called with {kind} key. "
+                "Most common cause: reading a typed-keys constant for a key "
+                "that's not declared in your schema. "
                 "Add it to .smooai-config/config.ts and run `smooai-config push`."
             )
         with self._lock:

@@ -178,10 +178,12 @@ class ConfigManager:
         # guard the call would later flow into env-var-name conversion that
         # crashes with a cryptic AttributeError.
         if not isinstance(key, str) or not key:
+            kind = type(key).__name__ if key is None or not isinstance(key, str) else "empty string"
             raise ValueError(
-                f"@smooai/config: get() called with {type(key).__name__ if key is None or not isinstance(key, str) else 'empty string'} key. "
-                "Most common cause: reading SecretConfigKeys.<X> / PublicConfigKeys.<X> / FeatureFlagKeys.<X> "
-                "for a key that's not declared in your schema. Add it to .smooai-config/config.ts and run `smooai-config push`."
+                f"@smooai/config: get() called with {kind} key. "
+                "Most common cause: reading SecretConfigKeys.<X> / PublicConfigKeys.<X> / "
+                "FeatureFlagKeys.<X> for a key that's not declared in your schema. "
+                "Add it to .smooai-config/config.ts and run `smooai-config push`."
             )
         with self._lock:
             hit, value = self._get_from_cache(cache, key)
