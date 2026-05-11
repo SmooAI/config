@@ -3,6 +3,7 @@
 //! Provides schema definition, JSON Schema generation, runtime config client,
 //! and local file/env-based configuration with caching.
 
+pub mod bootstrap;
 pub mod build;
 pub mod client;
 pub mod cloud_region;
@@ -17,6 +18,7 @@ pub mod schema;
 pub mod schema_validator;
 pub mod utils;
 
+pub use bootstrap::{bootstrap_fetch, BootstrapError};
 pub use build::{build_bundle, BuildBundleOptions, BuildBundleResult, BuildError, Classification, Classifier};
 pub use client::{ConfigClient, EvaluateFeatureFlagResponse, FeatureFlagEvaluationError};
 pub use cloud_region::{get_cloud_region, get_cloud_region_from_env, CloudRegionResult};
