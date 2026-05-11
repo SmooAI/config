@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const serverEntry = [
     'src/index.ts',
+    'src/bootstrap/index.ts',
     'src/vite/preloadConfig.ts',
     'src/vite/index.ts',
     'src/utils/mergeReplaceArrays.ts',

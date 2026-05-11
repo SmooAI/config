@@ -36,6 +36,11 @@
             "require": "./dist/index.js",
             "default": "./dist/index.js"
         },
+        "./bootstrap": {
+            "types": "./dist/bootstrap/index.d.ts",
+            "import": "./dist/bootstrap/index.mjs",
+            "require": "./dist/bootstrap/index.js"
+        },
         "./nextjs": {
             "types": "./dist/nextjs/index.d.ts",
             "browser": {
