@@ -1,5 +1,34 @@
 # @smooai/library-template
 
+## 4.6.0
+
+### Minor Changes
+
+- 5e8bcf3: Throw a clear error when `secretConfig.get()` / `publicConfig.get()` /
+  `featureFlag.get()` (or their `getSync` siblings) receive `undefined` /
+  `null` / non-string keys, instead of cascading into `envVarNameFor`'s
+  `undefined.replace(...)` and surfacing as the cryptic
+  `Cannot read properties of undefined (reading 'replace')`.
+
+    Most common cause: reading `SecretConfigKeys.<X>` (or
+    `PublicConfigKeys.<X>` / `FeatureFlagKeys.<X>`) for a key that wasn't
+    declared in the consumer's schema. The new error spells that out and
+    points at `smooai-config push`. Cost real prod debug time on
+    SMOODEV-841 — the route handler crashed deep inside `@smooai/config`'s
+    internals while the actual fix was one declaration in
+    `.smooai-config/config.ts`.
+
+- 48aeee6: withSmooConfig: also wire `__SMOO_CLIENT_ENV__` through `nextConfig.compiler.define`
+
+    `compiler.define` is Next.js 16's native compile-time replacement — it works for
+    both webpack and turbopack out of the box with the same code-fragment semantics
+    as webpack's DefinePlugin. Adding it alongside the existing DefinePlugin call
+    means consumers no longer need `next dev --webpack` (or `next build --webpack`)
+    to make `getClientPublicConfig(...)` / `getClientFeatureFlag(...)` resolve.
+
+    Webpack DefinePlugin path is preserved as defense-in-depth so older Next.js
+    versions and webpack-only pipelines keep working.
+
 ## 4.5.4
 
 ### Patch Changes
