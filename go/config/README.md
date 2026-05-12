@@ -34,6 +34,8 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 Go port of [@smooai/config](https://www.npmjs.com/package/@smooai/config). Define your config with Go structs and tags — the same schema your TypeScript frontend or Rust service reads.
 
+> **Note:** the `smooai-config` **CLI** (push / pull / list / set / diff / login) is TypeScript-only. The schema is authored in TS and pushed via the CLI; this Go module only **reads** values at runtime. If you're on a Go-only team and need the CLI, install it via Node: `pnpm add -g @smooai/config` (or `npm i -g @smooai/config`).
+
 ### What you get
 
 - **Three tiers, one schema** - public config, secrets, and feature flags as three Go structs with struct tags.

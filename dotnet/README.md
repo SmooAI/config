@@ -5,6 +5,8 @@
 
 **Type-safe config, secrets, and feature flags for .NET — same schema, same encrypted bundle, same source of truth as the TypeScript, Python, Rust, and Go clients.**
 
+> **Note:** the `smooai-config` **CLI** (push / pull / list / set / diff / login) is TypeScript-only. The schema is authored in TS and pushed via the CLI; this .NET SDK only **reads** values at runtime. If you're on a .NET-only team and need the CLI, install it via Node: `pnpm add -g @smooai/config` (or `npm i -g @smooai/config`).
+
 ## Install
 
 ```sh

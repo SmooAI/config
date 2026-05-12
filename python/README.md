@@ -38,6 +38,8 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 The Python port of [@smooai/config](https://www.npmjs.com/package/@smooai/config). Define your schema with Pydantic `BaseModel` classes once and every Python service in your stack reads the same typed values as your TypeScript frontend or Go backend.
 
+> **Note:** the `smooai-config` **CLI** (push / pull / list / set / diff / login) is TypeScript-only. The schema is authored in TS and pushed via the CLI; this Python client only **reads** values at runtime. If you're on a Python-only team and need the CLI, install it via Node: `pnpm add -g @smooai/config` (or `npm i -g @smooai/config`).
+
 ### What you get
 
 - **Three tiers, one schema** - public config, secrets, and feature flags separated cleanly as three Pydantic `BaseModel` classes.

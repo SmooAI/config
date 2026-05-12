@@ -38,6 +38,8 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 Rust port of [@smooai/config](https://www.npmjs.com/package/@smooai/config). Derive `JsonSchema` on your own Rust structs, generate the exact schema every other service in your stack reads, and resolve values through a cached async client.
 
+> **Note:** the `smooai-config` **CLI** (push / pull / list / set / diff / login) is TypeScript-only. The schema is authored in TS and pushed via the CLI; this Rust crate only **reads** values at runtime. If you're on a Rust-only team and need the CLI, install it via Node: `pnpm add -g @smooai/config` (or `npm i -g @smooai/config`).
+
 ### What you get
 
 - **Three tiers, one schema** - public config, secrets, and feature flags as three Rust structs with `#[derive(JsonSchema)]`.
