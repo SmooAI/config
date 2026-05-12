@@ -68,6 +68,51 @@ public sealed class ConfigKey<T>
         return await GetAsync(client, environment, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Evaluate a segment-aware feature flag against the server (SMOODEV-959).
+    /// Only valid when <see cref="Tier"/> is <see cref="ConfigTier.FeatureFlag"/>;
+    /// throws <see cref="InvalidOperationException"/> otherwise. The resolved
+    /// value is deserialized into <typeparamref name="T"/>; the full response
+    /// envelope (including <c>matchedRuleId</c>, <c>rolloutBucket</c>, and
+    /// <c>source</c>) is available via <see cref="EvaluateRawAsync"/>.
+    /// </summary>
+    public async Task<T?> EvaluateAsync(
+        SmooConfigClient client,
+        IReadOnlyDictionary<string, object?>? context = null,
+        string? environment = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        if (Tier != ConfigTier.FeatureFlag)
+        {
+            throw new InvalidOperationException(
+                $"ConfigKey<{typeof(T).Name}>({Key}) has tier {Tier}; only FeatureFlag-tier keys support EvaluateAsync.");
+        }
+
+        var response = await client.EvaluateFeatureFlagAsync(Key, context, environment, cancellationToken).ConfigureAwait(false);
+        return Deserialize(response.Value);
+    }
+
+    /// <summary>
+    /// Same as <see cref="EvaluateAsync"/> but returns the full
+    /// <see cref="EvaluateFeatureFlagResponse"/> so callers can inspect
+    /// <c>matchedRuleId</c>, <c>rolloutBucket</c>, and <c>source</c>.
+    /// </summary>
+    public Task<EvaluateFeatureFlagResponse> EvaluateRawAsync(
+        SmooConfigClient client,
+        IReadOnlyDictionary<string, object?>? context = null,
+        string? environment = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        if (Tier != ConfigTier.FeatureFlag)
+        {
+            throw new InvalidOperationException(
+                $"ConfigKey<{typeof(T).Name}>({Key}) has tier {Tier}; only FeatureFlag-tier keys support EvaluateRawAsync.");
+        }
+        return client.EvaluateFeatureFlagAsync(Key, context, environment, cancellationToken);
+    }
+
     private static T? Deserialize(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Undefined || element.ValueKind == JsonValueKind.Null)
