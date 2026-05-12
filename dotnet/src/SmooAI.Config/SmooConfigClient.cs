@@ -26,6 +26,13 @@ public sealed class SmooConfigClient : IDisposable
     private readonly string _orgId;
     private readonly string _defaultEnvironment;
 
+    /// <summary>
+    /// Default environment the client falls back to when callers don't pass
+    /// an explicit one. Exposed so <see cref="Typed.ConfigKey{T}.ResolveAsync"/>
+    /// can use the same value for its file-tier fallback (SMOODEV-957).
+    /// </summary>
+    internal string DefaultEnvironment => _defaultEnvironment;
+
     /// <summary>JSON options used for both request and response bodies.</summary>
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
