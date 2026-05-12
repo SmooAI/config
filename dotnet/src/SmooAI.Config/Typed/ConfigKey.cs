@@ -46,11 +46,21 @@ public sealed class ConfigKey<T>
     }
 
     /// <summary>
-    /// Resolve from a runtime when baked, else fall back to the HTTP client.
-    /// This is the typical production pattern: public + secret come from the
-    /// baked blob synchronously; everything else (feature flags, missing keys)
-    /// falls through to the network.
+    /// Resolve in priority order: baked runtime → <c>SMOOAI_CONFIG_&lt;KEY&gt;</c> env var →
+    /// live HTTP API → <c>.smooai-config/&lt;env&gt;.json</c> file defaults. Mirrors the
+    /// SMOODEV-857 chain that already ships in TS / Python / Rust / Go.
     /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    ///   <item>Bake wins so AOT-deployed apps don't pay a network cost at cold start.</item>
+    ///   <item>Env-var sits next so operators can override a single key without re-baking.</item>
+    ///   <item>HTTP is the authoritative source for anything not baked / env-overridden.</item>
+    ///   <item>File-tier defaults are the last-resort fallback when the network is unavailable (dev laptops, offline tests).</item>
+    /// </list>
+    /// File-tier directory: <c>$SMOOAI_CONFIG_FILE_DIR</c> if set, otherwise
+    /// <c>./.smooai-config</c> relative to the working directory. The file is
+    /// <c>&lt;environment&gt;.json</c>, a flat key→value map.
+    /// </remarks>
     public async Task<T?> ResolveAsync(
         SmooConfigRuntime? runtime,
         SmooConfigClient client,
@@ -59,13 +69,52 @@ public sealed class ConfigKey<T>
     {
         ArgumentNullException.ThrowIfNull(client);
 
+        // 1. Baked runtime (cold-start friendly, AES-decrypted in-process).
         if (runtime is not null)
         {
-            var el = runtime.GetValue(Key);
-            if (el.HasValue) return Deserialize(el.Value);
+            var fromBlob = runtime.GetValue(Key);
+            if (fromBlob.HasValue) return Deserialize(fromBlob.Value);
         }
 
-        return await GetAsync(client, environment, cancellationToken).ConfigureAwait(false);
+        // 2. Env-var override.
+        var fromEnv = EnvFileFallback.ReadFromEnv(Key);
+        if (fromEnv.HasValue) return Deserialize(fromEnv.Value);
+
+        // 3. Live HTTP API.
+        try
+        {
+            var fromHttp = await GetAsync(client, environment, cancellationToken).ConfigureAwait(false);
+            // GetAsync returns default(T) both when the key is missing and
+            // when the value really is the type default. To avoid masking
+            // legitimate defaults, only treat it as "missing" for reference
+            // types / nullable structs.
+            if (fromHttp is not null) return fromHttp;
+        }
+        catch (HttpRequestException)
+        {
+            // Network unreachable / DNS failure / transient — fall through
+            // to the file tier so dev laptops and offline tests still work.
+        }
+        catch (SmooConfigApiException)
+        {
+            // Non-2xx from the server. Same posture as the HttpRequest
+            // failure above: prefer a stale file-tier default over a hard
+            // failure.
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Request timeout (not caller cancellation) — fall through.
+        }
+
+        // 4. Local file defaults (./.smooai-config/<env>.json). Use the
+        // client's configured default environment when the caller didn't
+        // pass one explicitly — keeps the file-tier env name aligned with
+        // the HTTP-tier env name.
+        var resolvedEnv = string.IsNullOrWhiteSpace(environment) ? client.DefaultEnvironment : environment!;
+        var fromFile = EnvFileFallback.ReadFromFile(Key, resolvedEnv);
+        if (fromFile.HasValue) return Deserialize(fromFile.Value);
+
+        return default;
     }
 
     /// <summary>
