@@ -151,6 +151,84 @@ public sealed class SmooConfigClient : IDisposable
         return SendWithRetryAsync<JsonElement>(HttpMethod.Put, url, body, cancellationToken);
     }
 
+    /// <summary>
+    /// Evaluate a segment-aware feature flag against the server. SMOODEV-959 —
+    /// brings the .NET SDK to parity with TS / Python / Rust / Go.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="GetValueAsync"/>, this is always a network call:
+    /// segment rules (percentage rollout, attribute matching, bucketing) live
+    /// server-side and the response depends on the <paramref name="context"/>
+    /// you pass. Callers that don't need segment evaluation should keep using
+    /// <see cref="GetValueAsync"/> for the static flag value.
+    /// </remarks>
+    /// <param name="key">Feature-flag key.</param>
+    /// <param name="context">Attributes the server's segment rules may reference
+    /// (e.g. <c>{ userId, tenantId, plan, country }</c>). Unreferenced keys are
+    /// ignored by the server. Keep values JSON-serializable — the server hashes
+    /// <c>bucketBy</c> values by their string representation, so numbers and
+    /// booleans bucket stably across client rebuilds. A null map is sent as <c>{}</c>.</param>
+    /// <param name="environment">Environment name; falls back to <c>DefaultEnvironment</c>.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="FeatureFlagEvaluationException">Thrown on any non-2xx response. Inspect <see cref="FeatureFlagEvaluationException.Kind"/> for 404 / 400 / 5xx.</exception>
+    public async Task<EvaluateFeatureFlagResponse> EvaluateFeatureFlagAsync(
+        string key,
+        IReadOnlyDictionary<string, object?>? context = null,
+        string? environment = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException(
+                "@smooai/config: EvaluateFeatureFlag called with null/empty key. " +
+                "Most common cause: reading a typed-keys constant for a key that's not declared in your schema. " +
+                "Add it to .smooai-config/config.ts and run `smooai-config push`.",
+                nameof(key));
+        }
+
+        var env = ResolveEnv(environment);
+        var body = new EvaluateFeatureFlagRequest
+        {
+            Environment = env,
+            Context = context ?? new Dictionary<string, object?>(),
+        };
+
+        var url = $"{_baseUrl}/organizations/{_orgId}/config/feature-flags/{Uri.EscapeDataString(key)}/evaluate";
+
+        // We can't reuse SendWithRetryAsync because we need to map status
+        // codes to the typed FeatureFlagEvaluationException categories before
+        // it converts everything to SmooConfigApiException.
+        var response = await SendOnceAsync(HttpMethod.Post, url, body, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                response.Dispose();
+                _tokenProvider.Invalidate();
+                response = await SendOnceAsync(HttpMethod.Post, url, body, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var text = await SafeReadAsync(response, cancellationToken).ConfigureAwait(false);
+                var kind = response.StatusCode switch
+                {
+                    HttpStatusCode.NotFound => FeatureFlagErrorKind.NotFound,
+                    HttpStatusCode.BadRequest => FeatureFlagErrorKind.Context,
+                    _ => FeatureFlagErrorKind.Server,
+                };
+                throw new FeatureFlagEvaluationException(key, (int)response.StatusCode, kind, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<EvaluateFeatureFlagResponse>(JsonOptions, cancellationToken).ConfigureAwait(false);
+            return result ?? new EvaluateFeatureFlagResponse();
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
     private string ResolveEnv(string? environment)
         => string.IsNullOrWhiteSpace(environment) ? _defaultEnvironment : environment!;
 
@@ -205,6 +283,15 @@ public sealed class SmooConfigClient : IDisposable
     public void Dispose()
     {
         if (_disposeHttpClient) _httpClient.Dispose();
+    }
+
+    private sealed class EvaluateFeatureFlagRequest
+    {
+        [JsonPropertyName("environment")]
+        public string Environment { get; init; } = string.Empty;
+
+        [JsonPropertyName("context")]
+        public IReadOnlyDictionary<string, object?> Context { get; init; } = new Dictionary<string, object?>();
     }
 
     private sealed class SetValueRequest
