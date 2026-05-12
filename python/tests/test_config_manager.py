@@ -1013,3 +1013,70 @@ class TestDeferredConfigValues:
             env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
         )
         assert mgr.get_public_config("KEY") == "value"
+
+
+# ---------------------------------------------------------------------------
+# SMOODEV-958 — UndefinedKeyError
+# ---------------------------------------------------------------------------
+
+
+class TestUndefinedKeyError:
+    """Calling get_* with a key not in schema_keys raises UndefinedKeyError."""
+
+    def test_undefined_key_raises_with_friendly_message(self, tmp_path: Path) -> None:
+        from smooai_config.config_manager import UndefinedKeyError
+
+        config_dir = _make_config_dir(tmp_path, {"default.json": {"KNOWN_KEY": "v"}})
+        mgr = ConfigManager(
+            schema_keys={"KNOWN_KEY"},
+            strict_schema_keys=True,
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+        )
+
+        with pytest.raises(UndefinedKeyError) as exc_info:
+            mgr.get_public_config("BOGUS_KEY")
+
+        msg = str(exc_info.value)
+        assert "'BOGUS_KEY'" in msg
+        assert "not defined" in msg
+        assert "SecretConfigKeys" in msg
+        assert ".smooai-config/config.ts" in msg
+
+    def test_undefined_key_honors_custom_schema_path(self, tmp_path: Path) -> None:
+        from smooai_config.config_manager import UndefinedKeyError
+
+        config_dir = _make_config_dir(tmp_path, {"default.json": {}})
+        mgr = ConfigManager(
+            schema_keys={"KNOWN_KEY"},
+            strict_schema_keys=True,
+            schema_path="my/custom/schema.ts",
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+        )
+        with pytest.raises(UndefinedKeyError) as exc_info:
+            mgr.get_secret_config("BOGUS_KEY")
+        assert "my/custom/schema.ts" in str(exc_info.value)
+
+    def test_known_key_does_not_raise(self, tmp_path: Path) -> None:
+        config_dir = _make_config_dir(tmp_path, {"default.json": {"KNOWN_KEY": "value"}})
+        mgr = ConfigManager(
+            schema_keys={"KNOWN_KEY"},
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+        )
+        assert mgr.get_public_config("KNOWN_KEY") == "value"
+
+    def test_no_schema_keys_disables_guard(self, tmp_path: Path) -> None:
+        """When schema_keys is None, falls back to old behaviour (returns None)."""
+        config_dir = _make_config_dir(tmp_path, {"default.json": {}})
+        mgr = ConfigManager(
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+        )
+        assert mgr.get_public_config("ANY_KEY") is None
+
+    def test_strict_off_with_schema_keys_does_not_raise(self, tmp_path: Path) -> None:
+        """Back-compat: schema_keys alone (strict_schema_keys=False) returns None."""
+        config_dir = _make_config_dir(tmp_path, {"default.json": {}})
+        mgr = ConfigManager(
+            schema_keys={"KNOWN_KEY"},
+            env={"SMOOAI_ENV_CONFIG_DIR": config_dir, "SMOOAI_CONFIG_ENV": "test"},
+        )
+        assert mgr.get_public_config("UNDECLARED") is None

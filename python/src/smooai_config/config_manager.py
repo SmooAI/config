@@ -13,6 +13,31 @@ from smooai_config.file_config import find_and_process_file_config
 from smooai_config.merge import merge_replace_arrays
 
 
+class UndefinedKeyError(KeyError):
+    """Raised when ``ConfigManager.get_*`` is called with a key that is not declared in the schema.
+
+    Mirrors the TypeScript SDK's ``assertKeyDefined`` and .NET's ``ConfigKey`` ctor
+    behaviour (SMOODEV-841): instead of silently returning ``None``, surface a
+    clear, actionable error pointing the caller at their schema file.
+    """
+
+    def __init__(self, key: str, schema_path: str | None = None) -> None:
+        self.key = key
+        self.schema_path = schema_path or ".smooai-config/config.ts"
+        message = (
+            f"Config key '{key}' is not defined. "
+            "Most common cause: reading `SecretConfigKeys.<X>` (or "
+            "`PublicConfigKeys.<X>` / `FeatureFlagKeys.<X>`) for a key that's "
+            "not declared in your config schema. "
+            f"Check `{self.schema_path}` and that the build pipeline has run since the schema changed."
+        )
+        super().__init__(message)
+        self.message = message
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.message
+
+
 def resolve_deferred_values(
     config: dict[str, Any],
     overrides: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
@@ -76,6 +101,8 @@ class ConfigManager:
         cache_ttl: float = 86400,  # 24 hours
         env: dict[str, str] | None = None,
         config_overrides: dict[str, Callable[[dict[str, Any]], Any]] | None = None,
+        schema_path: str | None = None,
+        strict_schema_keys: bool = False,
     ) -> None:
         self._lock = threading.RLock()
         self._initialized = False
@@ -93,6 +120,8 @@ class ConfigManager:
         self._cache_ttl = cache_ttl
         self._env = env
         self._config_overrides = config_overrides
+        self._schema_path = schema_path
+        self._strict_schema_keys = strict_schema_keys
 
     def _resolve_env_var(self, key: str) -> str | None:
         """Resolve an environment variable from the configured env dict or os.environ."""
@@ -185,6 +214,13 @@ class ConfigManager:
                 "FeatureFlagKeys.<X> for a key that's not declared in your schema. "
                 "Add it to .smooai-config/config.ts and run `smooai-config push`."
             )
+        # SMOODEV-958 — friendly error when the key is *declared as a string*
+        # but not present in the configured schema. Mirrors the TS
+        # ``assertKeyDefined`` / .NET ``ConfigKey`` ctor behaviour. Opt-in via
+        # ``strict_schema_keys=True`` because ``schema_keys`` historically also
+        # served as an env-var filter, not a strict allow-list.
+        if self._strict_schema_keys and self._schema_keys is not None and key not in self._schema_keys:
+            raise UndefinedKeyError(key, schema_path=self._schema_path)
         with self._lock:
             hit, value = self._get_from_cache(cache, key)
             if hit:

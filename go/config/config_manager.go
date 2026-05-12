@@ -7,6 +7,32 @@ import (
 	"time"
 )
 
+// UndefinedKeyError is returned when a Get* call is made for a key that is
+// not declared in the active schema. Mirrors the TypeScript “assertKeyDefined“
+// and .NET “ConfigKey“ ctor errors (SMOODEV-841 / SMOODEV-958) — instead of
+// silently returning nil, callers see a friendly message pointing them at the
+// schema file.
+type UndefinedKeyError struct {
+	Key        string
+	SchemaPath string
+}
+
+// Error formats a human-readable, actionable message matching the
+// TS/.NET ports.
+func (e *UndefinedKeyError) Error() string {
+	path := e.SchemaPath
+	if path == "" {
+		path = ".smooai-config/config.ts"
+	}
+	return fmt.Sprintf(
+		"Config key '%s' is not defined. "+
+			"Most common cause: reading `SecretConfigKeys.<X>` (or `PublicConfigKeys.<X>` / `FeatureFlagKeys.<X>`) "+
+			"for a key that's not declared in your config schema. "+
+			"Check `%s` and that the build pipeline has run since the schema changed.",
+		e.Key, path,
+	)
+}
+
 // ConfigManager is a unified config manager that merges three sources in this
 // precedence (highest to lowest):
 //
@@ -41,6 +67,17 @@ type ConfigManager struct {
 
 	// Deferred config values
 	deferred map[string]DeferredValue
+
+	// schemaPath surfaces in UndefinedKeyError messages so callers know where
+	// to declare the missing key. Defaults to ".smooai-config/config.ts" when
+	// the message is rendered.
+	schemaPath string
+
+	// strictSchemaKeys, when true, makes Get* return *UndefinedKeyError for
+	// any key not present in schemaKeys (SMOODEV-958). Off by default to
+	// preserve back-compat — schemaKeys has historically also been used as
+	// an env-var filter, not a strict allow-list.
+	strictSchemaKeys bool
 
 	// bakedConfig is an optional pre-decrypted map of remote values,
 	// seeded by NewRuntimeConfigManager from an AES-256-GCM blob. When
@@ -110,6 +147,19 @@ func WithCMCacheTTL(ttl time.Duration) ConfigManagerOption {
 // WithCMEnvOverride overrides environment variables (for testing).
 func WithCMEnvOverride(env map[string]string) ConfigManagerOption {
 	return func(m *ConfigManager) { m.envOverride = env }
+}
+
+// WithSchemaPath sets the schema file path referenced in UndefinedKeyError.
+func WithSchemaPath(path string) ConfigManagerOption {
+	return func(m *ConfigManager) { m.schemaPath = path }
+}
+
+// WithStrictSchemaKeys opts in to SMOODEV-958 behaviour — Get* returns
+// *UndefinedKeyError for any key not declared in schemaKeys. Off by default
+// to preserve back-compat: callers that pass schemaKeys purely as an env-var
+// filter still get nil-on-miss for keys outside the filter.
+func WithStrictSchemaKeys(strict bool) ConfigManagerOption {
+	return func(m *ConfigManager) { m.strictSchemaKeys = strict }
 }
 
 // WithDeferred registers a deferred (computed) config value.
@@ -226,6 +276,12 @@ func (m *ConfigManager) getFromTier(key string, cache map[string]localCacheEntry
 		return nil, fmt.Errorf("@smooai/config: get() called with empty key. " +
 			"Most common cause: reading a typed-keys constant for a key that's not declared in your schema. " +
 			"Add it to .smooai-config/config.ts and run `smooai-config push`")
+	}
+	// SMOODEV-958 — when strict mode is enabled, return a typed
+	// UndefinedKeyError for any key not declared in schemaKeys. Matches
+	// TS / .NET behaviour.
+	if m.strictSchemaKeys && m.schemaKeys != nil && !m.schemaKeys[key] {
+		return nil, &UndefinedKeyError{Key: key, SchemaPath: m.schemaPath}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

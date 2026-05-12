@@ -2,16 +2,53 @@
 
 use std::fmt;
 
+/// Kind discriminator for [`SmooaiConfigError`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SmooaiConfigErrorKind {
+    /// Generic / unspecified error.
+    Generic,
+    /// Caller asked for a key that isn't declared in the active schema.
+    /// SMOODEV-958 — friendly, actionable error matching the TS/.NET ports.
+    UndefinedKey { key: String, schema_path: String },
+}
+
 /// Configuration error with standard prefix.
 #[derive(Debug, Clone)]
 pub struct SmooaiConfigError {
     pub message: String,
+    pub kind: SmooaiConfigErrorKind,
 }
 
 impl SmooaiConfigError {
     pub fn new(message: &str) -> Self {
         Self {
             message: format!("[Smooai Config] {}", message),
+            kind: SmooaiConfigErrorKind::Generic,
+        }
+    }
+
+    /// Build a friendly error for a key that isn't declared in the schema.
+    ///
+    /// Mirrors the TS `assertKeyDefined` and .NET `ConfigKey` ctor messages
+    /// (SMOODEV-841 / SMOODEV-958). `schema_path` may be empty; defaults to
+    /// `.smooai-config/config.ts` so the message always points somewhere useful.
+    pub fn undefined_key(key: &str, schema_path: Option<&str>) -> Self {
+        let path = schema_path
+            .filter(|s| !s.is_empty())
+            .unwrap_or(".smooai-config/config.ts");
+        let message = format!(
+            "Config key '{}' is not defined. \
+             Most common cause: reading `SecretConfigKeys.<X>` (or `PublicConfigKeys.<X>` / `FeatureFlagKeys.<X>`) \
+             for a key that's not declared in your config schema. \
+             Check `{}` and that the build pipeline has run since the schema changed.",
+            key, path
+        );
+        Self {
+            message,
+            kind: SmooaiConfigErrorKind::UndefinedKey {
+                key: key.to_string(),
+                schema_path: path.to_string(),
+            },
         }
     }
 }

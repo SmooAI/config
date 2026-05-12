@@ -9,7 +9,7 @@ from smooai_config.client import (
     FeatureFlagNotFoundError,
 )
 from smooai_config.cloud_region import CloudRegionResult, get_cloud_region
-from smooai_config.config_manager import ConfigManager
+from smooai_config.config_manager import ConfigManager, UndefinedKeyError
 from smooai_config.env_config import find_and_process_env_config
 from smooai_config.file_config import find_and_process_file_config, find_config_directory
 from smooai_config.local import LocalConfigManager
@@ -30,6 +30,7 @@ __all__ = [
     "FeatureFlagNotFoundError",
     "LocalConfigManager",
     "SmooaiConfigError",
+    "UndefinedKeyError",
     "build_bundle",
     "build_config_runtime",
     "camel_to_upper_snake",
