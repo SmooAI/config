@@ -55,6 +55,14 @@ pub struct ConfigManager {
     environment: Option<String>,
     // Deferred config values
     deferred: HashMap<String, DeferredValue>,
+    // SMOODEV-958 — used in the `UndefinedKey` error message to point callers
+    // at the schema file when they ask for a key that isn't declared.
+    schema_path: Option<String>,
+    // SMOODEV-958 — opt-in: when true, get_value returns UndefinedKey for any
+    // key not in `schema_keys`. Off by default to preserve back-compat:
+    // `schema_keys` has historically also served as an env-var filter, not a
+    // strict allow-list.
+    strict_schema_keys: bool,
 }
 
 impl ConfigManager {
@@ -78,7 +86,23 @@ impl ConfigManager {
             org_id: None,
             environment: None,
             deferred: HashMap::new(),
+            schema_path: None,
+            strict_schema_keys: false,
         }
+    }
+
+    /// Set the schema file path used in the `UndefinedKey` error message.
+    pub fn with_schema_path(mut self, path: &str) -> Self {
+        self.schema_path = Some(path.to_string());
+        self
+    }
+
+    /// Enable SMOODEV-958 strict-schema mode — `get_*` returns
+    /// `SmooaiConfigError::undefined_key(...)` when a caller asks for a key
+    /// that isn't declared in `schema_keys`. Off by default for back-compat.
+    pub fn with_strict_schema_keys(mut self, strict: bool) -> Self {
+        self.strict_schema_keys = strict;
+        self
     }
 
     // Remote API builder methods
@@ -273,6 +297,16 @@ impl ConfigManager {
                  Most common cause: reading a typed-keys constant for a key that's not declared in your schema. \
                  Add it to .smooai-config/config.ts and run `smooai-config push`",
             ));
+        }
+        // SMOODEV-958 — when strict mode is enabled and a schema is configured,
+        // refuse keys that aren't declared in it and surface the friendly
+        // TS/.NET-shaped message.
+        if self.strict_schema_keys {
+            if let Some(ref schema_keys) = self.schema_keys {
+                if !schema_keys.contains(key) {
+                    return Err(SmooaiConfigError::undefined_key(key, self.schema_path.as_deref()));
+                }
+            }
         }
         let mut inner = self
             .inner
@@ -1113,5 +1147,89 @@ mod tests {
         .unwrap();
 
         assert_eq!(result, Some(Value::String("from-ctor-params".to_string())));
+    }
+
+    // --- SMOODEV-958: undefined-key error ---
+    #[test]
+    fn test_undefined_key_returns_friendly_error() {
+        use crate::utils::SmooaiConfigErrorKind;
+
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{"KNOWN":"v"}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+        let mut schema: HashSet<String> = HashSet::new();
+        schema.insert("KNOWN".to_string());
+        let mgr = ConfigManager::new()
+            .with_schema_keys(schema)
+            .with_strict_schema_keys(true)
+            .with_env(env);
+
+        let err = mgr.get_public_config("BOGUS").unwrap_err();
+        assert!(err.message.contains("'BOGUS'"));
+        assert!(err.message.contains("not defined"));
+        assert!(err.message.contains("SecretConfigKeys"));
+        assert!(err.message.contains(".smooai-config/config.ts"));
+        match err.kind {
+            SmooaiConfigErrorKind::UndefinedKey { key, schema_path } => {
+                assert_eq!(key, "BOGUS");
+                assert_eq!(schema_path, ".smooai-config/config.ts");
+            }
+            _ => panic!("expected UndefinedKey kind"),
+        }
+    }
+
+    #[test]
+    fn test_undefined_key_honors_custom_schema_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+        let mut schema: HashSet<String> = HashSet::new();
+        schema.insert("KNOWN".to_string());
+        let mgr = ConfigManager::new()
+            .with_schema_keys(schema)
+            .with_strict_schema_keys(true)
+            .with_schema_path("custom/path.ts")
+            .with_env(env);
+
+        let err = mgr.get_secret_config("BOGUS").unwrap_err();
+        assert!(err.message.contains("custom/path.ts"));
+    }
+
+    #[test]
+    fn test_known_key_passes_through() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{"KNOWN":"v"}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+        let mut schema: HashSet<String> = HashSet::new();
+        schema.insert("KNOWN".to_string());
+        let mgr = ConfigManager::new().with_schema_keys(schema).with_env(env);
+
+        assert_eq!(
+            mgr.get_public_config("KNOWN").unwrap(),
+            Some(Value::String("v".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_no_schema_keys_disables_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+        let mgr = ConfigManager::new().with_env(env);
+        // No schema_keys → guard disabled → returns None for unknown keys.
+        assert_eq!(mgr.get_public_config("WHATEVER").unwrap(), None);
+    }
+
+    #[test]
+    fn test_strict_off_with_schema_keys_does_not_error() {
+        // Back-compat: schema_keys alone (strict_schema_keys=false) returns
+        // None for undeclared keys.
+        let dir = tempfile::tempdir().unwrap();
+        let config_dir = make_config_dir(dir.path(), &[("default.json", r#"{}"#)]);
+        let env = make_env(&config_dir, &[("SMOOAI_CONFIG_ENV", "test")]);
+        let mut schema: HashSet<String> = HashSet::new();
+        schema.insert("KNOWN".to_string());
+        let mgr = ConfigManager::new().with_schema_keys(schema).with_env(env);
+        assert_eq!(mgr.get_public_config("UNDECLARED").unwrap(), None);
     }
 }

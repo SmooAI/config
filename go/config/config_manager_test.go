@@ -1284,3 +1284,108 @@ func TestConfigManager_FileConfigMergeChain(t *testing.T) {
 	assert.Equal(t, true, db["ssl"])
 	assert.Equal(t, 5432.0, db["port"])
 }
+
+// --- SMOODEV-958: UndefinedKeyError ---
+
+func TestUndefinedKeyReturnsFriendlyError(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{
+		"default.json": map[string]any{"KNOWN": "v"},
+	})
+	mgr := NewConfigManager(
+		WithCMSchemaKeys(map[string]bool{"KNOWN": true}),
+		WithStrictSchemaKeys(true),
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+	)
+
+	_, err := mgr.GetPublicConfig("BOGUS")
+	if err == nil {
+		t.Fatal("expected UndefinedKeyError, got nil")
+	}
+	uke, ok := err.(*UndefinedKeyError)
+	if !ok {
+		t.Fatalf("expected *UndefinedKeyError, got %T: %v", err, err)
+	}
+	if uke.Key != "BOGUS" {
+		t.Errorf("expected key BOGUS, got %s", uke.Key)
+	}
+	msg := uke.Error()
+	for _, frag := range []string{"'BOGUS'", "not defined", "SecretConfigKeys", ".smooai-config/config.ts"} {
+		if !contains(msg, frag) {
+			t.Errorf("message missing fragment %q: %s", frag, msg)
+		}
+	}
+}
+
+func TestUndefinedKeyHonorsCustomSchemaPath(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{"default.json": map[string]any{}})
+	mgr := NewConfigManager(
+		WithCMSchemaKeys(map[string]bool{"KNOWN": true}),
+		WithStrictSchemaKeys(true),
+		WithSchemaPath("my/custom/schema.ts"),
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+	)
+	_, err := mgr.GetSecretConfig("BOGUS")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !contains(err.Error(), "my/custom/schema.ts") {
+		t.Errorf("expected custom schema path in message, got: %s", err.Error())
+	}
+}
+
+func TestKnownKeyDoesNotError(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{
+		"default.json": map[string]any{"KNOWN": "value"},
+	})
+	mgr := NewConfigManager(
+		WithCMSchemaKeys(map[string]bool{"KNOWN": true}),
+		WithStrictSchemaKeys(true),
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+	)
+	v, err := mgr.GetPublicConfig("KNOWN")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != "value" {
+		t.Errorf("expected 'value', got %v", v)
+	}
+}
+
+func TestNoSchemaKeysDisablesUndefinedKeyGuard(t *testing.T) {
+	configDir := makeCMConfigDir(t, map[string]any{"default.json": map[string]any{}})
+	mgr := NewConfigManager(
+		WithCMEnvOverride(map[string]string{
+			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_ENV":     "test",
+		}),
+	)
+	v, err := mgr.GetPublicConfig("WHATEVER")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v != nil {
+		t.Errorf("expected nil, got %v", v)
+	}
+}
+
+func contains(s, frag string) bool {
+	return len(s) >= len(frag) && (s == frag || stringContains(s, frag))
+}
+
+func stringContains(s, frag string) bool {
+	for i := 0; i+len(frag) <= len(s); i++ {
+		if s[i:i+len(frag)] == frag {
+			return true
+		}
+	}
+	return false
+}
