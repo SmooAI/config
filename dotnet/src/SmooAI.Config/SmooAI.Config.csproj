@@ -12,7 +12,7 @@
 
   <PropertyGroup>
     <PackageId>SmooAI.Config</PackageId>
-    <Version>4.7.1</Version>
+    <Version>4.7.2</Version>
     <Authors>SmooAI</Authors>
     <Company>SmooAI</Company>
     <Product>SmooAI.Config</Product>
