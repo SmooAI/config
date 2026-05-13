@@ -45,6 +45,7 @@ from smooai_config.runtime import (
 
 TEST_BASE_URL = "https://config.smooai.test"
 TEST_API_KEY = "test-api-key-priority-chain"
+TEST_CLIENT_ID = "test-client-id-priority-chain"
 TEST_ORG_ID = "550e8400-e29b-41d4-a716-446655440000"
 # SMOODEV-975: After OAuth exchange the runtime client uses this JWT.
 TEST_JWT = "stub-jwt-priority-chain"
@@ -162,6 +163,7 @@ class TestConfigManagerPriority:
         with _patch_client_transport(transport):
             mgr = ConfigManager(
                 api_key=TEST_API_KEY,
+                client_id=TEST_CLIENT_ID,
                 base_url=TEST_BASE_URL,
                 org_id=TEST_ORG_ID,
                 environment="production",
@@ -183,6 +185,7 @@ class TestConfigManagerPriority:
         with _patch_client_transport(transport):
             mgr = ConfigManager(
                 api_key=TEST_API_KEY,
+                client_id=TEST_CLIENT_ID,
                 base_url=TEST_BASE_URL,
                 org_id=TEST_ORG_ID,
                 environment="production",
@@ -219,6 +222,7 @@ class TestConfigManagerHttpFault:
         with _patch_client_transport(transport):
             mgr = ConfigManager(
                 api_key=TEST_API_KEY,
+                client_id=TEST_CLIENT_ID,
                 base_url=TEST_BASE_URL,
                 org_id=TEST_ORG_ID,
                 environment="production",
@@ -239,6 +243,7 @@ class TestConfigManagerHttpFault:
         with _patch_client_transport(transport):
             mgr = ConfigManager(
                 api_key=TEST_API_KEY,
+                client_id=TEST_CLIENT_ID,
                 base_url=TEST_BASE_URL,
                 org_id=TEST_ORG_ID,
                 environment="production",
@@ -279,6 +284,7 @@ class TestConfigManagerCaching:
         with _patch_client_transport(transport):
             mgr = ConfigManager(
                 api_key=TEST_API_KEY,
+                client_id=TEST_CLIENT_ID,
                 base_url=TEST_BASE_URL,
                 org_id=TEST_ORG_ID,
                 environment="production",
@@ -322,6 +328,7 @@ class TestBlobHydration:
         client = ConfigClient(
             base_url=TEST_BASE_URL,
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             org_id=TEST_ORG_ID,
             environment="production",
         )
@@ -342,6 +349,7 @@ class TestBlobHydration:
         client = ConfigClient(
             base_url=TEST_BASE_URL,
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             org_id=TEST_ORG_ID,
             environment="production",
         )

@@ -114,6 +114,9 @@ def build_config_runtime(
     flag_cache_ttl_seconds: float = 30.0,
     base_url: str | None = None,
     api_key: str | None = None,
+    client_id: str | None = None,
+    client_secret: str | None = None,
+    auth_url: str | None = None,
     org_id: str | None = None,
     environment: str | None = None,
 ) -> ConfigClient:
@@ -125,6 +128,11 @@ def build_config_runtime(
     If a ``flag_client`` is passed, it's used as-is (hydrated). Otherwise a
     fresh :class:`ConfigClient` is constructed from the usual env vars +
     optional overrides.
+
+    SMOODEV-974: ConfigClient now exchanges (client_id, client_secret) for
+    an OAuth JWT before each call. Either pass them explicitly, or set the
+    ``SMOOAI_CONFIG_CLIENT_ID`` / ``SMOOAI_CONFIG_CLIENT_SECRET`` env vars.
+    ``api_key`` remains accepted as a deprecated alias for ``client_secret``.
 
     Example::
 
@@ -141,6 +149,9 @@ def build_config_runtime(
 
     client = ConfigClient(
         base_url=base_url,
+        auth_url=auth_url,
+        client_id=client_id,
+        client_secret=client_secret,
         api_key=api_key,
         org_id=org_id,
         environment=environment,
