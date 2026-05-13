@@ -452,25 +452,33 @@ All language implementations include a runtime client for fetching configuration
 
 ### Environment Variables
 
-| Variable                | Description                                            | Required |
-| ----------------------- | ------------------------------------------------------ | -------- |
-| `SMOOAI_CONFIG_API_URL` | Base URL of the config API                             | Yes      |
-| `SMOOAI_CONFIG_API_KEY` | Bearer token for authentication                        | Yes      |
-| `SMOOAI_CONFIG_ORG_ID`  | Organization ID                                        | Yes      |
-| `SMOOAI_CONFIG_ENV`     | Default environment name (defaults to `"development"`) | No       |
+Authentication is OAuth2 `client_credentials` against `{authUrl}/token` — the client exchanges `(CLIENT_ID, CLIENT_SECRET)` for a JWT and uses that JWT as the Bearer token on every config call. `TokenProvider` caches the JWT in memory and refreshes 60s before expiry.
+
+| Variable                      | Description                                                                    | Required |
+| ----------------------------- | ------------------------------------------------------------------------------ | -------- |
+| `SMOOAI_CONFIG_API_URL`       | Base URL of the config API                                                     | Yes      |
+| `SMOOAI_CONFIG_AUTH_URL`      | OAuth issuer base URL (defaults to `https://auth.smoo.ai`)                     | No       |
+| `SMOOAI_CONFIG_CLIENT_ID`     | OAuth client ID                                                                | Yes      |
+| `SMOOAI_CONFIG_CLIENT_SECRET` | OAuth client secret (legacy `SMOOAI_CONFIG_API_KEY` is accepted as a fallback) | Yes      |
+| `SMOOAI_CONFIG_ORG_ID`        | Organization ID                                                                | Yes      |
+| `SMOOAI_CONFIG_ENV`           | Default environment name (defaults to `"development"`)                         | No       |
+
+> **Migration note (v5 / SMOODEV-974):** the TypeScript `ConfigClient` previously sent `SMOOAI_CONFIG_API_KEY` directly as the Bearer token, which the backend rejected with 401 because it expects a JWT. The SDK now mints a JWT via the OAuth `client_credentials` grant before each call — matching the .NET client, the in-package `bootstrap`, and the CLI. **You must set `SMOOAI_CONFIG_CLIENT_ID` in addition to `SMOOAI_CONFIG_API_KEY` / `SMOOAI_CONFIG_CLIENT_SECRET`** for the runtime SDK to work. The legacy `SMOOAI_CONFIG_API_KEY` env var continues to function as the OAuth client secret.
 
 ### TypeScript Client
 
 ```typescript
 import { ConfigClient } from '@smooai/config/platform/client';
 
-// Zero-config (reads from env vars)
+// Zero-config (reads from env vars — needs CLIENT_ID + CLIENT_SECRET/API_KEY + ORG_ID)
 const client = new ConfigClient();
 
 // Or explicit
 const client = new ConfigClient({
     baseUrl: 'https://config.smooai.dev',
-    apiKey: 'your-api-key',
+    authUrl: 'https://auth.smooai.dev',
+    clientId: 'your-client-id',
+    clientSecret: 'your-client-secret',
     orgId: 'your-org-id',
     environment: 'production',
 });

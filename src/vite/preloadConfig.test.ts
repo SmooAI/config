@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { TokenProvider } from '../platform/TokenProvider';
 import { preloadConfig, getPreloadedConfig, resetPreload } from './preloadConfig';
 
 // Mock @smooai/fetch module
@@ -9,11 +10,22 @@ vi.mock('@smooai/fetch', () => ({
     default: mockFetch,
 }));
 
+// SMOODEV-974: stub TokenProvider so these tests focus on preload behavior,
+// not the OAuth handshake (covered by TokenProvider.test.ts).
+class StubTokenProvider extends TokenProvider {
+    constructor() {
+        super({ authUrl: 'https://stub.invalid', clientId: 'stub', clientSecret: 'stub' });
+    }
+    async getAccessToken(): Promise<string> {
+        return 'stub-jwt';
+    }
+}
+
 const BASE_OPTIONS = {
     baseUrl: 'https://api.smooai.dev',
-    apiKey: 'test-key',
     orgId: 'org-123',
     environment: 'production',
+    tokenProvider: new StubTokenProvider(),
 };
 
 describe('preloadConfig', () => {
@@ -53,9 +65,12 @@ describe('preloadConfig', () => {
         const promise2 = preloadConfig(BASE_OPTIONS);
 
         expect(promise1).toBe(promise2);
-        expect(mockFetch).toHaveBeenCalledTimes(1);
 
+        // SMOODEV-974: must await before the fetch count check — getAccessToken
+        // is now an async step (even with the stub provider) so the underlying
+        // fetch is scheduled in a microtask after preloadConfig returns.
         await promise1;
+        expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('getPreloadedConfig returns null before completion', () => {

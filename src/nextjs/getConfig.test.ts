@@ -8,13 +8,25 @@ vi.mock('@smooai/fetch', () => ({
     default: mockFetch,
 }));
 
+import { TokenProvider } from '../platform/TokenProvider';
 import { getConfig } from './getConfig';
+
+// SMOODEV-974: stub TokenProvider so these tests focus on getConfig behavior,
+// not the OAuth handshake (covered by TokenProvider.test.ts).
+class StubTokenProvider extends TokenProvider {
+    constructor() {
+        super({ authUrl: 'https://stub.invalid', clientId: 'stub', clientSecret: 'stub' });
+    }
+    async getAccessToken(): Promise<string> {
+        return 'stub-jwt';
+    }
+}
 
 const BASE_OPTIONS = {
     baseUrl: 'https://api.smooai.dev',
-    apiKey: 'test-key',
     orgId: 'org-123',
     environment: 'production',
+    tokenProvider: new StubTokenProvider(),
 };
 
 describe('getConfig', () => {
