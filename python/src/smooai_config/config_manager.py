@@ -92,6 +92,9 @@ class ConfigManager:
         self,
         *,
         api_key: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        auth_url: str | None = None,
         base_url: str | None = None,
         org_id: str | None = None,
         environment: str | None = None,
@@ -110,7 +113,14 @@ class ConfigManager:
         self._public_cache: dict[str, tuple[Any, float]] = {}
         self._secret_cache: dict[str, tuple[Any, float]] = {}
         self._feature_flag_cache: dict[str, tuple[Any, float]] = {}
+        # SMOODEV-974: ConfigClient now exchanges (client_id, client_secret)
+        # for an OAuth JWT before each call. Accept the new params; keep
+        # ``api_key`` as a deprecated alias for ``client_secret`` so existing
+        # callers continue to work.
         self._api_key = api_key
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._auth_url = auth_url
         self._base_url = base_url
         self._org_id = org_id
         self._environment = environment
@@ -149,19 +159,31 @@ class ConfigManager:
         )
 
         # 3. Try remote fetch if API creds available
+        # SMOODEV-974: ConfigClient now requires (client_id, client_secret) to
+        # mint an OAuth JWT. ``api_key`` is accepted as a deprecated alias for
+        # ``client_secret`` to keep the public surface stable.
         remote_config: dict[str, Any] = {}
-        api_key = self._api_key or self._resolve_env_var("SMOOAI_CONFIG_API_KEY")
+        client_secret = (
+            self._client_secret
+            or self._api_key
+            or self._resolve_env_var("SMOOAI_CONFIG_CLIENT_SECRET")
+            or self._resolve_env_var("SMOOAI_CONFIG_API_KEY")
+        )
+        client_id = self._client_id or self._resolve_env_var("SMOOAI_CONFIG_CLIENT_ID")
         base_url = self._base_url or self._resolve_env_var("SMOOAI_CONFIG_API_URL")
         org_id = self._org_id or self._resolve_env_var("SMOOAI_CONFIG_ORG_ID")
+        auth_url = self._auth_url or self._resolve_env_var("SMOOAI_CONFIG_AUTH_URL")
 
-        if api_key and base_url and org_id:
+        if client_id and client_secret and base_url and org_id:
             # Resolve environment: explicit param > env var > default "development"
             resolved_environment = self._environment or self._resolve_env_var("SMOOAI_CONFIG_ENV") or "development"
 
             try:
                 client = ConfigClient(
                     base_url=base_url,
-                    api_key=api_key,
+                    auth_url=auth_url,
+                    client_id=client_id,
+                    client_secret=client_secret,
                     org_id=org_id,
                     environment=resolved_environment,
                 )

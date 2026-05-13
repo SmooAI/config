@@ -18,6 +18,7 @@ from smooai_config.file_config import _clear_config_dir_cache
 
 TEST_BASE_URL = "https://config-test.smooai.dev"
 TEST_API_KEY = "test-api-key-abc123"
+TEST_CLIENT_ID = "test-client-id-abc123"
 TEST_ORG_ID = "550e8400-e29b-41d4-a716-446655440000"
 
 
@@ -186,6 +187,7 @@ class TestRemoteEnrichment:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -205,6 +207,7 @@ class TestRemoteEnrichment:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -231,6 +234,7 @@ class TestMergePrecedence:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -254,6 +258,7 @@ class TestMergePrecedence:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -289,6 +294,7 @@ class TestNestedObjectMerge:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -314,6 +320,7 @@ class TestNestedObjectMerge:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -349,6 +356,7 @@ class TestGracefulDegradationServerError:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -380,6 +388,7 @@ class TestGracefulDegradationConnectionRefused:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -519,6 +528,7 @@ class TestApiCredsFromEnvVars:
                 "SMOOAI_ENV_CONFIG_DIR": config_dir,
                 "SMOOAI_CONFIG_ENV": "production",
                 "SMOOAI_CONFIG_API_KEY": TEST_API_KEY,
+                "SMOOAI_CONFIG_CLIENT_ID": TEST_CLIENT_ID,
                 "SMOOAI_CONFIG_API_URL": TEST_BASE_URL,
                 "SMOOAI_CONFIG_ORG_ID": TEST_ORG_ID,
             },
@@ -540,7 +550,7 @@ class TestApiCredsFromEnvVars:
             env={
                 "SMOOAI_ENV_CONFIG_DIR": config_dir,
                 "SMOOAI_CONFIG_ENV": "test",
-                # No SMOOAI_CONFIG_API_KEY
+                # No SMOOAI_CONFIG_API_KEY / SMOOAI_CONFIG_CLIENT_ID
                 "SMOOAI_CONFIG_API_URL": TEST_BASE_URL,
                 "SMOOAI_CONFIG_ORG_ID": TEST_ORG_ID,
             },
@@ -568,6 +578,7 @@ class TestApiCredsFromConstructor:
 
         mgr = ConfigManager(
             api_key="constructor-key",
+            client_id="constructor-client-id",
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -575,6 +586,7 @@ class TestApiCredsFromConstructor:
                 "SMOOAI_ENV_CONFIG_DIR": config_dir,
                 "SMOOAI_CONFIG_ENV": "test",
                 "SMOOAI_CONFIG_API_KEY": "env-key",
+                "SMOOAI_CONFIG_CLIENT_ID": "env-client-id",
                 "SMOOAI_CONFIG_API_URL": "https://env-url.example.com",
                 "SMOOAI_CONFIG_ORG_ID": "env-org-id",
             },
@@ -630,6 +642,7 @@ class TestThreadSafety:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -688,6 +701,7 @@ class TestFullIntegration:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -733,6 +747,7 @@ class TestFullIntegration:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -763,6 +778,7 @@ class TestEnvironmentResolution:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="staging",
@@ -788,6 +804,7 @@ class TestEnvironmentResolution:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             # No explicit environment param
@@ -812,6 +829,7 @@ class TestEnvironmentResolution:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             # No explicit environment, no SMOOAI_CONFIG_ENV
@@ -842,6 +860,7 @@ class TestInvalidationRefetches:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -890,6 +909,7 @@ class TestInvalidationRefetches:
 
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",
@@ -1013,6 +1033,7 @@ class TestDeferredConfigValues:
         transport = create_mock_transport(values={"HOST": "remote-host", "PORT": 8080})
         mgr = ConfigManager(
             api_key=TEST_API_KEY,
+            client_id=TEST_CLIENT_ID,
             base_url=TEST_BASE_URL,
             org_id=TEST_ORG_ID,
             environment="production",

@@ -91,6 +91,9 @@ def test_hydrate_seeds_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     # ConfigClient requires these — stub so construction succeeds.
     monkeypatch.setenv("SMOOAI_CONFIG_API_URL", "https://api.smoo.ai")
     monkeypatch.setenv("SMOOAI_CONFIG_API_KEY", "test-key")
+    # SMOODEV-974: ConfigClient ctor requires client_id when no token_provider
+    # is injected. Stub the env var so construction succeeds offline.
+    monkeypatch.setenv("SMOOAI_CONFIG_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("SMOOAI_CONFIG_ORG_ID", "test-org")
     monkeypatch.setenv("SMOOAI_CONFIG_ENV", "production")
 
@@ -112,6 +115,9 @@ def test_hydrate_returns_zero_without_env(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.delenv("SMOO_CONFIG_KEY", raising=False)
     monkeypatch.setenv("SMOOAI_CONFIG_API_URL", "https://api.smoo.ai")
     monkeypatch.setenv("SMOOAI_CONFIG_API_KEY", "test-key")
+    # SMOODEV-974: ConfigClient ctor requires client_id when no token_provider
+    # is injected. Stub the env var so construction succeeds offline.
+    monkeypatch.setenv("SMOOAI_CONFIG_CLIENT_ID", "test-client-id")
     monkeypatch.setenv("SMOOAI_CONFIG_ORG_ID", "test-org")
     monkeypatch.setenv("SMOOAI_CONFIG_ENV", "production")
 
