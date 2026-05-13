@@ -427,7 +427,7 @@ wheels = [
 
 [[package]]
 name = "smooai-config"
-version = "4.7.4"
+version = "5.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
