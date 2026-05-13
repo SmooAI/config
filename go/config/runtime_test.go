@@ -148,6 +148,13 @@ func TestNewRuntimeConfigManager_NoEnvFallsBackToLiveClient(t *testing.T) {
 	// still resolves through the live fetch path.
 	var hits atomic.Int64
 	mux := http.NewServeMux()
+	// SMOODEV-975: handle the OAuth handshake transparently — don't count.
+	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "stub-jwt",
+			"expires_in":   3600,
+		}))
+	})
 	mux.HandleFunc("/organizations/", func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
@@ -168,6 +175,8 @@ func TestNewRuntimeConfigManager_NoEnvFallsBackToLiveClient(t *testing.T) {
 			// Ensure no stray blob env vars leak in from the test runner.
 			"SMOO_CONFIG_KEY_FILE": "",
 			"SMOO_CONFIG_KEY":      "",
+			// SMOODEV-975: route OAuth to the mock server.
+			"SMOOAI_CONFIG_AUTH_URL": srv.URL,
 		},
 	})
 	require.NoError(t, err)

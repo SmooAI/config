@@ -2,41 +2,83 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// SMOODEV-975: After the OAuth handshake, the runtime client carries this
+// JWT on every downstream request. Unit tests inject a stub TokenProvider
+// that mints this fixed token so the tests focus on ConfigClient behavior
+// (caching, fetch, error mapping) without exercising the full OAuth flow —
+// the handshake itself is covered by TestTokenProvider_* in token_provider_test.go.
+const unitTestJWT = "stub-jwt-unit"
+
+type fixedTokenRoundTripper struct{ token string }
+
+func (f fixedTokenRoundTripper) RoundTrip(_ *http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			fmt.Sprintf(`{"access_token":%q,"expires_in":3600}`, f.token),
+		)),
+	}, nil
+}
+
+func newFixedTokenProvider(t *testing.T, token string) *TokenProvider {
+	t.Helper()
+	tp, err := NewTokenProvider(
+		"https://stub.invalid",
+		"stub-client-id",
+		"stub-client-secret",
+		WithTokenProviderHTTPClient(&http.Client{Transport: fixedTokenRoundTripper{token: token}}),
+	)
+	require.NoError(t, err)
+	return tp
+}
+
+// newUnitClient builds a ConfigClient with a stub TokenProvider, so the
+// unit tests don't need a live OAuth issuer.
+func newUnitClient(t *testing.T, baseURL string, opts ...ConfigClientOption) *ConfigClient {
+	t.Helper()
+	all := append([]ConfigClientOption{WithTokenProvider(newFixedTokenProvider(t, unitTestJWT))}, opts...)
+	return NewConfigClient(baseURL, "test-client-id", "test-secret", "org-id", all...)
+}
+
 func newTestServer(handler http.HandlerFunc) *httptest.Server {
 	return httptest.NewServer(handler)
 }
 
 func TestNewConfigClient_TrimsTrailingSlash(t *testing.T) {
-	client := NewConfigClient("https://api.example.com/", "key", "org-id")
+	client := NewConfigClient("https://api.example.com/", "cid", "sec", "org-id")
 	defer client.Close()
 
 	assert.Equal(t, "https://api.example.com", client.baseURL)
 }
 
 func TestNewConfigClient_PreservesURL(t *testing.T) {
-	client := NewConfigClient("https://api.example.com", "key", "org-id")
+	client := NewConfigClient("https://api.example.com", "cid", "sec", "org-id")
 	defer client.Close()
 
 	assert.Equal(t, "https://api.example.com", client.baseURL)
 }
 
 func TestNewConfigClient_StoresOrgID(t *testing.T) {
-	client := NewConfigClient("https://api.example.com", "key", "my-org-123")
+	client := NewConfigClient("https://api.example.com", "cid", "sec", "my-org-123")
 	defer client.Close()
 
 	assert.Equal(t, "my-org-123", client.orgID)
 }
 
 func TestNewConfigClient_InitializesEmptyCache(t *testing.T) {
-	client := NewConfigClient("https://api.example.com", "key", "org")
+	client := NewConfigClient("https://api.example.com", "cid", "sec", "org")
 	defer client.Close()
 
 	assert.Empty(t, client.cache)
@@ -45,12 +87,14 @@ func TestNewConfigClient_InitializesEmptyCache(t *testing.T) {
 func TestGetValue_FetchesSingleValue(t *testing.T) {
 	server := newTestServer(func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.Path, "/config/values/API_URL")
-		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		// SMOODEV-975: the runtime client sends the JWT minted by the
+		// TokenProvider, not the raw secret.
+		assert.Equal(t, "Bearer "+unitTestJWT, r.Header.Get("Authorization"))
 		json.NewEncoder(w).Encode(valueResponse{Value: "https://api.example.com"})
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "test-key", "org-123")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	val, err := client.GetValue("API_URL", "production")
@@ -66,16 +110,14 @@ func TestGetValue_CachesResult(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
-	// First call hits server
 	val1, err := client.GetValue("KEY", "prod")
 	require.NoError(t, err)
 	assert.Equal(t, "cached-value", val1)
 	assert.Equal(t, 1, callCount)
 
-	// Second call uses cache
 	val2, err := client.GetValue("KEY", "prod")
 	require.NoError(t, err)
 	assert.Equal(t, "cached-value", val2)
@@ -89,7 +131,7 @@ func TestGetValue_SeparateCachePerEnvironment(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	val1, err := client.GetValue("KEY", "prod")
@@ -114,7 +156,7 @@ func TestGetAllValues_FetchesAllValues(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	values, err := client.GetAllValues("production")
@@ -136,7 +178,7 @@ func TestGetAllValues_PopulatesCache(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	_, err := client.GetAllValues("prod")
@@ -147,7 +189,7 @@ func TestGetAllValues_PopulatesCache(t *testing.T) {
 }
 
 func TestInvalidateCache_ClearsAll(t *testing.T) {
-	client := NewConfigClient("https://example.com", "key", "org")
+	client := NewConfigClient("https://example.com", "cid", "sec", "org")
 	defer client.Close()
 
 	client.cache["prod:KEY"] = cacheEntry{value: "value"}
@@ -159,7 +201,7 @@ func TestInvalidateCache_ClearsAll(t *testing.T) {
 }
 
 func TestInvalidateCache_EmptyIsNoop(t *testing.T) {
-	client := NewConfigClient("https://example.com", "key", "org")
+	client := NewConfigClient("https://example.com", "cid", "sec", "org")
 	defer client.Close()
 
 	client.InvalidateCache()
@@ -173,7 +215,7 @@ func TestGetValue_ErrorOnServerError(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	_, err := client.GetValue("KEY", "prod")
@@ -188,7 +230,9 @@ func TestGetValue_ErrorOnUnauthorized(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "bad-key", "org")
+	// SMOODEV-975: when the server consistently returns 401, the client
+	// invalidates+retries once but ultimately surfaces the 401.
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	_, err := client.GetValue("KEY", "prod")
@@ -203,7 +247,7 @@ func TestGetValue_ErrorOnNotFound(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	_, err := client.GetValue("nonexistent", "prod")
@@ -213,12 +257,13 @@ func TestGetValue_ErrorOnNotFound(t *testing.T) {
 
 func TestGetValue_SetsAuthorizationHeader(t *testing.T) {
 	server := newTestServer(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer my-secret-api-key", r.Header.Get("Authorization"))
+		// SMOODEV-975: header is the OAuth-minted JWT.
+		assert.Equal(t, "Bearer "+unitTestJWT, r.Header.Get("Authorization"))
 		json.NewEncoder(w).Encode(valueResponse{Value: "ok"})
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "my-secret-api-key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	_, err := client.GetValue("KEY", "prod")
@@ -227,11 +272,12 @@ func TestGetValue_SetsAuthorizationHeader(t *testing.T) {
 
 func TestNewConfigClient_FallsBackToEnvVars(t *testing.T) {
 	t.Setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
-	t.Setenv("SMOOAI_CONFIG_API_KEY", "env-key")
+	t.Setenv("SMOOAI_CONFIG_CLIENT_ID", "env-cid")
+	t.Setenv("SMOOAI_CONFIG_API_KEY", "env-key") // legacy → maps to clientSecret
 	t.Setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
 	t.Setenv("SMOOAI_CONFIG_ENV", "staging")
 
-	client := NewConfigClient("", "", "")
+	client := NewConfigClient("", "", "", "")
 	defer client.Close()
 
 	assert.Equal(t, "https://env.example.com", client.baseURL)
@@ -241,10 +287,11 @@ func TestNewConfigClient_FallsBackToEnvVars(t *testing.T) {
 
 func TestNewConfigClient_ExplicitOverridesEnv(t *testing.T) {
 	t.Setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
+	t.Setenv("SMOOAI_CONFIG_CLIENT_ID", "env-cid")
 	t.Setenv("SMOOAI_CONFIG_API_KEY", "env-key")
 	t.Setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
 
-	client := NewConfigClient("https://explicit.example.com", "explicit-key", "explicit-org")
+	client := NewConfigClient("https://explicit.example.com", "explicit-cid", "explicit-secret", "explicit-org")
 	defer client.Close()
 
 	assert.Equal(t, "https://explicit.example.com", client.baseURL)
@@ -253,7 +300,8 @@ func TestNewConfigClient_ExplicitOverridesEnv(t *testing.T) {
 
 func TestNewConfigClientFromEnv(t *testing.T) {
 	t.Setenv("SMOOAI_CONFIG_API_URL", "https://from-env.example.com")
-	t.Setenv("SMOOAI_CONFIG_API_KEY", "from-env-key")
+	t.Setenv("SMOOAI_CONFIG_CLIENT_ID", "from-env-cid")
+	t.Setenv("SMOOAI_CONFIG_CLIENT_SECRET", "from-env-secret")
 	t.Setenv("SMOOAI_CONFIG_ORG_ID", "from-env-org")
 	t.Setenv("SMOOAI_CONFIG_ENV", "production")
 
@@ -269,7 +317,7 @@ func TestNewConfigClient_DefaultEnvironment(t *testing.T) {
 	// Without SMOOAI_CONFIG_ENV set, default should be "development"
 	t.Setenv("SMOOAI_CONFIG_ENV", "")
 
-	client := NewConfigClient("https://example.com", "key", "org")
+	client := NewConfigClient("https://example.com", "cid", "sec", "org")
 	defer client.Close()
 
 	assert.Equal(t, "development", client.defaultEnvironment)
@@ -284,7 +332,7 @@ func TestGetValue_UsesDefaultEnvironment(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	val, err := client.GetValue("KEY", "")
@@ -303,7 +351,7 @@ func TestGetAllValues_UsesDefaultEnvironment(t *testing.T) {
 	})
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newUnitClient(t, server.URL)
 	defer client.Close()
 
 	vals, err := client.GetAllValues("")

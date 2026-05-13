@@ -1,10 +1,26 @@
 """Runtime configuration client for fetching values from the Smoo AI server.
 
+Authentication uses OAuth2 ``client_credentials`` against
+``{auth_url}/token``, mirroring the .NET ``SmooConfigClient``, the
+TypeScript ``ConfigClient`` (post-SMOODEV-974), and the in-package
+``bootstrap`` module. The exchanged JWT is cached + auto-refreshed by
+:class:`TokenProvider`.
+
 Environment variables (used as defaults when constructor args are omitted):
-    SMOOAI_CONFIG_API_URL  — Base URL of the config API
-    SMOOAI_CONFIG_API_KEY  — Bearer token for authentication
-    SMOOAI_CONFIG_ORG_ID   — Organization ID
-    SMOOAI_CONFIG_ENV      — Default environment name (e.g. "production")
+
+    SMOOAI_CONFIG_API_URL        — Base URL of the config API
+    SMOOAI_CONFIG_AUTH_URL       — OAuth issuer base URL (default
+                                   ``https://auth.smoo.ai``; legacy
+                                   ``SMOOAI_AUTH_URL`` also accepted)
+    SMOOAI_CONFIG_CLIENT_ID      — OAuth client ID
+    SMOOAI_CONFIG_CLIENT_SECRET  — OAuth client secret (also accepts
+                                   the legacy ``SMOOAI_CONFIG_API_KEY``)
+    SMOOAI_CONFIG_ORG_ID         — Organization ID
+    SMOOAI_CONFIG_ENV            — Default environment name (e.g. ``"production"``)
+
+SMOODEV-975: Previously sent the raw ``SMOOAI_CONFIG_API_KEY`` as the
+Bearer token, which the backend rejected with 401. The SDK now mints a
+JWT via the OAuth ``client_credentials`` grant before each call.
 """
 
 import os
@@ -16,6 +32,7 @@ from urllib.parse import quote
 import httpx
 from pydantic import BaseModel, Field
 
+from smooai_config.token_provider import TokenProvider
 from smooai_config.utils import SmooaiConfigError
 
 
@@ -23,40 +40,69 @@ class ConfigClient:
     """Client for reading configuration values from the Smoo AI config server.
 
     All constructor arguments are optional if the corresponding environment
-    variables are set (SMOOAI_CONFIG_API_URL, SMOOAI_CONFIG_API_KEY,
-    SMOOAI_CONFIG_ORG_ID, SMOOAI_CONFIG_ENV).
+    variables are set. Thread-safe: cache operations are protected by an RLock.
 
-    Thread-safe: all cache operations are protected by an RLock.
+    SMOODEV-975: now requires ``client_id`` in addition to ``client_secret``
+    (legacy ``api_key`` accepted as deprecated alias). Constructing without
+    ``client_id`` raises :class:`ValueError`.
     """
 
     def __init__(
         self,
         *,
         base_url: str | None = None,
-        api_key: str | None = None,
+        auth_url: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        api_key: str | None = None,  # Deprecated alias for client_secret
         org_id: str | None = None,
         environment: str | None = None,
         cache_ttl_seconds: float = 0,
+        token_provider: TokenProvider | None = None,
+        http_client: httpx.Client | None = None,
     ) -> None:
         resolved_base_url = base_url or os.environ.get("SMOOAI_CONFIG_API_URL")
-        resolved_api_key = api_key or os.environ.get("SMOOAI_CONFIG_API_KEY")
+        resolved_auth_url = (
+            auth_url
+            or os.environ.get("SMOOAI_CONFIG_AUTH_URL")
+            or os.environ.get("SMOOAI_AUTH_URL")
+            or "https://auth.smoo.ai"
+        )
+        resolved_client_id = client_id or os.environ.get("SMOOAI_CONFIG_CLIENT_ID")
+        resolved_client_secret = (
+            client_secret
+            or api_key
+            or os.environ.get("SMOOAI_CONFIG_CLIENT_SECRET")
+            or os.environ.get("SMOOAI_CONFIG_API_KEY")
+        )
         resolved_org_id = org_id or os.environ.get("SMOOAI_CONFIG_ORG_ID")
 
         if not resolved_base_url:
             raise ValueError("base_url is required (or set SMOOAI_CONFIG_API_URL)")
-        if not resolved_api_key:
-            raise ValueError("api_key is required (or set SMOOAI_CONFIG_API_KEY)")
         if not resolved_org_id:
             raise ValueError("org_id is required (or set SMOOAI_CONFIG_ORG_ID)")
+        if token_provider is None:
+            if not resolved_client_id:
+                raise ValueError("client_id is required (or set SMOOAI_CONFIG_CLIENT_ID)")
+            if not resolved_client_secret:
+                raise ValueError(
+                    "client_secret is required (or set SMOOAI_CONFIG_CLIENT_SECRET / SMOOAI_CONFIG_API_KEY)"
+                )
 
         self._base_url = resolved_base_url.rstrip("/")
         self._org_id = resolved_org_id
         self._default_environment = environment or os.environ.get("SMOOAI_CONFIG_ENV", "development")
-        self._headers = {"Authorization": f"Bearer {resolved_api_key}"}
-        self._client = httpx.Client(base_url=self._base_url, headers=self._headers)
+        self._client = http_client or httpx.Client(base_url=self._base_url)
+        self._owns_http_client = http_client is None
         self._cache: dict[str, tuple[Any, float]] = {}  # key → (value, expires_at)
         self._cache_ttl_seconds = cache_ttl_seconds
         self._lock = threading.RLock()
+        self._token_provider = token_provider or TokenProvider(
+            auth_url=resolved_auth_url,
+            client_id=resolved_client_id,  # type: ignore[arg-type]  # guarded above
+            client_secret=resolved_client_secret,  # type: ignore[arg-type]  # guarded above
+            http_client=self._client,
+        )
 
     def _compute_expires_at(self) -> float:
         """Compute expiration timestamp. 0.0 means no expiry."""
@@ -81,6 +127,22 @@ class ConfigClient:
         with self._lock:
             self._cache[cache_key] = (value, self._compute_expires_at())
 
+    def _auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._token_provider.get_access_token()}"}
+
+    def _request_with_retry(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        """Issue an HTTP request, retrying once after invalidating the cached
+        token on a 401 (handles server-side rotation / revocation).
+        """
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers.update(self._auth_headers())
+        response = self._client.request(method, url, headers=headers, **kwargs)
+        if response.status_code == 401:
+            self._token_provider.invalidate()
+            headers.update(self._auth_headers())
+            response = self._client.request(method, url, headers=headers, **kwargs)
+        return response
+
     def get_value(self, key: str, *, environment: str | None = None) -> Any:
         """Get a single config value."""
         env = environment or self._default_environment
@@ -90,7 +152,8 @@ class ConfigClient:
         if found:
             return value
 
-        response = self._client.get(
+        response = self._request_with_retry(
+            "GET",
             f"/organizations/{self._org_id}/config/values/{key}",
             params={"environment": env},
         )
@@ -102,7 +165,8 @@ class ConfigClient:
     def get_all_values(self, *, environment: str | None = None) -> dict[str, Any]:
         """Get all config values for an environment."""
         env = environment or self._default_environment
-        response = self._client.get(
+        response = self._request_with_retry(
+            "GET",
             f"/organizations/{self._org_id}/config/values",
             params={"environment": env},
         )
@@ -183,7 +247,8 @@ class ConfigClient:
         # Match the TS client's `encodeURIComponent` behavior so flag keys
         # containing slashes, spaces, or reserved characters are escaped.
         encoded_key = quote(key, safe="")
-        response = self._client.post(
+        response = self._request_with_retry(
+            "POST",
             f"/organizations/{self._org_id}/config/feature-flags/{encoded_key}/evaluate",
             json={"environment": env, "context": ctx},
         )
@@ -198,8 +263,9 @@ class ConfigClient:
         return EvaluateFeatureFlagResponse.model_validate(response.json())
 
     def close(self) -> None:
-        """Close the HTTP client."""
-        self._client.close()
+        """Close the HTTP client (if owned by this client)."""
+        if self._owns_http_client:
+            self._client.close()
 
     def __enter__(self) -> "ConfigClient":
         return self

@@ -46,6 +46,8 @@ from smooai_config.runtime import (
 TEST_BASE_URL = "https://config.smooai.test"
 TEST_API_KEY = "test-api-key-priority-chain"
 TEST_ORG_ID = "550e8400-e29b-41d4-a716-446655440000"
+# SMOODEV-975: After OAuth exchange the runtime client uses this JWT.
+TEST_JWT = "stub-jwt-priority-chain"
 
 
 # ---------------------------------------------------------------------------
@@ -81,16 +83,24 @@ def _make_http_transport(
     """Mock the config API. ``values`` is keyed by environment name."""
 
     def handler(request: httpx.Request) -> httpx.Response:
+        url_path = request.url.path
+
+        # SMOODEV-975: handle OAuth client_credentials handshake.
+        if url_path == "/token" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"access_token": TEST_JWT, "expires_in": 3600},
+            )
+
         if status_code != 200:
             return httpx.Response(status_code, json={"error": "boom"})
 
-        if require_auth and request.headers.get("authorization") != f"Bearer {TEST_API_KEY}":
+        if require_auth and request.headers.get("authorization") != f"Bearer {TEST_JWT}":
             return httpx.Response(401, json={"error": "Unauthorized"})
 
         env_name = dict(request.url.params).get("environment", "development")
         env_values = values.get(env_name, {})
 
-        url_path = request.url.path
         prefix = f"/organizations/{TEST_ORG_ID}/config/values/"
         base = f"/organizations/{TEST_ORG_ID}/config/values"
 
@@ -246,10 +256,19 @@ class TestConfigManagerCaching:
         request_count = {"n": 0}
 
         def handler(request: httpx.Request) -> httpx.Response:
+            url_path = request.url.path
+
+            # SMOODEV-975: OAuth handshake — handle but don't count toward
+            # the memoization tally.
+            if url_path == "/token" and request.method == "POST":
+                return httpx.Response(
+                    200,
+                    json={"access_token": "stub-jwt", "expires_in": 3600},
+                )
+
             request_count["n"] += 1
             env = dict(request.url.params).get("environment", "development")
             data = {"production": {"API_URL": "from-http-1"}}.get(env, {})
-            url_path = request.url.path
             base = f"/organizations/{TEST_ORG_ID}/config/values"
             if url_path == base:
                 return httpx.Response(200, json={"values": data})

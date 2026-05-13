@@ -134,7 +134,7 @@ let config = define_config(
 
 ### Runtime Client - Fetch Values from Server
 
-The `ConfigClient` is async and uses `reqwest` under the hood. Fetched values are cached locally until `invalidate_cache` is called or a TTL expires:
+The `ConfigClient` is async and uses `reqwest` under the hood. Before each call it mints a short-lived JWT via the OAuth2 `client_credentials` grant against `{auth_url}/token` (cached and auto-refreshed via [`TokenProvider`]). Fetched values are cached locally until `invalidate_cache` is called or a TTL expires. **Note: SDK versions prior to SMOODEV-975 sent the raw API key as Bearer — the backend rejects that flow with 401.**
 
 ```rust
 use smooai_config::ConfigClient;
@@ -142,20 +142,24 @@ use smooai_config::ConfigClient;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Option 1: Use environment variables (zero-config)
-    // Reads SMOOAI_CONFIG_API_URL, SMOOAI_CONFIG_API_KEY, SMOOAI_CONFIG_ORG_ID
+    // Reads SMOOAI_CONFIG_API_URL, SMOOAI_CONFIG_CLIENT_ID,
+    // SMOOAI_CONFIG_CLIENT_SECRET (or legacy SMOOAI_CONFIG_API_KEY),
+    // SMOOAI_CONFIG_ORG_ID, SMOOAI_CONFIG_AUTH_URL (defaults to https://auth.smoo.ai).
     let mut client = ConfigClient::from_env();
 
     // Option 2: Explicit configuration
     let mut client = ConfigClient::new(
         "https://config.smooai.dev",
-        "your-api-key",
+        "your-client-id",
+        "your-client-secret",
         "your-org-id",
     );
 
     // Option 3: Explicit with default environment
     let mut client = ConfigClient::with_environment(
         "https://config.smooai.dev",
-        "your-api-key",
+        "your-client-id",
+        "your-client-secret",
         "your-org-id",
         "production",
     );
@@ -257,7 +261,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let result = build_bundle(BuildBundleOptions {
         base_url: "https://config.smooai.dev".to_string(),
-        api_key: "your-api-key".to_string(),
+        auth_url: None, // defaults to SMOOAI_CONFIG_AUTH_URL / https://auth.smoo.ai
+        client_id: Some("your-client-id".to_string()),
+        api_key: "your-client-secret".to_string(),
         org_id: "your-org-id".to_string(),
         environment: Some("production".to_string()),
         classify: Some(Box::new(move |key, _v| {
@@ -291,18 +297,21 @@ The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wi
 
 All clients read from the same set of environment variables:
 
-| Variable                | Description                                            | Required |
-| ----------------------- | ------------------------------------------------------ | -------- |
-| `SMOOAI_CONFIG_API_URL` | Base URL of the config API                             | Yes      |
-| `SMOOAI_CONFIG_API_KEY` | Bearer token for authentication                        | Yes      |
-| `SMOOAI_CONFIG_ORG_ID`  | Organization ID                                        | Yes      |
-| `SMOOAI_CONFIG_ENV`     | Default environment name (defaults to `"development"`) | No       |
+| Variable                      | Description                                                                                   | Required |
+| ----------------------------- | --------------------------------------------------------------------------------------------- | -------- |
+| `SMOOAI_CONFIG_API_URL`       | Base URL of the config API                                                                    | Yes      |
+| `SMOOAI_CONFIG_CLIENT_ID`     | OAuth2 client ID                                                                              | Yes      |
+| `SMOOAI_CONFIG_CLIENT_SECRET` | OAuth2 client secret (legacy `SMOOAI_CONFIG_API_KEY` accepted as deprecated alias)            | Yes      |
+| `SMOOAI_CONFIG_AUTH_URL`      | OAuth issuer base URL (defaults to `https://auth.smoo.ai`; legacy `SMOOAI_AUTH_URL` accepted) | No       |
+| `SMOOAI_CONFIG_ORG_ID`        | Organization ID                                                                               | Yes      |
+| `SMOOAI_CONFIG_ENV`           | Default environment name (defaults to `"development"`)                                        | No       |
 
 Set these in your environment and the client will use them automatically:
 
 ```bash
 export SMOOAI_CONFIG_API_URL="https://config.smooai.dev"
-export SMOOAI_CONFIG_API_KEY="your-api-key"
+export SMOOAI_CONFIG_CLIENT_ID="your-client-id"
+export SMOOAI_CONFIG_CLIENT_SECRET="your-client-secret"
 export SMOOAI_CONFIG_ORG_ID="your-org-id"
 export SMOOAI_CONFIG_ENV="production"
 ```

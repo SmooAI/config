@@ -21,6 +21,22 @@ func encodeEvalResponse(t *testing.T, w http.ResponseWriter, resp EvaluateFeatur
 	require.NoError(t, json.NewEncoder(w).Encode(resp))
 }
 
+// newFeatureFlagTestClient builds a ConfigClient with a stub TokenProvider
+// (mints "secret-key" as the JWT) so existing test assertions of
+// `Bearer secret-key` continue to work after the SMOODEV-975 refactor.
+// The stub also covers `Bearer key` for tests that previously used "key"
+// as the API key — kept consistent below via the optional `tokenOverride`.
+func newFeatureFlagTestClient(t *testing.T, baseURL, orgID, tokenOverride string) *ConfigClient {
+	t.Helper()
+	tok := tokenOverride
+	if tok == "" {
+		tok = "secret-key"
+	}
+	return NewConfigClient(baseURL, "test-client-id", "test-secret", orgID,
+		WithTokenProvider(newFixedTokenProvider(t, tok)),
+	)
+}
+
 func TestEvaluateFeatureFlag_PostsExpectedBodyAndHeaders(t *testing.T) {
 	var gotMethod, gotPath, gotAuth, gotContentType string
 	var gotBody map[string]any
@@ -42,7 +58,7 @@ func TestEvaluateFeatureFlag_PostsExpectedBodyAndHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "secret-key", "org-abc")
+	client := newFeatureFlagTestClient(t, server.URL, "org-abc", "secret-key")
 	defer client.Close()
 
 	ctx := context.Background()
@@ -80,7 +96,7 @@ func TestEvaluateFeatureFlag_NilContextSerializesAsEmptyObject(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "flag", nil, "production")
@@ -104,7 +120,7 @@ func TestEvaluateFeatureFlag_UsesDefaultEnvironmentWhenEmpty(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "flag", map[string]any{}, "")
@@ -125,7 +141,7 @@ func TestEvaluateFeatureFlag_EnvironmentOverrideWins(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "flag", nil, "production")
@@ -146,7 +162,7 @@ func TestEvaluateFeatureFlag_URLEncodesKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org-abc")
+	client := newFeatureFlagTestClient(t, server.URL, "org-abc", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "weird key/with:chars", nil, "production")
@@ -177,7 +193,7 @@ func TestEvaluateFeatureFlag_DecodesFullResponseShape(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	resp, err := client.EvaluateFeatureFlag(context.Background(), "flag", map[string]any{"userId": "u"}, "production")
@@ -200,7 +216,7 @@ func TestEvaluateFeatureFlag_404ReturnsNotFoundError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "missing", nil, "production")
@@ -222,7 +238,7 @@ func TestEvaluateFeatureFlag_400ReturnsContextError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "flag", map[string]any{}, "production")
@@ -244,7 +260,7 @@ func TestEvaluateFeatureFlag_500ReturnsServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	_, err := client.EvaluateFeatureFlag(context.Background(), "flag", nil, "production")
@@ -265,7 +281,7 @@ func TestEvaluateFeatureFlag_CanceledContextReturnsError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, "key", "org")
+	client := newFeatureFlagTestClient(t, server.URL, "org", "")
 	defer client.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())

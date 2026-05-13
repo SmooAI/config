@@ -17,11 +17,38 @@ import (
 // mockBuildServer serves a fixed map of values from GetAllValues so
 // BuildBundle can exercise its fetch + encrypt path without touching a
 // real config API.
+//
+// SMOODEV-975: also handles the OAuth client_credentials handshake on
+// POST /token. The runtime ConfigClient calls the OAuth endpoint first
+// to mint a JWT; the validator on /organizations/ then checks against
+// the minted "build-mock-jwt" token rather than the raw apiKey.
+//
+// Tests still pass the apiKey to BuildBundle (it's the OAuth client_secret
+// in disguise); when apiKey is set to a value the server doesn't recognize,
+// the /token endpoint refuses to mint, which surfaces as the same
+// "config build bundle fetch" error path. See TestBuildBundle_RemoteFetchError.
 func mockBuildServer(t *testing.T, apiKey string, values map[string]any) *httptest.Server {
 	t.Helper()
+	const mintedJWT = "build-mock-jwt"
 	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		// Refuse to mint when the credentials don't match the test setup.
+		// Read the form data to check.
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.PostFormValue("client_secret") != apiKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"access_token": mintedJWT,
+			"expires_in":   3600,
+		}))
+	})
 	mux.HandleFunc("/organizations/", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer "+apiKey {
+		if r.Header.Get("Authorization") != "Bearer "+mintedJWT {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -61,6 +88,7 @@ func TestBuildBundle_DefaultClassifyAllPublic(t *testing.T) {
 
 	result, err := BuildBundle(context.Background(), BuildBundleOptions{
 		BaseURL:     srv.URL,
+		AuthURL:     srv.URL,
 		APIKey:      "test-key",
 		OrgID:       "org-1",
 		Environment: "production",
@@ -96,6 +124,7 @@ func TestBuildBundle_Classifier_PartitionsAndSkips(t *testing.T) {
 
 	result, err := BuildBundle(context.Background(), BuildBundleOptions{
 		BaseURL:  srv.URL,
+		AuthURL:  srv.URL,
 		APIKey:   "test-key",
 		OrgID:    "org-1",
 		Classify: classify,
@@ -120,6 +149,7 @@ func TestBuildBundle_BlobLayoutMatchesTsPython(t *testing.T) {
 
 	result, err := BuildBundle(context.Background(), BuildBundleOptions{
 		BaseURL: srv.URL,
+		AuthURL: srv.URL,
 		APIKey:  "test-key",
 		OrgID:   "org-1",
 	})
@@ -140,6 +170,7 @@ func TestBuildBundle_RemoteFetchError(t *testing.T) {
 
 	_, err := BuildBundle(context.Background(), BuildBundleOptions{
 		BaseURL: srv.URL,
+		AuthURL: srv.URL,
 		APIKey:  "test-key",
 		OrgID:   "org-1",
 	})
@@ -156,6 +187,7 @@ func TestBuildBundle_CancelledContext(t *testing.T) {
 
 	_, err := BuildBundle(ctx, BuildBundleOptions{
 		BaseURL: srv.URL,
+		AuthURL: srv.URL,
 		APIKey:  "test-key",
 		OrgID:   "org-1",
 	})

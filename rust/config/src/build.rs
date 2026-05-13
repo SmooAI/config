@@ -26,7 +26,7 @@ use base64::Engine as _;
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::client::ConfigClient;
+use crate::client::{ConfigClient, ConfigClientError};
 
 /// Classification returned by a [`Classifier`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +47,16 @@ pub type Classifier = Box<dyn Fn(&str, &Value) -> Classification + Send + Sync>;
 pub struct BuildBundleOptions {
     /// Base URL of the config API, e.g. `https://config.smoo.ai`.
     pub base_url: String,
-    /// Bearer token used to authenticate with the config API.
+    /// OAuth issuer base URL, e.g. `https://auth.smoo.ai`. `None` falls back to
+    /// `SMOOAI_CONFIG_AUTH_URL` env var (or the default `https://auth.smoo.ai`).
+    /// SMOODEV-975.
+    pub auth_url: Option<String>,
+    /// OAuth2 client ID. SMOODEV-975 — when `None`, the runtime falls back
+    /// to `api_key` so legacy deploy scripts that only ever set a single
+    /// secret still authenticate.
+    pub client_id: Option<String>,
+    /// OAuth2 client secret used to mint a JWT. (Field name retained for
+    /// backwards-compat with existing deploy glue; treat it as the client secret.)
     pub api_key: String,
     /// Organization ID that owns the config values.
     pub org_id: String,
@@ -79,9 +88,12 @@ pub struct BuildBundleResult {
 /// Errors produced by [`build_bundle`].
 #[derive(Debug, Error)]
 pub enum BuildError {
-    /// The live config fetch via [`ConfigClient`] failed.
+    /// The live config fetch via [`ConfigClient`] failed (transport, OAuth, or non-2xx).
     #[error("failed to fetch config values: {0}")]
-    Fetch(#[from] reqwest::Error),
+    Fetch(#[from] ConfigClientError),
+    /// Underlying reqwest transport error (legacy variant kept for compat).
+    #[error("config fetch transport error: {0}")]
+    Request(#[from] reqwest::Error),
     /// Serializing the partitioned config to JSON failed.
     #[error("failed to serialize config values to JSON: {0}")]
     Serialize(#[from] serde_json::Error),
@@ -101,15 +113,24 @@ pub enum BuildError {
 pub async fn build_bundle(options: BuildBundleOptions) -> Result<BuildBundleResult, BuildError> {
     let BuildBundleOptions {
         base_url,
+        auth_url,
+        client_id,
         api_key,
         org_id,
         environment,
         classify,
     } = options;
 
+    let resolved_client_id = client_id.unwrap_or_else(|| api_key.clone());
+    // Apply the optional auth_url override so the runtime client's
+    // TokenProvider targets the test's mock issuer when supplied.
+    if let Some(url) = &auth_url {
+        std::env::set_var("SMOOAI_CONFIG_AUTH_URL", url);
+    }
+
     let mut client = match &environment {
-        Some(env) => ConfigClient::with_environment(&base_url, &api_key, &org_id, env),
-        None => ConfigClient::new(&base_url, &api_key, &org_id),
+        Some(env) => ConfigClient::with_environment(&base_url, &resolved_client_id, &api_key, &org_id, env),
+        None => ConfigClient::new(&base_url, &resolved_client_id, &api_key, &org_id),
     };
 
     let all = client.get_all_values(environment.as_deref()).await?;
@@ -197,10 +218,20 @@ mod tests {
     async fn build_bundle_encrypts_and_reports_counts() {
         let mock_server = MockServer::start().await;
 
+        // SMOODEV-975: OAuth handshake stub — mints "stub-jwt" which
+        // the values endpoint validates against below.
+        Mock::given(method("POST"))
+            .and(path_regex(r"^/token$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "stub-jwt",
+                "expires_in": 3600
+            })))
+            .mount(&mock_server)
+            .await;
         Mock::given(method("GET"))
             .and(path_regex(r"/organizations/.+/config/values"))
             .and(query_param("environment", "production"))
-            .and(header("Authorization", "Bearer test-api-key"))
+            .and(header("Authorization", "Bearer stub-jwt"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "values": {
                     "apiUrl": "https://api.example.com",
@@ -219,6 +250,8 @@ mod tests {
 
         let result = build_bundle(BuildBundleOptions {
             base_url: mock_server.uri(),
+            auth_url: Some(mock_server.uri()),
+            client_id: Some("test-api-key".to_string()),
             api_key: "test-api-key".to_string(),
             org_id: "test-org".to_string(),
             environment: Some("production".to_string()),
@@ -240,6 +273,15 @@ mod tests {
     async fn build_bundle_default_classifier_makes_everything_public() {
         let mock_server = MockServer::start().await;
 
+        // SMOODEV-975: OAuth handshake stub.
+        Mock::given(method("POST"))
+            .and(path_regex(r"^/token$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "stub-jwt",
+                "expires_in": 3600
+            })))
+            .mount(&mock_server)
+            .await;
         Mock::given(method("GET"))
             .and(path_regex(r"/organizations/.+/config/values"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
@@ -250,6 +292,8 @@ mod tests {
 
         let result = build_bundle(BuildBundleOptions {
             base_url: mock_server.uri(),
+            auth_url: Some(mock_server.uri()),
+            client_id: Some("k".to_string()),
             api_key: "k".to_string(),
             org_id: "o".to_string(),
             environment: Some("test".to_string()),

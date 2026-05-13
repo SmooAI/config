@@ -36,7 +36,14 @@ func makeCMConfigDir(t *testing.T, files map[string]any) string {
 	return configDir
 }
 
-// mockCMServer creates a mock config API server that returns the given values.
+// mockCMServer creates a mock config API server that handles both the
+// OAuth client_credentials handshake (POST /token) and the config API
+// (GET /organizations/...).
+//
+// SMOODEV-975: All ConfigClient requests now go through the OAuth flow.
+// Tests using newMockCMServer must also point SMOOAI_CONFIG_AUTH_URL at
+// the mock so the TokenProvider lands here for the /token exchange. The
+// helper mockCMEnv() builds the env-override map with that wired in.
 type mockCMServer struct {
 	requestCount atomic.Int64
 	server       *httptest.Server
@@ -44,6 +51,10 @@ type mockCMServer struct {
 	apiKey       string
 	orgID        string
 }
+
+// mockJWT is the access token minted by the mock /token endpoint. The
+// config endpoint validates Authorization headers against "Bearer "+mockJWT.
+const mockJWT = "mock-cm-jwt"
 
 func newMockCMServer(apiKey, orgID string, values map[string]any) *mockCMServer {
 	m := &mockCMServer{
@@ -53,12 +64,22 @@ func newMockCMServer(apiKey, orgID string, values map[string]any) *mockCMServer 
 	}
 
 	mux := http.NewServeMux()
+	// SMOODEV-975: OAuth client_credentials exchange — succeed for any
+	// client_id/secret the test passed in. Token-endpoint hits are NOT
+	// counted toward requestCount so existing assertions stay meaningful.
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": mockJWT,
+			"expires_in":   3600,
+			"token_type":   "Bearer",
+		})
+	})
 	mux.HandleFunc("/organizations/", func(w http.ResponseWriter, r *http.Request) {
 		m.requestCount.Add(1)
 
-		// Auth check
+		// Auth check — runtime client carries the minted JWT.
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+m.apiKey {
+		if auth != "Bearer "+mockJWT {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 			return
@@ -70,6 +91,19 @@ func newMockCMServer(apiKey, orgID string, values map[string]any) *mockCMServer 
 
 	m.server = httptest.NewServer(mux)
 	return m
+}
+
+// envOverride returns an env map pointing the OAuth issuer at the mock,
+// merged with any extra keys the caller wants to set. Tests should
+// prefer this over building the map by hand so the /token URL stays wired.
+func (m *mockCMServer) envOverride(extra map[string]string) map[string]string {
+	out := map[string]string{
+		"SMOOAI_CONFIG_AUTH_URL": m.server.URL,
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }
 
 func (m *mockCMServer) close() {
@@ -181,8 +215,9 @@ func TestConfigManager_RemoteEnrichment(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -225,9 +260,10 @@ func TestConfigManager_MergePrecedence_EnvWins(t *testing.T) {
 		WithConfigEnvironment("production"),
 		WithCMSchemaKeys(map[string]bool{"API_URL": true}),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
-			"API_URL":               "http://env-value",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
+			"API_URL":                "http://env-value",
 		}),
 	)
 
@@ -254,8 +290,9 @@ func TestConfigManager_MergePrecedence_RemoteOverFile(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 			// No env var for API_URL, so remote should win over file
 		}),
 	)
@@ -283,8 +320,9 @@ func TestConfigManager_MergePrecedence_FileIsBase(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -328,8 +366,9 @@ func TestConfigManager_NestedObjectMerge(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -369,8 +408,9 @@ func TestConfigManager_GracefulDegradation_Server500(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -465,8 +505,9 @@ func TestConfigManager_CacheBehavior_SecondCallCached(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -501,8 +542,9 @@ func TestConfigManager_CacheBehavior_InvalidateClears(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -543,8 +585,9 @@ func TestConfigManager_CacheBehavior_TTLExpiry(t *testing.T) {
 		WithConfigEnvironment("production"),
 		WithCMCacheTTL(time.Millisecond), // Very short TTL
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -584,11 +627,12 @@ func TestConfigManager_APICredsFromEnv(t *testing.T) {
 
 	mgr := NewConfigManager(
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
-			"SMOOAI_CONFIG_API_KEY": "env-api-key",
-			"SMOOAI_CONFIG_API_URL": mock.server.URL,
-			"SMOOAI_CONFIG_ORG_ID":  "env-org-id",
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
+			"SMOOAI_CONFIG_API_KEY":  "env-api-key",
+			"SMOOAI_CONFIG_API_URL":  mock.server.URL,
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_CONFIG_ORG_ID":   "env-org-id",
 		}),
 	)
 
@@ -620,8 +664,9 @@ func TestConfigManager_APICredsFromConstructor(t *testing.T) {
 		WithOrgID("constructor-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 			// These env creds should be ignored since constructor params are set
 			"SMOOAI_CONFIG_API_KEY": "env-key-should-be-ignored",
 			"SMOOAI_CONFIG_API_URL": "http://env-url-should-be-ignored",
@@ -658,8 +703,9 @@ func TestConfigManager_ThreadSafety_ConcurrentReads(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -699,8 +745,9 @@ func TestConfigManager_ThreadSafety_ConcurrentInvalidateAndRead(t *testing.T) {
 		WithOrgID("test-org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -799,9 +846,10 @@ func TestConfigManager_FullIntegration(t *testing.T) {
 		WithCMSchemaKeys(map[string]bool{"API_URL": true, "MAX_RETRIES": true}),
 		WithCMSchemaTypes(map[string]string{"MAX_RETRIES": "number"}),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "production",
-			"MAX_RETRIES":           "10",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "production",
+			"MAX_RETRIES":            "10",
 		}),
 	)
 
@@ -859,6 +907,11 @@ func TestConfigManager_EnvironmentResolution_Explicit(t *testing.T) {
 
 	var receivedEnv string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// SMOODEV-975: handle the OAuth handshake transparently.
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "stub", "expires_in": 3600})
+			return
+		}
 		receivedEnv = r.URL.Query().Get("environment")
 		json.NewEncoder(w).Encode(map[string]any{"values": map[string]any{}})
 	}))
@@ -870,8 +923,9 @@ func TestConfigManager_EnvironmentResolution_Explicit(t *testing.T) {
 		WithOrgID("org"),
 		WithConfigEnvironment("explicit-env"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "env-var-env",
+			"SMOOAI_CONFIG_AUTH_URL": server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "env-var-env",
 		}),
 	)
 
@@ -886,6 +940,11 @@ func TestConfigManager_EnvironmentResolution_EnvVar(t *testing.T) {
 
 	var receivedEnv string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// SMOODEV-975: handle the OAuth handshake transparently.
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "stub", "expires_in": 3600})
+			return
+		}
 		receivedEnv = r.URL.Query().Get("environment")
 		json.NewEncoder(w).Encode(map[string]any{"values": map[string]any{}})
 	}))
@@ -897,8 +956,9 @@ func TestConfigManager_EnvironmentResolution_EnvVar(t *testing.T) {
 		WithOrgID("org"),
 		// No WithConfigEnvironment — should fall back to env var
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "from-env-var",
+			"SMOOAI_CONFIG_AUTH_URL": server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "from-env-var",
 		}),
 	)
 
@@ -913,6 +973,11 @@ func TestConfigManager_EnvironmentResolution_Default(t *testing.T) {
 
 	var receivedEnv string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// SMOODEV-975: handle the OAuth handshake transparently.
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "stub", "expires_in": 3600})
+			return
+		}
 		receivedEnv = r.URL.Query().Get("environment")
 		json.NewEncoder(w).Encode(map[string]any{"values": map[string]any{}})
 	}))
@@ -924,7 +989,8 @@ func TestConfigManager_EnvironmentResolution_Default(t *testing.T) {
 		WithOrgID("org"),
 		// No WithConfigEnvironment, no SMOOAI_CONFIG_ENV — should default to "development"
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
+			"SMOOAI_CONFIG_AUTH_URL": server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
 		}),
 	)
 
@@ -948,6 +1014,12 @@ func TestConfigManager_InvalidationRefetches(t *testing.T) {
 	var mu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// SMOODEV-975: handle the OAuth handshake transparently and
+		// don't count it toward callCount so the assertion stays meaningful.
+		if r.URL.Path == "/token" {
+			json.NewEncoder(w).Encode(map[string]any{"access_token": "stub", "expires_in": 3600})
+			return
+		}
 		mu.Lock()
 		callCount++
 		val := returnValue
@@ -964,8 +1036,9 @@ func TestConfigManager_InvalidationRefetches(t *testing.T) {
 		WithOrgID("org"),
 		WithConfigEnvironment("production"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 	)
 
@@ -1228,8 +1301,9 @@ func TestConfigManager_DeferredWithRemote(t *testing.T) {
 		WithOrgID("org"),
 		WithConfigEnvironment("test"),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     "test",
+			"SMOOAI_CONFIG_AUTH_URL": mock.server.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      "test",
 		}),
 		WithDeferred("FULL_URL", func(config map[string]any) any {
 			host, _ := config["HOST"].(string)

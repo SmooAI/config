@@ -1,20 +1,35 @@
 //! Runtime configuration client for fetching values from the Smoo AI server.
 //!
+//! # Authentication
+//!
+//! SMOODEV-975: The runtime client mints a JWT via an OAuth2
+//! `client_credentials` exchange against `{auth_url}/token` before every
+//! call, and caches it via [`TokenProvider`](crate::token_provider::TokenProvider).
+//! Previously the SDK sent the raw API key as `Authorization: Bearer
+//! <api_key>`, which the backend rejects with 401.
+//!
 //! # Environment Variables
 //!
 //! The client can be configured via environment variables when using [`ConfigClient::from_env`]:
 //! - `SMOOAI_CONFIG_API_URL` — Base URL of the config API
-//! - `SMOOAI_CONFIG_API_KEY` — Bearer token for authentication
+//! - `SMOOAI_CONFIG_AUTH_URL` — OAuth issuer base URL (default
+//!   `https://auth.smoo.ai`; legacy `SMOOAI_AUTH_URL` also accepted)
+//! - `SMOOAI_CONFIG_CLIENT_ID` — OAuth client ID
+//! - `SMOOAI_CONFIG_CLIENT_SECRET` — OAuth client secret (legacy
+//!   `SMOOAI_CONFIG_API_KEY` accepted as a deprecated alias)
 //! - `SMOOAI_CONFIG_ORG_ID` — Organization ID
 //! - `SMOOAI_CONFIG_ENV` — Default environment name (e.g. "production")
 
 use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
-use reqwest::Client;
+use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
+
+use crate::token_provider::{SharedTokenProvider, TokenProvider, TokenProviderError};
 
 /// Characters to percent-encode in URL path segments.
 /// Encodes everything except unreserved characters (RFC 3986): A-Z a-z 0-9 - . _ ~
@@ -39,13 +54,48 @@ const PATH_SEGMENT_ENCODE_SET: &AsciiSet = &CONTROLS
     .add(b'}');
 
 /// Client for reading configuration values from the Smoo AI config server.
+///
+/// SMOODEV-975: now uses an [`Arc<TokenProvider>`](crate::token_provider::TokenProvider)
+/// to mint a JWT via OAuth2 client_credentials before each request. Pass
+/// `client_id` + `client_secret` (or call [`ConfigClient::with_token_provider`])
+/// on construction.
 pub struct ConfigClient {
     base_url: String,
     org_id: String,
     default_environment: String,
     cache_ttl: Option<Duration>,
     client: Client,
+    token_provider: SharedTokenProvider,
     cache: HashMap<String, CacheEntry>,
+}
+
+/// Unified error type for [`ConfigClient`] requests (SMOODEV-975).
+///
+/// Combines transport, OAuth, and decode failures so callers don't have
+/// to discriminate between `reqwest::Error` and [`TokenProviderError`]
+/// at the call site.
+#[derive(Debug, Error)]
+pub enum ConfigClientError {
+    /// Underlying HTTP / JSON failure.
+    #[error(transparent)]
+    Request(#[from] reqwest::Error),
+    /// OAuth handshake or refresh failure.
+    #[error(transparent)]
+    TokenProvider(#[from] TokenProviderError),
+    /// Server returned a non-success status. Use
+    /// [`ConfigClientError::status`] to branch on the code.
+    #[error("config request failed: HTTP {status} {body}")]
+    HttpStatus { status: u16, body: String },
+}
+
+impl ConfigClientError {
+    /// Returns the HTTP status code when the error was an `HttpStatus`.
+    pub fn status(&self) -> Option<u16> {
+        match self {
+            Self::HttpStatus { status, .. } => Some(*status),
+            _ => None,
+        }
+    }
 }
 
 struct CacheEntry {
@@ -132,20 +182,47 @@ impl FeatureFlagEvaluationError {
 
 impl ConfigClient {
     /// Create a new config client with explicit parameters.
-    pub fn new(base_url: &str, api_key: &str, org_id: &str) -> Self {
+    ///
+    /// SMOODEV-975: takes both `client_id` and `client_secret` to mint
+    /// OAuth tokens. The OAuth issuer URL is read from the
+    /// `SMOOAI_CONFIG_AUTH_URL` env var (or `SMOOAI_AUTH_URL`, or the
+    /// default `https://auth.smoo.ai`). Use [`Self::with_token_provider`]
+    /// for tests where you want to inject a stub provider.
+    pub fn new(base_url: &str, client_id: &str, client_secret: &str, org_id: &str) -> Self {
         let default_env = env::var("SMOOAI_CONFIG_ENV").unwrap_or_else(|_| "development".to_string());
-        Self::with_environment(base_url, api_key, org_id, &default_env)
+        Self::with_environment(base_url, client_id, client_secret, org_id, &default_env)
     }
 
     /// Create a new config client with an explicit default environment.
-    pub fn with_environment(base_url: &str, api_key: &str, org_id: &str, environment: &str) -> Self {
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            format!("Bearer {}", api_key).parse().unwrap(),
-        );
+    pub fn with_environment(
+        base_url: &str,
+        client_id: &str,
+        client_secret: &str,
+        org_id: &str,
+        environment: &str,
+    ) -> Self {
+        let auth_url = env::var("SMOOAI_CONFIG_AUTH_URL")
+            .or_else(|_| env::var("SMOOAI_AUTH_URL"))
+            .unwrap_or_else(|_| "https://auth.smoo.ai".to_string());
 
-        let client = Client::builder().default_headers(headers).build().unwrap();
+        let provider = TokenProvider::new(&auth_url, client_id, client_secret)
+            .expect("TokenProvider construction with non-empty credentials");
+
+        Self::with_token_provider(base_url, Arc::new(provider), org_id, environment)
+    }
+
+    /// Construct a client that uses the provided [`TokenProvider`].
+    ///
+    /// Useful in tests to inject a stub provider that returns a fixed
+    /// JWT without performing a real OAuth handshake, and for callers
+    /// that want to share a single provider across multiple clients.
+    pub fn with_token_provider(
+        base_url: &str,
+        token_provider: SharedTokenProvider,
+        org_id: &str,
+        environment: &str,
+    ) -> Self {
+        let client = Client::builder().build().expect("reqwest client builder");
 
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -153,6 +230,7 @@ impl ConfigClient {
             default_environment: environment.to_string(),
             cache_ttl: None,
             client,
+            token_provider,
             cache: HashMap::new(),
         }
     }
@@ -164,17 +242,67 @@ impl ConfigClient {
 
     /// Create a config client from environment variables.
     ///
-    /// Reads `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_API_KEY`, `SMOOAI_CONFIG_ORG_ID`,
-    /// and optionally `SMOOAI_CONFIG_ENV` (defaults to "development").
+    /// SMOODEV-975: Reads `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_CLIENT_ID`,
+    /// `SMOOAI_CONFIG_CLIENT_SECRET` (or the legacy `SMOOAI_CONFIG_API_KEY`),
+    /// `SMOOAI_CONFIG_ORG_ID`, and optionally `SMOOAI_CONFIG_ENV`
+    /// (defaults to "development") and `SMOOAI_CONFIG_AUTH_URL`.
     ///
     /// # Panics
     /// Panics if any required environment variable is missing.
     pub fn from_env() -> Self {
         let base_url = env::var("SMOOAI_CONFIG_API_URL").expect("SMOOAI_CONFIG_API_URL must be set");
-        let api_key = env::var("SMOOAI_CONFIG_API_KEY").expect("SMOOAI_CONFIG_API_KEY must be set");
+        let client_id = env::var("SMOOAI_CONFIG_CLIENT_ID").expect("SMOOAI_CONFIG_CLIENT_ID must be set");
+        let client_secret = env::var("SMOOAI_CONFIG_CLIENT_SECRET")
+            .or_else(|_| env::var("SMOOAI_CONFIG_API_KEY"))
+            .expect("SMOOAI_CONFIG_CLIENT_SECRET (or legacy SMOOAI_CONFIG_API_KEY) must be set");
         let org_id = env::var("SMOOAI_CONFIG_ORG_ID").expect("SMOOAI_CONFIG_ORG_ID must be set");
 
-        Self::new(&base_url, &api_key, &org_id)
+        Self::new(&base_url, &client_id, &client_secret, &org_id)
+    }
+
+    /// Build an Authorization header value via the TokenProvider.
+    async fn bearer_header(&self) -> Result<String, ConfigClientError> {
+        let token = self.token_provider.get_access_token().await?;
+        Ok(format!("Bearer {}", token))
+    }
+
+    /// Send a request with auth, retrying once after invalidating the
+    /// cached token on a 401 (handles server-side rotation / revocation).
+    async fn send_with_retry(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        with_body: Option<&serde_json::Value>,
+        query: &[(&str, &str)],
+    ) -> Result<Response, ConfigClientError> {
+        // First attempt.
+        let auth = self.bearer_header().await?;
+        let mut req = self
+            .client
+            .request(method.clone(), url)
+            .header(reqwest::header::AUTHORIZATION, auth)
+            .query(query);
+        if let Some(body) = with_body {
+            req = req.header(reqwest::header::CONTENT_TYPE, "application/json").json(body);
+        }
+        let resp = req.send().await?;
+        if resp.status().as_u16() != 401 {
+            return Ok(resp);
+        }
+        // 401 — invalidate and retry once with a fresh token.
+        self.token_provider.invalidate().await;
+        let auth = self.bearer_header().await?;
+        let mut req2 = self
+            .client
+            .request(method, url)
+            .header(reqwest::header::AUTHORIZATION, auth)
+            .query(query);
+        if let Some(body) = with_body {
+            req2 = req2
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .json(body);
+        }
+        Ok(req2.send().await?)
     }
 
     fn resolve_env<'a>(&'a self, environment: Option<&'a str>) -> &'a str {
@@ -204,7 +332,7 @@ impl ConfigClient {
         &mut self,
         key: &str,
         environment: Option<&str>,
-    ) -> Result<serde_json::Value, reqwest::Error> {
+    ) -> Result<serde_json::Value, ConfigClientError> {
         let env = self.resolve_env(environment).to_string();
         let cache_key = format!("{}:{}", env, key);
 
@@ -218,18 +346,23 @@ impl ConfigClient {
         }
 
         let encoded_key = utf8_percent_encode(key, PATH_SEGMENT_ENCODE_SET).to_string();
+        let url = format!(
+            "{}/organizations/{}/config/values/{}",
+            self.base_url, self.org_id, encoded_key
+        );
 
-        let response: ValueResponse = self
-            .client
-            .get(format!(
-                "{}/organizations/{}/config/values/{}",
-                self.base_url, self.org_id, encoded_key
-            ))
-            .query(&[("environment", &env)])
-            .send()
-            .await?
-            .json()
+        let resp = self
+            .send_with_retry(reqwest::Method::GET, &url, None, &[("environment", env.as_str())])
             .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ConfigClientError::HttpStatus {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        let response: ValueResponse = resp.json().await?;
 
         let expires_at = self.compute_expires_at();
         self.cache.insert(
@@ -247,17 +380,22 @@ impl ConfigClient {
     pub async fn get_all_values(
         &mut self,
         environment: Option<&str>,
-    ) -> Result<HashMap<String, serde_json::Value>, reqwest::Error> {
+    ) -> Result<HashMap<String, serde_json::Value>, ConfigClientError> {
         let env = self.resolve_env(environment).to_string();
+        let url = format!("{}/organizations/{}/config/values", self.base_url, self.org_id);
 
-        let response: ValuesResponse = self
-            .client
-            .get(format!("{}/organizations/{}/config/values", self.base_url, self.org_id))
-            .query(&[("environment", &env)])
-            .send()
-            .await?
-            .json()
+        let resp = self
+            .send_with_retry(reqwest::Method::GET, &url, None, &[("environment", env.as_str())])
             .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ConfigClientError::HttpStatus {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        let response: ValuesResponse = resp.json().await?;
 
         let expires_at = self.compute_expires_at();
         for (key, value) in &response.values {
@@ -315,15 +453,21 @@ impl ConfigClient {
         });
 
         let response = self
-            .client
-            .post(&url)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .json(&body)
-            .send()
+            .send_with_retry(reqwest::Method::POST, &url, Some(&body), &[])
             .await
-            .map_err(|source| FeatureFlagEvaluationError::Request {
-                key: key.to_string(),
-                source,
+            .map_err(|err| match err {
+                ConfigClientError::Request(source) => FeatureFlagEvaluationError::Request {
+                    key: key.to_string(),
+                    source,
+                },
+                // OAuth / HTTP-status errors surface as a generic evaluation
+                // failure with status=0 so callers can branch on the variant
+                // without losing the original message.
+                other => FeatureFlagEvaluationError::Evaluation {
+                    key: key.to_string(),
+                    status: 0,
+                    message: other.to_string(),
+                },
             })?;
 
         let status = response.status();
@@ -372,31 +516,31 @@ mod tests {
 
     #[test]
     fn test_new_trims_trailing_slash() {
-        let client = ConfigClient::new("https://api.example.com/", "key", "org-id");
+        let client = ConfigClient::new("https://api.example.com/", "key", "key", "org-id");
         assert_eq!(client.base_url, "https://api.example.com");
     }
 
     #[test]
     fn test_new_preserves_url_without_trailing_slash() {
-        let client = ConfigClient::new("https://api.example.com", "key", "org-id");
+        let client = ConfigClient::new("https://api.example.com", "key", "key", "org-id");
         assert_eq!(client.base_url, "https://api.example.com");
     }
 
     #[test]
     fn test_new_stores_org_id() {
-        let client = ConfigClient::new("https://api.example.com", "key", "my-org-123");
+        let client = ConfigClient::new("https://api.example.com", "key", "key", "my-org-123");
         assert_eq!(client.org_id, "my-org-123");
     }
 
     #[test]
     fn test_new_initializes_empty_cache() {
-        let client = ConfigClient::new("https://api.example.com", "key", "org");
+        let client = ConfigClient::new("https://api.example.com", "key", "key", "org");
         assert!(client.cache.is_empty());
     }
 
     #[test]
     fn test_invalidate_cache_clears_all() {
-        let mut client = ConfigClient::new("https://api.example.com", "key", "org");
+        let mut client = ConfigClient::new("https://api.example.com", "key", "key", "org");
         client.cache.insert(
             "prod:KEY".to_string(),
             CacheEntry {
@@ -419,14 +563,14 @@ mod tests {
 
     #[test]
     fn test_invalidate_empty_cache_is_noop() {
-        let mut client = ConfigClient::new("https://api.example.com", "key", "org");
+        let mut client = ConfigClient::new("https://api.example.com", "key", "key", "org");
         client.invalidate_cache();
         assert!(client.cache.is_empty());
     }
 
     #[test]
     fn test_invalidate_cache_for_environment() {
-        let mut client = ConfigClient::new("https://api.example.com", "key", "org");
+        let mut client = ConfigClient::new("https://api.example.com", "key", "key", "org");
         client.cache.insert(
             "prod:KEY1".to_string(),
             CacheEntry {
@@ -456,13 +600,13 @@ mod tests {
 
     #[test]
     fn test_cache_ttl_none_by_default() {
-        let client = ConfigClient::new("https://api.example.com", "key", "org");
+        let client = ConfigClient::new("https://api.example.com", "key", "key", "org");
         assert!(client.cache_ttl.is_none());
     }
 
     #[test]
     fn test_set_cache_ttl() {
-        let mut client = ConfigClient::new("https://api.example.com", "key", "org");
+        let mut client = ConfigClient::new("https://api.example.com", "key", "key", "org");
         client.set_cache_ttl(Some(Duration::from_secs(60)));
         assert_eq!(client.cache_ttl, Some(Duration::from_secs(60)));
     }
@@ -500,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_default_environment() {
-        let client = ConfigClient::with_environment("https://api.example.com", "key", "org", "production");
+        let client = ConfigClient::with_environment("https://api.example.com", "key", "key", "org", "production");
         assert_eq!(client.default_environment, "production");
     }
 }
@@ -511,6 +655,37 @@ mod integration_tests {
     use std::time::Duration;
     use wiremock::matchers::{header, method, path_regex, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // SMOODEV-975: stub TokenProvider helper for these in-file tests.
+    // The runtime client now mints a JWT via OAuth before each call;
+    // tests register a /token mock that returns a fixed token via
+    // `mock_token` and then assert against `Bearer <token>` downstream.
+    async fn mock_token(server: &MockServer, token: &str) {
+        Mock::given(method("POST"))
+            .and(path_regex(r"^/token$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": token,
+                "expires_in": 3600
+            })))
+            .mount(server)
+            .await;
+    }
+
+    /// Build a ConfigClient pointed at the mock server with a stub
+    /// TokenProvider whose access_token comes from the server's /token
+    /// mock. Asserts in the test should use the same token string.
+    async fn test_client(server: &MockServer, token: &str, environment: &str) -> ConfigClient {
+        mock_token(server, token).await;
+        let tp = TokenProvider::with_options(
+            &server.uri(),
+            "test-client-id",
+            "test-client-secret",
+            Duration::from_secs(60),
+            Client::new(),
+        )
+        .expect("valid token provider");
+        ConfigClient::with_token_provider(&server.uri(), Arc::new(tp), "test-org", environment)
+    }
 
     // --- Test 1: get_value fetches a single value correctly ---
     #[tokio::test]
@@ -526,7 +701,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "test-api-key", "production").await;
         let value = client.get_value("MY_KEY", None).await.unwrap();
         assert_eq!(value, serde_json::json!("hello-world"));
     }
@@ -551,7 +726,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "staging");
+        let mut client = test_client(&mock_server, "test-api-key", "staging").await;
         let values = client.get_all_values(None).await.unwrap();
 
         assert_eq!(values.len(), 3);
@@ -574,8 +749,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client =
-            ConfigClient::with_environment(&mock_server.uri(), "my-secret-token-xyz", "org-123", "production");
+        let mut client = test_client(&mock_server, "my-secret-token-xyz", "production").await;
         let value = client.get_value("SECRET_KEY", None).await.unwrap();
         assert_eq!(value, serde_json::json!("authenticated"));
     }
@@ -594,7 +768,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "test-api-key", "production").await;
 
         // First call — hits the server
         let value1 = client.get_value("CACHE_KEY", None).await.unwrap();
@@ -619,7 +793,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "test-api-key", "production").await;
         // Set a very short TTL so it expires quickly
         client.set_cache_ttl(Some(Duration::from_millis(1)));
 
@@ -649,7 +823,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "test-api-key", "production").await;
 
         // First call — hits the server
         let value1 = client.get_value("INVAL_KEY", None).await.unwrap();
@@ -668,16 +842,18 @@ mod integration_tests {
     async fn test_error_handling_401_unauthorized() {
         let mock_server = MockServer::start().await;
 
+        // SMOODEV-975: ConfigClient invalidates the cached token on 401
+        // and retries once with a fresh JWT, so the GET fires twice.
         Mock::given(method("GET"))
             .and(path_regex(r"/organizations/.+/config/values/.+"))
             .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
                 "error": "Unauthorized"
             })))
-            .expect(1)
+            .expect(2)
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "bad-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "bad-api-key", "production").await;
 
         let result = client.get_value("SOME_KEY", None).await;
         assert!(result.is_err(), "Expected error for 401 response");
@@ -697,7 +873,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "test-api-key", "production").await;
 
         let result = client.get_value("NONEXISTENT_KEY", None).await;
         assert!(result.is_err(), "Expected error for 404 response");
@@ -728,7 +904,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let mut client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let mut client = test_client(&mock_server, "test-api-key", "production").await;
 
         // Fetch for production (default env)
         let prod_value = client.get_value("SHARED_KEY", None).await.unwrap();
@@ -777,7 +953,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let mut ctx = HashMap::new();
         ctx.insert("userId".to_string(), serde_json::json!("u-1"));
         ctx.insert("plan".to_string(), serde_json::json!("pro"));
@@ -814,7 +990,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let result = client
             .evaluate_feature_flag("aboutPage", None, None)
             .await
@@ -844,7 +1020,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let result = client
             .evaluate_feature_flag("aboutPage", None, Some("staging"))
             .await
@@ -871,7 +1047,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let result = client
             .evaluate_feature_flag("with spaces/and?question", None, None)
             .await
@@ -893,7 +1069,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let err = client
             .evaluate_feature_flag("unknown", None, None)
             .await
@@ -921,7 +1097,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let err = client
             .evaluate_feature_flag("aboutPage", None, None)
             .await
@@ -951,7 +1127,7 @@ mod integration_tests {
             .mount(&mock_server)
             .await;
 
-        let client = ConfigClient::with_environment(&mock_server.uri(), "test-api-key", "test-org", "production");
+        let client = test_client(&mock_server, "test-api-key", "production").await;
         let err = client
             .evaluate_feature_flag("aboutPage", None, None)
             .await

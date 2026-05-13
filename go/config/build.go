@@ -59,7 +59,17 @@ func defaultClassify(_ string, _ any) ClassifyResult {
 type BuildBundleOptions struct {
 	// BaseURL is the config API base URL (e.g. https://api.smoo.ai).
 	BaseURL string
-	// APIKey is the bearer token used to authenticate to the config API.
+	// AuthURL is the OAuth issuer URL (e.g. https://auth.smoo.ai). When
+	// empty, the runtime ConfigClient falls back to its own defaults
+	// (env var or https://auth.smoo.ai). SMOODEV-975.
+	AuthURL string
+	// ClientID is the OAuth2 client_credentials client ID. Required for
+	// the runtime OAuth handshake (SMOODEV-975). When empty, falls back
+	// to APIKey so legacy deploy scripts still work.
+	ClientID string
+	// APIKey is the OAuth client secret used to mint a JWT. (Field name
+	// retained for backwards-compat with existing deploy glue; treat it
+	// as the client secret.)
 	APIKey string
 	// OrgID identifies the organization whose values will be fetched.
 	OrgID string
@@ -128,7 +138,15 @@ func BuildBundle(ctx context.Context, opts BuildBundleOptions) (*BuildBundleResu
 		classify = defaultClassify
 	}
 
-	client := NewConfigClient(opts.BaseURL, opts.APIKey, opts.OrgID)
+	clientID := opts.ClientID
+	if clientID == "" {
+		clientID = opts.APIKey
+	}
+	clientOpts := []ConfigClientOption{}
+	if opts.AuthURL != "" {
+		clientOpts = append(clientOpts, WithAuthURL(opts.AuthURL))
+	}
+	client := NewConfigClient(opts.BaseURL, clientID, opts.APIKey, opts.OrgID, clientOpts...)
 	defer client.Close()
 
 	// Respect ctx cancellation before network work starts. The existing
