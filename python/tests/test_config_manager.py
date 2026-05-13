@@ -66,10 +66,27 @@ def create_mock_transport(
     request_log: RequestLog | None = None,
     status_code: int = 200,
 ) -> httpx.MockTransport:
-    """Create a mock transport that returns the given values for get_all_values."""
+    """Create a mock transport that handles both OAuth token exchange and config endpoints.
+
+    SMOODEV-975: ConfigClient now exchanges (client_id, client_secret) for
+    a JWT via ``POST /token`` before any config call. This mock answers
+    that handshake first, then delegates to the per-test ``values`` map
+    for the actual ``/config/values`` traffic.
+    """
     response_values = values if values is not None else {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        url_path = request.url.path
+
+        # OAuth token endpoint — always succeed for these tests.
+        # NOTE: token exchanges are intentionally NOT recorded in request_log
+        # so existing request-count assertions remain meaningful.
+        if url_path == "/token" and request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"access_token": "stub-jwt", "expires_in": 3600, "token_type": "Bearer"},
+            )
+
         if request_log is not None:
             request_log.requests.append(
                 {
@@ -82,7 +99,6 @@ def create_mock_transport(
         if status_code != 200:
             return httpx.Response(status_code, json={"error": "Server error"})
 
-        url_path = request.url.path
         if "/config/values" in url_path and not url_path.endswith("/"):
             # Single value endpoint (has key after /values/)
             parts = url_path.split("/config/values/")
@@ -857,6 +873,13 @@ class TestInvalidationRefetches:
         call_count = [0]
 
         def handler(request: httpx.Request) -> httpx.Response:
+            # SMOODEV-975: handle the OAuth handshake transparently.
+            if request.url.path == "/token" and request.method == "POST":
+                return httpx.Response(
+                    200,
+                    json={"access_token": "stub-jwt", "expires_in": 3600},
+                )
+
             call_count[0] += 1
             if call_count[0] == 1:
                 return httpx.Response(200, json={"values": {"KEY": "first"}})

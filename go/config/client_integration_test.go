@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -20,7 +21,56 @@ import (
 // ---------------------------------------------------------------------------
 
 const testAPIKey = "test-api-key-abc123"
+const testClientID = "test-client-id"
 const testOrgID = "550e8400-e29b-41d4-a716-446655440000"
+
+// SMOODEV-975: after the OAuth handshake, the runtime client carries this
+// JWT on every downstream request. The mock server validates against this
+// rather than the raw API key.
+const testJWT = "stub-jwt-from-mock-issuer"
+
+// newStubTokenProvider returns a TokenProvider whose RoundTripper short-circuits
+// to a fixed JWT, so tests don't have to spin up a real OAuth endpoint.
+func newStubTokenProvider() *TokenProvider {
+	tp, _ := NewTokenProvider(
+		"https://stub.invalid",
+		"stub-client-id",
+		"stub-client-secret",
+		WithTokenProviderHTTPClient(&http.Client{Transport: stubTokenRoundTripper{}}),
+	)
+	return tp
+}
+
+type stubTokenRoundTripper struct {
+	token string
+}
+
+func (s stubTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	tok := s.token
+	if tok == "" {
+		tok = testJWT
+	}
+	return &http.Response{
+		StatusCode: 200,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body: io.NopCloser(strings.NewReader(
+			fmt.Sprintf(`{"access_token":%q,"expires_in":3600,"token_type":"Bearer"}`, tok),
+		)),
+	}, nil
+}
+
+// stubProviderWithToken returns a TokenProvider whose RoundTripper mints the
+// supplied access token. Used to simulate revoked / wrong-key scenarios in
+// tests for the 401 retry path.
+func stubProviderWithToken(token string) *TokenProvider {
+	tp, _ := NewTokenProvider(
+		"https://stub.invalid",
+		"stub-client-id",
+		"stub-client-secret",
+		WithTokenProviderHTTPClient(&http.Client{Transport: stubTokenRoundTripper{token: token}}),
+	)
+	return tp
+}
 
 var configStoreData = map[string]map[string]any{
 	"production": {
@@ -62,11 +112,12 @@ func newMockConfigServer() *mockConfigServer {
 	mux.HandleFunc("/organizations/", func(w http.ResponseWriter, r *http.Request) {
 		m.requestCount.Add(1)
 
-		// Auth check
+		// Auth check — SMOODEV-975: after the OAuth exchange the client
+		// sends the minted JWT (testJWT), not the raw client secret.
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+testAPIKey {
+		if auth != "Bearer "+testJWT {
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized", "message": "Invalid or missing API key"})
+			json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized", "message": "Invalid or missing token"})
 			return
 		}
 
@@ -143,11 +194,11 @@ func (m *mockConfigServer) count() int {
 }
 
 func (m *mockConfigServer) newClient(environment string) *ConfigClient {
-	return NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	return NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 }
 
 func (m *mockConfigServer) newClientWithEnv(environment string) *ConfigClient {
-	c := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	c := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	c.defaultEnvironment = environment
 	return c
 }
@@ -234,17 +285,22 @@ func TestIntegration_GetValue_SendsAuthHeader(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, testAPIKey, testOrgID)
+	client := NewConfigClient(server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 	_, _ = client.GetValue("KEY", "prod")
 
-	assert.Equal(t, "Bearer "+testAPIKey, receivedAuth)
+	// SMOODEV-975: the runtime client sends the JWT minted by the
+	// TokenProvider, not the raw client secret.
+	assert.Equal(t, "Bearer "+testJWT, receivedAuth)
 }
 
 func TestIntegration_GetValue_ErrorOn401(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
-	client := NewConfigClient(m.server.URL, "bad-key", testOrgID)
+	// SMOODEV-975: simulate a token that the mock server rejects by
+	// minting a different JWT than the mock expects.
+	badTokenProvider := stubProviderWithToken("wrong-jwt")
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(badTokenProvider))
 	defer client.Close()
 
 	_, err := client.GetValue("API_URL", "production")
@@ -255,7 +311,7 @@ func TestIntegration_GetValue_ErrorOn401(t *testing.T) {
 func TestIntegration_GetValue_ErrorOn403(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
-	client := NewConfigClient(m.server.URL, testAPIKey, "wrong-org-id")
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, "wrong-org-id", WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 
 	_, err := client.GetValue("API_URL", "production")
@@ -281,7 +337,7 @@ func TestIntegration_GetValue_ErrorOn500(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewConfigClient(server.URL, testAPIKey, testOrgID)
+	client := NewConfigClient(server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 	_, err := client.GetValue("API_URL", "production")
 	assert.Error(t, err)
@@ -343,7 +399,8 @@ func TestIntegration_GetAllValues_EmptyForUnknownEnv(t *testing.T) {
 func TestIntegration_GetAllValues_ErrorOn401(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
-	client := NewConfigClient(m.server.URL, "bad-key", testOrgID)
+	// SMOODEV-975: simulate a rejected JWT via the stub token provider.
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(stubProviderWithToken("wrong-jwt")))
 	defer client.Close()
 
 	_, err := client.GetAllValues("production")
@@ -587,7 +644,7 @@ func TestIntegration_TTL_ServesFromCacheWithinTTL(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
 
-	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID, WithCacheTTL(time.Minute))
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()), WithCacheTTL(time.Minute))
 	defer client.Close()
 
 	_, err := client.GetValue("API_URL", "production")
@@ -605,7 +662,7 @@ func TestIntegration_TTL_RefetchesAfterExpiry(t *testing.T) {
 	defer m.close()
 
 	// Use 1ms TTL so it expires immediately
-	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID, WithCacheTTL(time.Millisecond))
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()), WithCacheTTL(time.Millisecond))
 	defer client.Close()
 
 	_, err := client.GetValue("API_URL", "production")
@@ -625,7 +682,7 @@ func TestIntegration_TTL_NoTTLMeansNeverExpires(t *testing.T) {
 	defer m.close()
 
 	// No TTL option — cache never expires
-	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 
 	_, err := client.GetValue("API_URL", "production")
@@ -646,7 +703,7 @@ func TestIntegration_InvalidateForEnvironment_ClearsOnlyTarget(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
 
-	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 
 	_, _ = client.GetValue("API_URL", "production")
@@ -668,7 +725,7 @@ func TestIntegration_InvalidateForEnvironment_ClearsAllKeys(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
 
-	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 
 	_, _ = client.GetAllValues("production")
@@ -685,7 +742,7 @@ func TestIntegration_InvalidateForEnvironment_NoopForNonexistent(t *testing.T) {
 	m := newMockConfigServer()
 	defer m.close()
 
-	client := NewConfigClient(m.server.URL, testAPIKey, testOrgID)
+	client := NewConfigClient(m.server.URL, testClientID, testAPIKey, testOrgID, WithTokenProvider(newStubTokenProvider()))
 	defer client.Close()
 
 	_, _ = client.GetValue("API_URL", "production")

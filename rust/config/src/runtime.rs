@@ -231,9 +231,19 @@ mod tests {
     async fn bake_fixture(values: serde_json::Value, classify: Option<Classifier>) -> (String, Vec<u8>) {
         let mock_server = MockServer::start().await;
 
+        // SMOODEV-975: stub the OAuth handshake — mints "baked-jwt"
+        // which the values endpoint validates against below.
+        Mock::given(method("POST"))
+            .and(path_regex(r"^/token$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": "baked-jwt",
+                "expires_in": 3600
+            })))
+            .mount(&mock_server)
+            .await;
         Mock::given(method("GET"))
             .and(path_regex(r"/organizations/.+/config/values"))
-            .and(header("Authorization", "Bearer test-api-key"))
+            .and(header("Authorization", "Bearer baked-jwt"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "values": values
             })))
@@ -242,6 +252,8 @@ mod tests {
 
         let result = build_bundle(BuildBundleOptions {
             base_url: mock_server.uri(),
+            auth_url: Some(mock_server.uri()),
+            client_id: Some("test-api-key".to_string()),
             api_key: "test-api-key".to_string(),
             org_id: "test-org".to_string(),
             environment: Some("test".to_string()),

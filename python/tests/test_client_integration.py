@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from smooai_config.client import ConfigClient
+from smooai_config.token_provider import TokenProvider
 
 # ---------------------------------------------------------------------------
 # Test data — mirrors the API contract from packages/backend/src/routes/config
@@ -19,6 +20,29 @@ from smooai_config.client import ConfigClient
 TEST_BASE_URL = "https://config-test.smooai.dev"
 TEST_API_KEY = "test-api-key-abc123"
 TEST_ORG_ID = "550e8400-e29b-41d4-a716-446655440000"
+# SMOODEV-975: After OAuth exchange, downstream calls carry this JWT.
+TEST_JWT = "stub-jwt-from-token-provider"
+
+
+class StubTokenProvider(TokenProvider):
+    """TokenProvider stub that returns a fixed JWT without making HTTP calls.
+
+    Lets integration tests focus on the ConfigClient HTTP flow rather than
+    re-test the OAuth handshake (covered in test_token_provider.py).
+    """
+
+    def __init__(self, token: str = TEST_JWT) -> None:
+        super().__init__(auth_url="https://stub.invalid", client_id="stub", client_secret="stub")
+        self._token = token
+
+    def get_access_token(self) -> str:  # type: ignore[override]
+        return self._token
+
+    def invalidate(self) -> None:  # type: ignore[override]
+        # No-op: tests that need a different token after invalidation can
+        # mutate ``_token`` directly.
+        pass
+
 
 CONFIG_STORE: dict[str, dict[str, object]] = {
     "production": {
@@ -66,10 +90,14 @@ request_log = RequestLog()
 
 def create_mock_transport(
     *,
-    api_key: str = TEST_API_KEY,
+    expected_bearer: str = TEST_JWT,
     org_id: str = TEST_ORG_ID,
 ) -> httpx.MockTransport:
-    """Create a mock transport simulating the Smoo AI config API."""
+    """Create a mock transport simulating the Smoo AI config API.
+
+    SMOODEV-975: The auth check now verifies the OAuth-exchanged JWT
+    (``TEST_JWT`` by default) rather than the raw API key.
+    """
 
     def handler(request: httpx.Request) -> httpx.Response:
         request_log.requests.append(
@@ -82,8 +110,8 @@ def create_mock_transport(
 
         # Auth check
         auth_header = request.headers.get("authorization", "")
-        if auth_header != f"Bearer {api_key}":
-            return httpx.Response(401, json={"error": "Unauthorized", "message": "Invalid or missing API key"})
+        if auth_header != f"Bearer {expected_bearer}":
+            return httpx.Response(401, json={"error": "Unauthorized", "message": "Invalid or missing token"})
 
         url_path = request.url.path
 
@@ -122,25 +150,26 @@ def create_client(
     *,
     transport: httpx.MockTransport | None = None,
     environment: str = "production",
-    api_key: str = TEST_API_KEY,
     org_id: str = TEST_ORG_ID,
     cache_ttl_seconds: float = 0,
+    token_provider: TokenProvider | None = None,
 ) -> ConfigClient:
-    """Create a ConfigClient with mocked transport."""
-    t = transport or create_mock_transport(api_key=api_key, org_id=org_id)
-    client = ConfigClient(
+    """Create a ConfigClient with mocked transport and stub OAuth.
+
+    SMOODEV-975: Auth headers are now injected per-request by the
+    ConfigClient via ``token_provider.get_access_token()``; tests no
+    longer pre-load the httpx.Client with an Authorization header.
+    """
+    t = transport or create_mock_transport(org_id=org_id)
+    http = httpx.Client(base_url=TEST_BASE_URL, transport=t)
+    return ConfigClient(
         base_url=TEST_BASE_URL,
-        api_key=api_key,
         org_id=org_id,
         environment=environment,
         cache_ttl_seconds=cache_ttl_seconds,
+        token_provider=token_provider or StubTokenProvider(),
+        http_client=http,
     )
-    client._client = httpx.Client(
-        base_url=TEST_BASE_URL,
-        headers={"Authorization": f"Bearer {api_key}"},
-        transport=t,
-    )
-    return client
 
 
 @pytest.fixture(autouse=True)
@@ -190,23 +219,18 @@ class TestGetValue:
         with create_client(environment="production") as client:
             client.get_value("API_URL")
             assert request_log.count == 1
-            assert request_log.requests[0]["auth"] == f"Bearer {TEST_API_KEY}"
+            # SMOODEV-975: Bearer is the JWT minted by the TokenProvider.
+            assert request_log.requests[0]["auth"] == f"Bearer {TEST_JWT}"
 
     def test_raises_on_401_unauthorized(self) -> None:
-        # Use default transport (expects TEST_API_KEY) but send bad-key
-        transport = create_mock_transport()
-        client = ConfigClient(
-            base_url=TEST_BASE_URL,
-            api_key="bad-key",
-            org_id=TEST_ORG_ID,
+        # SMOODEV-975: Simulate a server rejecting the JWT by minting a
+        # different token than the mock transport expects. The client
+        # retries once after invalidating, but the stub provider returns
+        # the same bad token, so the second attempt 401s too.
+        with create_client(
             environment="production",
-        )
-        client._client = httpx.Client(
-            base_url=TEST_BASE_URL,
-            headers={"Authorization": "Bearer bad-key"},
-            transport=transport,
-        )
-        with client:
+            token_provider=StubTokenProvider(token="wrong-jwt"),
+        ) as client:
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 client.get_value("API_URL")
             assert exc_info.value.response.status_code == 401
@@ -260,22 +284,15 @@ class TestGetAllValues:
         with create_client(environment="production") as client:
             client.get_all_values()
             assert request_log.count == 1
-            assert request_log.requests[0]["auth"] == f"Bearer {TEST_API_KEY}"
+            # SMOODEV-975: Bearer is the JWT minted by the TokenProvider.
+            assert request_log.requests[0]["auth"] == f"Bearer {TEST_JWT}"
 
     def test_raises_on_401_unauthorized(self) -> None:
-        transport = create_mock_transport()
-        client = ConfigClient(
-            base_url=TEST_BASE_URL,
-            api_key="bad-key",
-            org_id=TEST_ORG_ID,
+        # SMOODEV-975: see TestGetValue.test_raises_on_401_unauthorized.
+        with create_client(
             environment="production",
-        )
-        client._client = httpx.Client(
-            base_url=TEST_BASE_URL,
-            headers={"Authorization": "Bearer bad-key"},
-            transport=transport,
-        )
-        with client:
+            token_provider=StubTokenProvider(token="wrong-jwt"),
+        ) as client:
             with pytest.raises(httpx.HTTPStatusError) as exc_info:
                 client.get_all_values()
             assert exc_info.value.response.status_code == 401

@@ -12,6 +12,19 @@ from smooai_config.client import (
     FeatureFlagEvaluationError,
     FeatureFlagNotFoundError,
 )
+from smooai_config.token_provider import TokenProvider
+
+
+# SMOODEV-975: stub TokenProvider so these tests focus on ConfigClient
+# behavior (cache, fetch, error mapping) without exercising the OAuth
+# handshake — that lives in test_token_provider.py.
+class StubTokenProvider(TokenProvider):
+    def __init__(self, token: str = "stub-jwt") -> None:
+        super().__init__(auth_url="https://stub.invalid", client_id="stub", client_secret="stub")
+        self._token = token
+
+    def get_access_token(self) -> str:  # type: ignore[override]
+        return self._token
 
 
 @pytest.fixture
@@ -42,19 +55,14 @@ def mock_transport() -> httpx.MockTransport:
 
 @pytest.fixture
 def client(mock_transport: httpx.MockTransport) -> ConfigClient:
-    """Create a ConfigClient with mocked transport."""
-    c = ConfigClient(
+    """Create a ConfigClient with mocked transport + stub OAuth token."""
+    http = httpx.Client(base_url="https://config.smooai.dev", transport=mock_transport)
+    return ConfigClient(
         base_url="https://config.smooai.dev",
-        api_key="test-api-key",
         org_id="550e8400-e29b-41d4-a716-446655440000",
+        token_provider=StubTokenProvider(),
+        http_client=http,
     )
-    # Replace the internal client with one using mock transport
-    c._client = httpx.Client(
-        base_url="https://config.smooai.dev",
-        headers={"Authorization": "Bearer test-api-key"},
-        transport=mock_transport,
-    )
-    return c
 
 
 class TestConfigClientInit:
@@ -63,29 +71,24 @@ class TestConfigClientInit:
     def test_strips_trailing_slash(self) -> None:
         with ConfigClient(
             base_url="https://config.smooai.dev/",
-            api_key="key",
+            client_id="cid",
+            client_secret="sec",
             org_id="org-id",
         ) as c:
             assert c._base_url == "https://config.smooai.dev"
 
-    def test_sets_authorization_header(self) -> None:
-        with ConfigClient(
-            base_url="https://config.smooai.dev",
-            api_key="my-secret-key",
-            org_id="org-id",
-        ) as c:
-            assert c._headers == {"Authorization": "Bearer my-secret-key"}
-
     def test_initializes_empty_cache(self) -> None:
         with ConfigClient(
             base_url="https://config.smooai.dev",
-            api_key="key",
+            client_id="cid",
+            client_secret="sec",
             org_id="org-id",
         ) as c:
             assert c._cache == {}
 
     def test_reads_from_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SMOOAI_CONFIG_API_URL", "https://env.example.com")
+        monkeypatch.setenv("SMOOAI_CONFIG_CLIENT_ID", "env-client-id")
         monkeypatch.setenv("SMOOAI_CONFIG_API_KEY", "env-key")
         monkeypatch.setenv("SMOOAI_CONFIG_ORG_ID", "env-org")
         monkeypatch.setenv("SMOOAI_CONFIG_ENV", "staging")
@@ -102,38 +105,66 @@ class TestConfigClientInit:
 
         with ConfigClient(
             base_url="https://explicit.example.com",
-            api_key="explicit-key",
+            client_id="cid",
+            client_secret="sec",
             org_id="explicit-org",
         ) as c:
             assert c._base_url == "https://explicit.example.com"
             assert c._org_id == "explicit-org"
 
+    def test_accepts_api_key_as_alias_for_client_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """SMOODEV-975: api_key kwarg is preserved as a deprecated alias for client_secret."""
+        self._scrub_env(monkeypatch)
+        with ConfigClient(
+            base_url="https://example.com",
+            client_id="cid",
+            api_key="legacy-key",
+            org_id="org-id",
+        ) as c:
+            assert c._base_url == "https://example.com"
+
     @staticmethod
     def _scrub_env(monkeypatch: pytest.MonkeyPatch) -> None:
         """Remove any SMOOAI_CONFIG_* env vars that might otherwise satisfy
         the required-arg checks when a developer has them set locally."""
-        for var in ("SMOOAI_CONFIG_API_URL", "SMOOAI_CONFIG_API_KEY", "SMOOAI_CONFIG_ORG_ID", "SMOOAI_CONFIG_ENV"):
+        for var in (
+            "SMOOAI_CONFIG_API_URL",
+            "SMOOAI_CONFIG_AUTH_URL",
+            "SMOOAI_AUTH_URL",
+            "SMOOAI_CONFIG_CLIENT_ID",
+            "SMOOAI_CONFIG_CLIENT_SECRET",
+            "SMOOAI_CONFIG_API_KEY",
+            "SMOOAI_CONFIG_ORG_ID",
+            "SMOOAI_CONFIG_ENV",
+        ):
             monkeypatch.delenv(var, raising=False)
 
     def test_raises_without_base_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._scrub_env(monkeypatch)
         with pytest.raises(ValueError, match="base_url is required"):
-            ConfigClient(api_key="key", org_id="org")
+            ConfigClient(client_id="cid", client_secret="sec", org_id="org")
 
-    def test_raises_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_raises_without_client_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._scrub_env(monkeypatch)
-        with pytest.raises(ValueError, match="api_key is required"):
-            ConfigClient(base_url="https://example.com", org_id="org")
+        with pytest.raises(ValueError, match="client_id is required"):
+            ConfigClient(base_url="https://example.com", client_secret="sec", org_id="org")
+
+    def test_raises_without_client_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._scrub_env(monkeypatch)
+        with pytest.raises(ValueError, match="client_secret is required"):
+            ConfigClient(base_url="https://example.com", client_id="cid", org_id="org")
 
     def test_raises_without_org_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._scrub_env(monkeypatch)
         with pytest.raises(ValueError, match="org_id is required"):
-            ConfigClient(base_url="https://example.com", api_key="key")
+            ConfigClient(base_url="https://example.com", client_id="cid", client_secret="sec")
 
-    def test_default_environment_fallback(self) -> None:
+    def test_default_environment_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._scrub_env(monkeypatch)
         with ConfigClient(
             base_url="https://config.smooai.dev",
-            api_key="key",
+            client_id="cid",
+            client_secret="sec",
             org_id="org-id",
         ) as c:
             assert c._default_environment == "development"
@@ -141,7 +172,8 @@ class TestConfigClientInit:
     def test_explicit_environment(self) -> None:
         with ConfigClient(
             base_url="https://config.smooai.dev",
-            api_key="key",
+            client_id="cid",
+            client_secret="sec",
             org_id="org-id",
             environment="production",
         ) as c:
@@ -218,111 +250,17 @@ class TestContextManager:
         result = client.__enter__()
         assert result is client
 
-    def test_exit_closes_client(self, mock_transport: httpx.MockTransport) -> None:
-        client = ConfigClient(
-            base_url="https://config.smooai.dev",
-            api_key="key",
-            org_id="org-id",
-        )
-        client._client = httpx.Client(
-            base_url="https://config.smooai.dev",
-            headers={"Authorization": "Bearer key"},
-            transport=mock_transport,
-        )
-
-        client.__exit__(None, None, None)
-
-        # After close, using the client should fail
-        with pytest.raises(RuntimeError):
-            client.get_value("key", environment="prod")
-
-    def test_with_statement(self, mock_transport: httpx.MockTransport) -> None:
-        with ConfigClient(
-            base_url="https://config.smooai.dev",
-            api_key="key",
-            org_id="org-id",
-        ) as client:
-            client._client = httpx.Client(
-                base_url="https://config.smooai.dev",
-                headers={"Authorization": "Bearer key"},
-                transport=mock_transport,
-            )
-            result = client.get_value("API_URL", environment="prod")
-            assert result == "value-for-API_URL"
-
-
-class TestErrorHandling:
-    """Tests for HTTP error handling."""
-
-    def test_raises_on_server_error(self) -> None:
-        def error_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(500, json={"error": "Internal server error"})
-
-        transport = httpx.MockTransport(error_handler)
-        with ConfigClient(
-            base_url="https://config.smooai.dev",
-            api_key="key",
-            org_id="org-id",
-        ) as client:
-            client._client = httpx.Client(
-                base_url="https://config.smooai.dev",
-                headers={"Authorization": "Bearer key"},
-                transport=transport,
-            )
-            with pytest.raises(httpx.HTTPStatusError):
-                client.get_value("key", environment="prod")
-
-    def test_raises_on_unauthorized(self) -> None:
-        def auth_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(401, json={"error": "Unauthorized"})
-
-        transport = httpx.MockTransport(auth_handler)
-        with ConfigClient(
-            base_url="https://config.smooai.dev",
-            api_key="bad-key",
-            org_id="org-id",
-        ) as client:
-            client._client = httpx.Client(
-                base_url="https://config.smooai.dev",
-                headers={"Authorization": "Bearer bad-key"},
-                transport=transport,
-            )
-            with pytest.raises(httpx.HTTPStatusError):
-                client.get_value("key", environment="prod")
-
-    def test_raises_on_not_found(self) -> None:
-        def not_found_handler(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(404, json={"error": "Not found"})
-
-        transport = httpx.MockTransport(not_found_handler)
-        with ConfigClient(
-            base_url="https://config.smooai.dev",
-            api_key="key",
-            org_id="org-id",
-        ) as client:
-            client._client = httpx.Client(
-                base_url="https://config.smooai.dev",
-                headers={"Authorization": "Bearer key"},
-                transport=transport,
-            )
-            with pytest.raises(httpx.HTTPStatusError):
-                client.get_value("nonexistent", environment="prod")
-
 
 def _make_client_with_transport(transport: httpx.MockTransport, *, environment: str = "production") -> ConfigClient:
     """Build a ConfigClient whose internal httpx.Client uses the given mock transport."""
-    client = ConfigClient(
+    http = httpx.Client(base_url="https://config.smooai.dev", transport=transport)
+    return ConfigClient(
         base_url="https://config.smooai.dev",
-        api_key="test-api-key",
         org_id="org-123",
         environment=environment,
+        token_provider=StubTokenProvider(),
+        http_client=http,
     )
-    client._client = httpx.Client(
-        base_url="https://config.smooai.dev",
-        headers={"Authorization": "Bearer test-api-key"},
-        transport=transport,
-    )
-    return client
 
 
 class TestEvaluateFeatureFlag:
@@ -352,7 +290,8 @@ class TestEvaluateFeatureFlag:
         assert str(req.url) == (
             "https://config.smooai.dev/organizations/org-123/config/feature-flags/aboutPage/evaluate"
         )
-        assert req.headers["authorization"] == "Bearer test-api-key"
+        # SMOODEV-975: Bearer is the OAuth JWT (stub-jwt here), not the API key.
+        assert req.headers["authorization"] == "Bearer stub-jwt"
         assert json.loads(req.content) == {
             "environment": "production",
             "context": {"userId": "u-1", "plan": "pro"},

@@ -66,14 +66,26 @@ func pcMakeConfigDir(t *testing.T, defaults map[string]any) string {
 
 // pcHTTPServer mocks the Smoo AI config API. handlerFn is called for every
 // request so tests can mutate the response between calls.
+//
+// SMOODEV-975: also handles the OAuth client_credentials handshake on
+// POST /token. The /token traffic is NOT counted into hits (callers
+// reason about config-fetch counts, not token mints).
 func pcHTTPServer(t *testing.T, statusCode int, valuesByEnv map[string]map[string]any, hits *atomic.Int64) *httptest.Server {
 	t.Helper()
+	const pcMintedJWT = "pc-mock-jwt"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" && r.Method == http.MethodPost {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"access_token": pcMintedJWT,
+				"expires_in":   3600,
+			})
+			return
+		}
 		if hits != nil {
 			hits.Add(1)
 		}
-		// Auth check.
-		if r.Header.Get("Authorization") != "Bearer "+pcAPIKey {
+		// Auth check — runtime client carries the OAuth-minted JWT.
+		if r.Header.Get("Authorization") != "Bearer "+pcMintedJWT {
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Unauthorized"})
 			return
@@ -156,9 +168,10 @@ func TestPriorityChain_EnvWinsOverHTTPAndFile(t *testing.T) {
 		WithConfigEnvironment(pcEnv),
 		WithCMSchemaKeys(map[string]bool{"API_URL": true}),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     pcEnv,
-			"API_URL":               "https://api.from-env.example",
+			"SMOOAI_CONFIG_AUTH_URL": srv.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      pcEnv,
+			"API_URL":                "https://api.from-env.example",
 		}),
 	)
 
@@ -179,8 +192,9 @@ func TestPriorityChain_HTTPWinsOverFileWhenEnvAbsent(t *testing.T) {
 		WithOrgID(pcOrgID),
 		WithConfigEnvironment(pcEnv),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     pcEnv,
+			"SMOOAI_CONFIG_AUTH_URL": srv.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      pcEnv,
 		}),
 	)
 
@@ -245,9 +259,10 @@ func TestPriorityChain_HTTP5xxFallsThroughToEnv(t *testing.T) {
 		WithConfigEnvironment(pcEnv),
 		WithCMSchemaKeys(map[string]bool{"API_URL": true}),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     pcEnv,
-			"API_URL":               "https://api.from-env.example",
+			"SMOOAI_CONFIG_AUTH_URL": srv.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      pcEnv,
+			"API_URL":                "https://api.from-env.example",
 		}),
 	)
 
@@ -266,8 +281,9 @@ func TestPriorityChain_HTTP5xxFallsThroughToFile(t *testing.T) {
 		WithOrgID(pcOrgID),
 		WithConfigEnvironment(pcEnv),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     pcEnv,
+			"SMOOAI_CONFIG_AUTH_URL": srv.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      pcEnv,
 		}),
 	)
 
@@ -293,8 +309,9 @@ func TestPriorityChain_RepeatedReadsMemoizeUntilInvalidate(t *testing.T) {
 		WithOrgID(pcOrgID),
 		WithConfigEnvironment(pcEnv),
 		WithCMEnvOverride(map[string]string{
-			"SMOOAI_ENV_CONFIG_DIR": configDir,
-			"SMOOAI_CONFIG_ENV":     pcEnv,
+			"SMOOAI_CONFIG_AUTH_URL": srv.URL,
+			"SMOOAI_ENV_CONFIG_DIR":  configDir,
+			"SMOOAI_CONFIG_ENV":      pcEnv,
 		}),
 	)
 

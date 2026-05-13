@@ -16,6 +16,7 @@ pub mod merge;
 pub mod runtime;
 pub mod schema;
 pub mod schema_validator;
+pub mod token_provider;
 pub mod utils;
 
 pub use bootstrap::{bootstrap_fetch, BootstrapError};
@@ -28,4 +29,5 @@ pub use file_config::{find_and_process_file_config, find_config_directory};
 pub use local::LocalConfigManager;
 pub use merge::merge_replace_arrays;
 pub use runtime::{build_config_runtime, read_baked_config, BakedConfig, RuntimeError, RuntimeOptions};
+pub use token_provider::{SharedTokenProvider, TokenProvider, TokenProviderError};
 pub use utils::{camel_to_upper_snake, coerce_boolean, SmooaiConfigError, SmooaiConfigErrorKind};

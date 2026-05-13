@@ -2,18 +2,74 @@
 //!
 //! Uses wiremock to simulate the Smoo AI config API with realistic behavior
 //! matching the backend in packages/backend/src/routes/config.
+//!
+//! SMOODEV-975: The runtime client now performs an OAuth2
+//! `client_credentials` exchange before each config request. Tests inject
+//! a stub `TokenProvider` (via [`make_client`]) that mints a fixed JWT
+//! without hitting a real OAuth issuer, so the existing assertions
+//! against `Bearer {jwt}` keep working.
+
+use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::json;
-use smooai_config::ConfigClient;
-use wiremock::matchers::{header, method, path, query_param};
+use smooai_config::{ConfigClient, TokenProvider};
+use wiremock::matchers::{header, method, path, path_regex, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ---------------------------------------------------------------------------
 // Test data — mirrors the API contract from packages/backend
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)] // Kept for reference / future tests of legacy env-var alias.
 const TEST_API_KEY: &str = "test-api-key-abc123";
 const TEST_ORG_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
+// SMOODEV-975: After the OAuth exchange, the runtime client carries this
+// JWT on every downstream request.
+const TEST_JWT: &str = "stub-jwt-from-token-provider";
+
+/// Build a ConfigClient with a stub TokenProvider whose OAuth endpoint is
+/// served by the supplied MockServer. The caller is responsible for
+/// installing the `/token` mock — see [`mount_token_mock`].
+async fn make_client(server: &MockServer, environment: &str) -> ConfigClient {
+    mount_token_mock(server, TEST_JWT).await;
+    let tp = TokenProvider::with_options(
+        &server.uri(),
+        "test-client-id",
+        "test-client-secret",
+        Duration::from_secs(60),
+        reqwest::Client::new(),
+    )
+    .expect("valid token provider");
+    ConfigClient::with_token_provider(&server.uri(), Arc::new(tp), TEST_ORG_ID, environment)
+}
+
+/// Build a ConfigClient whose TokenProvider mints the supplied JWT.
+/// Used to simulate revoked / wrong-token scenarios.
+async fn make_client_with_token(server: &MockServer, token: &str, environment: &str) -> ConfigClient {
+    mount_token_mock(server, token).await;
+    let tp = TokenProvider::with_options(
+        &server.uri(),
+        "test-client-id",
+        "test-client-secret",
+        Duration::from_secs(60),
+        reqwest::Client::new(),
+    )
+    .expect("valid token provider");
+    ConfigClient::with_token_provider(&server.uri(), Arc::new(tp), TEST_ORG_ID, environment)
+}
+
+/// Mount a /token handler returning the supplied JWT.
+async fn mount_token_mock(server: &MockServer, token: &str) {
+    Mock::given(method("POST"))
+        .and(path_regex(r"^/token$"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "access_token": token,
+            "expires_in": 3600
+        })))
+        .mount(server)
+        .await;
+}
 
 // ---------------------------------------------------------------------------
 // getValue
@@ -25,13 +81,13 @@ async fn get_value_fetches_string() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://api.smooai.com"})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let val = client.get_value("API_URL", Some("production")).await.unwrap();
     assert_eq!(val, json!("https://api.smooai.com"));
 }
@@ -45,13 +101,13 @@ async fn get_value_fetches_numeric() {
             TEST_ORG_ID
         )))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": 3})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let val = client.get_value("MAX_RETRIES", Some("production")).await.unwrap();
     assert_eq!(val, json!(3));
 }
@@ -65,13 +121,13 @@ async fn get_value_fetches_boolean() {
             TEST_ORG_ID
         )))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": true})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let val = client.get_value("ENABLE_NEW_UI", Some("production")).await.unwrap();
     assert_eq!(val, json!(true));
 }
@@ -86,13 +142,13 @@ async fn get_value_fetches_complex_nested_json() {
             TEST_ORG_ID
         )))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": complex.clone()})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let val = client.get_value("COMPLEX_VALUE", Some("production")).await.unwrap();
     assert_eq!(val, complex);
 }
@@ -103,13 +159,13 @@ async fn get_value_explicit_environment_overrides_default() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "staging"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://staging-api.smooai.com"})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::with_environment(&server.uri(), TEST_API_KEY, TEST_ORG_ID, "production");
+    let mut client = make_client(&server, "production").await;
     let val = client.get_value("API_URL", Some("staging")).await.unwrap();
     assert_eq!(val, json!("https://staging-api.smooai.com"));
 }
@@ -120,13 +176,13 @@ async fn get_value_uses_default_environment() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "development"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "http://localhost:3000"})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::with_environment(&server.uri(), TEST_API_KEY, TEST_ORG_ID, "development");
+    let mut client = make_client(&server, "development").await;
     let val = client.get_value("API_URL", None).await.unwrap();
     assert_eq!(val, json!("http://localhost:3000"));
 }
@@ -141,7 +197,7 @@ async fn get_value_error_on_401() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), "bad-key", TEST_ORG_ID);
+    let mut client = make_client_with_token(&server, "wrong-jwt", "development").await;
     let result = client.get_value("API_URL", Some("production")).await;
     assert!(result.is_err());
 }
@@ -150,14 +206,14 @@ async fn get_value_error_on_401() {
 async fn get_value_error_on_404() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(
             ResponseTemplate::new(404).set_body_json(json!({"error": "Not found", "message": "Key not found"})),
         )
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let result = client.get_value("NONEXISTENT", Some("production")).await;
     assert!(result.is_err());
 }
@@ -170,7 +226,7 @@ async fn get_value_error_on_500() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let result = client.get_value("API_URL", Some("production")).await;
     assert!(result.is_err());
 }
@@ -185,7 +241,7 @@ async fn get_all_values_fetches_all() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "values": {
                 "API_URL": "https://api.smooai.com",
@@ -197,7 +253,7 @@ async fn get_all_values_fetches_all() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let vals = client.get_all_values(Some("production")).await.unwrap();
     assert_eq!(vals.len(), 3);
     assert_eq!(vals["API_URL"], json!("https://api.smooai.com"));
@@ -210,13 +266,13 @@ async fn get_all_values_returns_empty_for_unknown_env() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(query_param("environment", "nonexistent"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"values": {}})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let vals = client.get_all_values(Some("nonexistent")).await.unwrap();
     assert!(vals.is_empty());
 }
@@ -229,7 +285,7 @@ async fn get_all_values_error_on_401() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), "bad-key", TEST_ORG_ID);
+    let mut client = make_client_with_token(&server, "wrong-jwt", "development").await;
     let result = client.get_all_values(Some("production")).await;
     assert!(result.is_err());
 }
@@ -244,13 +300,13 @@ async fn cache_get_value_caches_result() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://api.smooai.com"})))
         .expect(1) // Should only be called once thanks to caching
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let val1 = client.get_value("API_URL", Some("production")).await.unwrap();
     let val2 = client.get_value("API_URL", Some("production")).await.unwrap();
     assert_eq!(val1, json!("https://api.smooai.com"));
@@ -263,7 +319,7 @@ async fn cache_per_environment() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "prod-value"})))
         .expect(1)
         .mount(&server)
@@ -271,13 +327,13 @@ async fn cache_per_environment() {
 
     Mock::given(method("GET"))
         .and(query_param("environment", "staging"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "staging-value"})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let prod = client.get_value("API_URL", Some("production")).await.unwrap();
     let staging = client.get_value("API_URL", Some("staging")).await.unwrap();
 
@@ -293,7 +349,7 @@ async fn cache_get_all_populates_for_get_value() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "values": {
                 "API_URL": "https://api.smooai.com",
@@ -313,7 +369,7 @@ async fn cache_get_all_populates_for_get_value() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
     let _ = client.get_all_values(Some("production")).await.unwrap();
 
     // Individual getValue should come from cache
@@ -330,13 +386,13 @@ async fn cache_invalidate_forces_refetch() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://api.smooai.com"})))
         .expect(2) // Called twice: initial fetch + after invalidation
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
 
     let _ = client.get_value("API_URL", Some("production")).await.unwrap();
     client.invalidate_cache();
@@ -355,7 +411,7 @@ async fn full_workflow_fetch_all_read_individual_invalidate() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "values": {
                 "API_URL": "https://api.smooai.com",
@@ -371,13 +427,13 @@ async fn full_workflow_fetch_all_read_individual_invalidate() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://api.smooai.com"})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
 
     // 1. Fetch all
     let vals = client.get_all_values(Some("production")).await.unwrap();
@@ -403,7 +459,7 @@ async fn full_workflow_multi_environment() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "production"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://api.smooai.com"})))
         .expect(1)
         .mount(&server)
@@ -412,7 +468,7 @@ async fn full_workflow_multi_environment() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "staging"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "https://staging-api.smooai.com"})))
         .expect(1)
         .mount(&server)
@@ -421,13 +477,13 @@ async fn full_workflow_multi_environment() {
     Mock::given(method("GET"))
         .and(path(format!("/organizations/{}/config/values/API_URL", TEST_ORG_ID)))
         .and(query_param("environment", "development"))
-        .and(header("authorization", format!("Bearer {}", TEST_API_KEY)))
+        .and(header("authorization", format!("Bearer {}", TEST_JWT)))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"value": "http://localhost:3000"})))
         .expect(1)
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::new(&server.uri(), TEST_API_KEY, TEST_ORG_ID);
+    let mut client = make_client(&server, "development").await;
 
     let prod = client.get_value("API_URL", Some("production")).await.unwrap();
     let staging = client.get_value("API_URL", Some("staging")).await.unwrap();
@@ -467,7 +523,7 @@ async fn invalidate_env_clears_only_target() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::with_environment(&server.uri(), TEST_API_KEY, TEST_ORG_ID, "development");
+    let mut client = make_client(&server, "development").await;
 
     let _ = client.get_value("API_URL", Some("production")).await.unwrap();
     let _ = client.get_value("API_URL", Some("staging")).await.unwrap();
@@ -495,7 +551,7 @@ async fn invalidate_env_noop_for_nonexistent() {
         .mount(&server)
         .await;
 
-    let mut client = ConfigClient::with_environment(&server.uri(), TEST_API_KEY, TEST_ORG_ID, "development");
+    let mut client = make_client(&server, "development").await;
     let _ = client.get_value("API_URL", Some("production")).await.unwrap();
 
     client.invalidate_cache_for_environment("nonexistent");

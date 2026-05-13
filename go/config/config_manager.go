@@ -231,6 +231,16 @@ func (m *ConfigManager) initialize() error {
 			orgID = m.getEnvVal("SMOOAI_CONFIG_ORG_ID")
 		}
 
+		// SMOODEV-975: ConfigClient now requires (clientID, clientSecret).
+		// The ConfigManager-facing API still calls this "apiKey" for
+		// backwards-compat; treat it as the OAuth client secret and pull
+		// the client ID from env (or fall back to apiKey itself so single-
+		// secret configs continue to work in dev).
+		clientID := m.getEnvVal("SMOOAI_CONFIG_CLIENT_ID")
+		if clientID == "" {
+			clientID = apiKey
+		}
+
 		if apiKey != "" && baseURL != "" && orgID != "" {
 			// Resolve environment
 			configEnv := m.environment
@@ -241,7 +251,15 @@ func (m *ConfigManager) initialize() error {
 				configEnv = "development"
 			}
 
-			client := NewConfigClient(baseURL, apiKey, orgID)
+			// SMOODEV-975: Honor the OAuth issuer URL from envOverride so
+			// tests can point the TokenProvider at their mock server.
+			clientOpts := []ConfigClientOption{}
+			if authURL := m.getEnvVal("SMOOAI_CONFIG_AUTH_URL"); authURL != "" {
+				clientOpts = append(clientOpts, WithAuthURL(authURL))
+			} else if authURL := m.getEnvVal("SMOOAI_AUTH_URL"); authURL != "" {
+				clientOpts = append(clientOpts, WithAuthURL(authURL))
+			}
+			client := NewConfigClient(baseURL, clientID, apiKey, orgID, clientOpts...)
 			defer client.Close()
 
 			values, err := client.GetAllValues(configEnv)
