@@ -1,23 +1,48 @@
 /**
  * Browser/universal HTTP client for fetching config values from the Smoo AI config server.
  *
- * Environment variables (optional — used as defaults when constructor args are omitted):
- *   SMOOAI_CONFIG_API_URL  — Base URL of the config API
- *   SMOOAI_CONFIG_API_KEY  — Bearer token for authentication
- *   SMOOAI_CONFIG_ORG_ID   — Organization ID
- *   SMOOAI_CONFIG_ENV      — Default environment name (e.g. "production")
+ * Authentication uses OAuth2 `client_credentials` against `{authUrl}/token`,
+ * mirroring the .NET `SmooConfigClient` and the in-package `bootstrap` /
+ * `cli` flows. The exchanged JWT is cached + auto-refreshed by `TokenProvider`.
+ *
+ * Environment variables (used as defaults when constructor args are omitted):
+ *   SMOOAI_CONFIG_API_URL        — Base URL of the config API
+ *   SMOOAI_CONFIG_AUTH_URL       — OAuth issuer base URL (defaults to https://auth.smoo.ai;
+ *                                  also accepts SMOOAI_AUTH_URL)
+ *   SMOOAI_CONFIG_CLIENT_ID      — OAuth client ID
+ *   SMOOAI_CONFIG_CLIENT_SECRET  — OAuth client secret (also accepts SMOOAI_CONFIG_API_KEY)
+ *   SMOOAI_CONFIG_ORG_ID         — Organization ID
+ *   SMOOAI_CONFIG_ENV            — Default environment name (e.g. "production")
  *
  * SMOODEV-602: HTTP calls route through `@smooai/fetch`, which drops in as a
  * replacement for the global `fetch` and adds retries, Retry-After honoring,
  * and clearer error surfaces. Works in both Node and browser bundles.
+ *
+ * SMOODEV-974: ConfigClient now exchanges client credentials for a JWT (parity
+ * with bootstrap/CLI/.NET). Previously it sent the raw API key as Bearer,
+ * which the smooai backend's authMiddleware rejects with 401.
  */
 
 import fetch from '@smooai/fetch';
+import { TokenProvider } from './TokenProvider';
 
 export interface ConfigClientOptions {
     /** Base URL of the config API server. Falls back to SMOOAI_CONFIG_API_URL env var. */
     baseUrl?: string;
-    /** API key (M2M / client credentials token). Falls back to SMOOAI_CONFIG_API_KEY env var. */
+    /**
+     * OAuth issuer base URL. Falls back to SMOOAI_CONFIG_AUTH_URL, then
+     * SMOOAI_AUTH_URL env vars, then `https://auth.smoo.ai`.
+     */
+    authUrl?: string;
+    /** OAuth client ID. Falls back to SMOOAI_CONFIG_CLIENT_ID env var. */
+    clientId?: string;
+    /**
+     * OAuth client secret. Falls back to SMOOAI_CONFIG_CLIENT_SECRET, then
+     * SMOOAI_CONFIG_API_KEY env vars. (The legacy `SMOOAI_CONFIG_API_KEY`
+     * env var holds the OAuth client secret — it is NOT a Bearer token.)
+     */
+    clientSecret?: string;
+    /** @deprecated Alias for `clientSecret`. Kept for source-level compatibility. */
     apiKey?: string;
     /** Organization ID. Falls back to SMOOAI_CONFIG_ORG_ID env var. */
     orgId?: string;
@@ -25,6 +50,11 @@ export interface ConfigClientOptions {
     environment?: string;
     /** Cache TTL in milliseconds. 0 or undefined means cache never expires (manual invalidation only). */
     cacheTtlMs?: number;
+    /**
+     * Test seam — inject a pre-built `TokenProvider` so callers can stub
+     * the OAuth exchange without hitting the auth server.
+     */
+    tokenProvider?: TokenProvider;
 }
 
 interface CacheEntry {
@@ -42,25 +72,36 @@ function getEnv(key: string): string | undefined {
 export class ConfigClient {
     private baseUrl: string;
     private orgId: string;
-    private apiKey: string;
     private defaultEnvironment: string;
     private cacheTtlMs: number;
     private cache: Map<string, CacheEntry> = new Map();
+    private tokenProvider: TokenProvider;
 
     constructor(options: ConfigClientOptions = {}) {
         const baseUrl = options.baseUrl ?? getEnv('SMOOAI_CONFIG_API_URL');
-        const apiKey = options.apiKey ?? getEnv('SMOOAI_CONFIG_API_KEY');
+        const authUrl = options.authUrl ?? getEnv('SMOOAI_CONFIG_AUTH_URL') ?? getEnv('SMOOAI_AUTH_URL') ?? 'https://auth.smoo.ai';
+        const clientId = options.clientId ?? getEnv('SMOOAI_CONFIG_CLIENT_ID');
+        const clientSecret = options.clientSecret ?? options.apiKey ?? getEnv('SMOOAI_CONFIG_CLIENT_SECRET') ?? getEnv('SMOOAI_CONFIG_API_KEY');
         const orgId = options.orgId ?? getEnv('SMOOAI_CONFIG_ORG_ID');
 
         if (!baseUrl) throw new Error('@smooai/config: baseUrl is required (or set SMOOAI_CONFIG_API_URL)');
-        if (!apiKey) throw new Error('@smooai/config: apiKey is required (or set SMOOAI_CONFIG_API_KEY)');
         if (!orgId) throw new Error('@smooai/config: orgId is required (or set SMOOAI_CONFIG_ORG_ID)');
+        if (!options.tokenProvider) {
+            if (!clientId) throw new Error('@smooai/config: clientId is required (or set SMOOAI_CONFIG_CLIENT_ID)');
+            if (!clientSecret) throw new Error('@smooai/config: clientSecret is required (or set SMOOAI_CONFIG_CLIENT_SECRET / SMOOAI_CONFIG_API_KEY)');
+        }
 
         this.baseUrl = baseUrl.replace(/\/+$/, '');
-        this.apiKey = apiKey;
         this.orgId = orgId;
         this.defaultEnvironment = options.environment ?? getEnv('SMOOAI_CONFIG_ENV') ?? 'development';
         this.cacheTtlMs = options.cacheTtlMs ?? 0;
+        this.tokenProvider =
+            options.tokenProvider ??
+            new TokenProvider({
+                authUrl,
+                clientId: clientId!,
+                clientSecret: clientSecret!,
+            });
     }
 
     private computeExpiresAt(): number {
@@ -77,15 +118,37 @@ export class ConfigClient {
         return entry.value;
     }
 
+    private async authHeader(): Promise<string> {
+        return `Bearer ${await this.tokenProvider.getAccessToken()}`;
+    }
+
     private async fetchJson<T>(path: string, fetchOptions?: RequestInit): Promise<T> {
-        const response = await fetch(`${this.baseUrl}${path}`, {
-            ...fetchOptions,
-            headers: { Authorization: `Bearer ${this.apiKey}`, ...fetchOptions?.headers },
-        });
-        if (!response.ok) {
-            throw new Error(`Config API error: HTTP ${response.status} ${response.statusText}`);
+        const send = async (): Promise<Response> =>
+            fetch(`${this.baseUrl}${path}`, {
+                ...fetchOptions,
+                headers: { Authorization: await this.authHeader(), ...fetchOptions?.headers },
+            });
+
+        try {
+            const response = await send();
+            if (!response.ok) {
+                throw new Error(`Config API error: HTTP ${response.status} ${response.statusText}`);
+            }
+            return response.json() as Promise<T>;
+        } catch (err) {
+            // @smooai/fetch throws HTTPResponseError on non-2xx, exposing the response on `.response`.
+            // If we got a 401, the cached OAuth token may have been revoked/rotated — drop it and retry once.
+            const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
+            if (status === 401) {
+                this.tokenProvider.invalidate();
+                const response = await send();
+                if (!response.ok) {
+                    throw new Error(`Config API error: HTTP ${response.status} ${response.statusText}`);
+                }
+                return response.json() as Promise<T>;
+            }
+            throw err;
         }
-        return response.json() as Promise<T>;
     }
 
     /**
@@ -194,29 +257,62 @@ export class ConfigClient {
      */
     async evaluateFeatureFlag(key: string, context: Record<string, unknown> = {}, environment?: string): Promise<EvaluateFeatureFlagResponse> {
         const env = environment ?? this.defaultEnvironment;
-        const response = await fetch(`${this.baseUrl}/organizations/${this.orgId}/config/feature-flags/${encodeURIComponent(key)}/evaluate`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${this.apiKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ environment: env, context }),
-        });
+        const url = `${this.baseUrl}/organizations/${this.orgId}/config/feature-flags/${encodeURIComponent(key)}/evaluate`;
+        const send = async (): Promise<Response> =>
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    Authorization: await this.authHeader(),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ environment: env, context }),
+            });
 
-        if (response.status === 404) {
-            throw new FeatureFlagNotFoundError(key);
-        }
-        if (response.status === 400) {
-            const text = await response.text().catch(() => '');
-            throw new FeatureFlagContextError(key, text);
-        }
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            throw new FeatureFlagEvaluationError(key, response.status, text);
-        }
+        const dispatchOrThrow = async (response: Response): Promise<EvaluateFeatureFlagResponse> => {
+            if (response.status === 404) {
+                throw new FeatureFlagNotFoundError(key);
+            }
+            if (response.status === 400) {
+                const text = await response.text().catch(() => '');
+                throw new FeatureFlagContextError(key, text);
+            }
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                throw new FeatureFlagEvaluationError(key, response.status, text);
+            }
+            return (await response.json()) as EvaluateFeatureFlagResponse;
+        };
 
-        return (await response.json()) as EvaluateFeatureFlagResponse;
+        try {
+            const response = await send();
+            return await dispatchOrThrow(response);
+        } catch (err) {
+            // @smooai/fetch wraps non-2xx as HTTPResponseError. Translate to the
+            // typed FeatureFlag* errors so callers can branch on subclass,
+            // and retry once on 401 with a fresh OAuth token.
+            const inner = err as { response?: Response & { status?: number; isJson?: boolean; data?: { message?: string }; dataString?: string } };
+            const status = inner?.response?.status;
+            if (status === undefined) throw err; // not an HTTPResponseError — propagate
+            if (status === 401) {
+                this.tokenProvider.invalidate();
+                const response = await send();
+                try {
+                    return await dispatchOrThrow(response);
+                } catch (innerErr) {
+                    const r = (innerErr as { response?: { status?: number; dataString?: string; data?: { message?: string } } }).response;
+                    if (r?.status === undefined) throw innerErr;
+                    return throwFlagError(key, r.status, r.dataString ?? r.data?.message);
+                }
+            }
+            return throwFlagError(key, status, inner.response?.dataString ?? inner.response?.data?.message);
+        }
     }
+}
+
+function throwFlagError(key: string, status: number, body?: string): never {
+    if (status === 404) throw new FeatureFlagNotFoundError(key);
+    if (status === 400) throw new FeatureFlagContextError(key, body);
+    throw new FeatureFlagEvaluationError(key, status, body);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigClient, FeatureFlagContextError, FeatureFlagEvaluationError, FeatureFlagNotFoundError } from './client';
+import { TokenProvider } from './TokenProvider';
 
 // Mock @smooai/fetch module
 const { mockFetch } = vi.hoisted(() => ({
@@ -9,11 +10,29 @@ vi.mock('@smooai/fetch', () => ({
     default: mockFetch,
 }));
 
+/**
+ * SMOODEV-974: test seam — a TokenProvider that returns a fixed JWT without
+ * hitting the auth server. Keeps existing cache/fetch-behavior tests focused
+ * on ConfigClient logic instead of the OAuth handshake.
+ */
+class StubTokenProvider extends TokenProvider {
+    public invalidateCallCount = 0;
+    constructor(private readonly token: string = 'test-access-token') {
+        super({ authUrl: 'https://stub.invalid', clientId: 'stub', clientSecret: 'stub' });
+    }
+    async getAccessToken(): Promise<string> {
+        return this.token;
+    }
+    invalidate(): void {
+        this.invalidateCallCount++;
+    }
+}
+
 const BASE_OPTIONS = {
     baseUrl: 'https://api.smooai.dev',
-    apiKey: 'test-key',
     orgId: 'org-123',
     environment: 'production',
+    tokenProvider: new StubTokenProvider(),
 };
 
 describe('ConfigClient', () => {
@@ -99,7 +118,7 @@ describe('ConfigClient', () => {
                 expect.stringContaining('/config/values'),
                 expect.objectContaining({
                     next: { revalidate: 60 },
-                    headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
+                    headers: expect.objectContaining({ Authorization: 'Bearer test-access-token' }),
                 }),
             );
         });
@@ -119,7 +138,7 @@ describe('ConfigClient', () => {
                 expect.any(String),
                 expect.objectContaining({
                     headers: expect.objectContaining({
-                        Authorization: 'Bearer test-key',
+                        Authorization: 'Bearer test-access-token',
                         'X-Custom': 'value',
                     }),
                 }),
@@ -145,7 +164,7 @@ describe('ConfigClient', () => {
                     method: 'POST',
                     body: JSON.stringify({ environment: 'production', context: { userId: 'u-1', plan: 'pro' } }),
                     headers: expect.objectContaining({
-                        Authorization: 'Bearer test-key',
+                        Authorization: 'Bearer test-access-token',
                         'Content-Type': 'application/json',
                     }),
                 }),

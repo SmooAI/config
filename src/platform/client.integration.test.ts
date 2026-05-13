@@ -14,7 +14,10 @@ import { ConfigClient, type ConfigClientOptions } from './client';
 // Test constants
 // ---------------------------------------------------------------------------
 const BASE_URL = 'https://config.smooai.test';
+const AUTH_URL = 'https://auth.smooai.test';
+const CLIENT_ID = 'test-client-id-001';
 const API_KEY = 'test-api-key-12345';
+const ACCESS_TOKEN = 'fake-jwt-access-token';
 const ORG_ID = '550e8400-e29b-41d4-a716-446655440000';
 
 // ---------------------------------------------------------------------------
@@ -59,14 +62,32 @@ function getRequestCount(pathPattern?: string): number {
 // ---------------------------------------------------------------------------
 // MSW Handlers
 // ---------------------------------------------------------------------------
+// SMOODEV-974: The auth model is now OAuth2 client_credentials. Clients POST
+// (CLIENT_ID, API_KEY) to AUTH_URL/token, get back a JWT, then send that JWT
+// as the Bearer on /config/values calls. Handlers below mimic that contract.
 const handlers = [
+    // OAuth token endpoint: POST /token
+    http.post(`${AUTH_URL}/token`, async ({ request }) => {
+        logRequest('POST', request.url);
+        const body = new URLSearchParams(await request.text());
+        if (
+            body.get('grant_type') !== 'client_credentials' ||
+            body.get('provider') !== 'client_credentials' ||
+            body.get('client_id') !== CLIENT_ID ||
+            body.get('client_secret') !== API_KEY
+        ) {
+            return HttpResponse.json({ error: 'invalid_client' }, { status: 401 });
+        }
+        return HttpResponse.json({ access_token: ACCESS_TOKEN, token_type: 'Bearer', expires_in: 3600 });
+    }),
+
     // Single value endpoint: GET /organizations/:orgId/config/values/:key
     http.get(`${BASE_URL}/organizations/:orgId/config/values/:key`, ({ request, params }) => {
         logRequest('GET', request.url);
 
-        // Auth check
+        // Auth check — backend requires the JWT issued by /token, not the raw API key.
         const auth = request.headers.get('Authorization');
-        if (auth !== `Bearer ${API_KEY}`) {
+        if (auth !== `Bearer ${ACCESS_TOKEN}`) {
             return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -92,7 +113,7 @@ const handlers = [
         logRequest('GET', request.url);
 
         const auth = request.headers.get('Authorization');
-        if (auth !== `Bearer ${API_KEY}`) {
+        if (auth !== `Bearer ${ACCESS_TOKEN}`) {
             return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -127,7 +148,9 @@ afterEach(() => server.resetHandlers());
 function createClient(overrides: Partial<ConfigClientOptions> = {}) {
     return new ConfigClient({
         baseUrl: overrides.baseUrl ?? BASE_URL,
-        apiKey: overrides.apiKey ?? API_KEY,
+        authUrl: overrides.authUrl ?? AUTH_URL,
+        clientId: overrides.clientId ?? CLIENT_ID,
+        clientSecret: overrides.clientSecret ?? overrides.apiKey ?? API_KEY,
         orgId: overrides.orgId ?? ORG_ID,
         environment: overrides.environment,
         cacheTtlMs: overrides.cacheTtlMs,
@@ -193,8 +216,10 @@ describe('ConfigClient Integration Tests', () => {
         it('sends the correct Authorization header', async () => {
             const client = createClient();
             await client.getValue('API_URL', 'production');
-            expect(requestLog).toHaveLength(1);
-            // If auth were wrong, we'd get a 401 error
+            // 1 OAuth token exchange + 1 config-values call
+            expect(getRequestCount('/token')).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
+            // If auth were wrong, the MSW handler would have returned 401 and the call would have thrown.
         });
 
         it('URL-encodes keys with special characters', async () => {
@@ -204,7 +229,7 @@ describe('ConfigClient Integration Tests', () => {
                 http.get(`${BASE_URL}/organizations/:orgId/config/values/:key`, ({ request, params }) => {
                     logRequest('GET', request.url);
                     const auth = request.headers.get('Authorization');
-                    if (auth !== `Bearer ${API_KEY}`) {
+                    if (auth !== `Bearer ${ACCESS_TOKEN}`) {
                         return HttpResponse.json({ error: 'Unauthorized' }, { status: 401 });
                     }
                     // Verify the raw URL contains the encoded form
@@ -219,19 +244,47 @@ describe('ConfigClient Integration Tests', () => {
             expect(value).toBe('found-my/special key');
         });
 
-        it('throws on 401 Unauthorized', async () => {
-            const client = createClient({ apiKey: 'bad-key' });
-            await expect(client.getValue('API_URL', 'production')).rejects.toThrow('Config API error: HTTP 401');
+        it('throws on OAuth token-exchange failure (bad client_secret)', async () => {
+            // Bad secret → /token returns 401 → exchange throws synchronously, never reaches /config/values.
+            // @smooai/fetch wraps the error with the response body, so we just check for 401.
+            const client = createClient({ clientSecret: 'bad-secret' });
+            await expect(client.getValue('API_URL', 'production')).rejects.toThrow(/401/);
+        });
+
+        it('retries once after a downstream 401 (token revoked / rotated)', async () => {
+            // First /config/values call returns 401 even with a valid JWT — simulates
+            // server-side token revocation. Client should invalidate + re-exchange + retry.
+            let downstreamHits = 0;
+            server.use(
+                http.get(`${BASE_URL}/organizations/:orgId/config/values/:key`, ({ request, params }) => {
+                    logRequest('GET', request.url);
+                    downstreamHits++;
+                    if (downstreamHits === 1) {
+                        return HttpResponse.json({ error: 'token revoked' }, { status: 401 });
+                    }
+                    const key = params.key as string;
+                    const url = new URL(request.url);
+                    const env = url.searchParams.get('environment') || 'development';
+                    return HttpResponse.json({ value: MOCK_VALUES[env]?.[key] });
+                }),
+            );
+
+            const client = createClient();
+            const value = await client.getValue('API_URL', 'production');
+            expect(value).toBe('https://api.smooai.com');
+            expect(downstreamHits).toBe(2);
+            // Two /token POSTs (initial + post-401 refresh) + two /config/values GETs
+            expect(getRequestCount('/token')).toBe(2);
         });
 
         it('throws on 403 Forbidden (wrong org)', async () => {
             const client = createClient({ orgId: 'wrong-org-id' });
-            await expect(client.getValue('API_URL', 'production')).rejects.toThrow('Config API error: HTTP 403');
+            await expect(client.getValue('API_URL', 'production')).rejects.toThrow(/403/);
         });
 
         it('throws on 404 Not Found (unknown key)', async () => {
             const client = createClient();
-            await expect(client.getValue('NONEXISTENT_KEY', 'production')).rejects.toThrow('Config API error: HTTP 404');
+            await expect(client.getValue('NONEXISTENT_KEY', 'production')).rejects.toThrow(/404/);
         });
     });
 
@@ -271,20 +324,31 @@ describe('ConfigClient Integration Tests', () => {
             expect(values).toEqual({});
         });
 
-        it('throws on 401 Unauthorized', async () => {
-            const client = createClient({ apiKey: 'wrong-key' });
-            await expect(client.getAllValues('production')).rejects.toThrow('Config API error: HTTP 401');
+        it('throws on OAuth failure (bad client_secret)', async () => {
+            const client = createClient({ clientSecret: 'wrong-secret' });
+            await expect(client.getAllValues('production')).rejects.toThrow(/401/);
         });
 
         it('throws on 403 Forbidden (wrong org)', async () => {
             const client = createClient({ orgId: 'wrong-org' });
-            await expect(client.getAllValues('production')).rejects.toThrow('Config API error: HTTP 403');
+            await expect(client.getAllValues('production')).rejects.toThrow(/403/);
         });
 
-        it('sends exactly one request', async () => {
+        it('sends exactly one /config/values request (plus one /token)', async () => {
             const client = createClient();
             await client.getAllValues('production');
-            expect(getRequestCount()).toBe(1);
+            // 1 /token + 1 /config/values
+            expect(getRequestCount('/config/values')).toBe(1);
+            expect(getRequestCount('/token')).toBe(1);
+        });
+
+        it('reuses the cached OAuth token across multiple config calls', async () => {
+            const client = createClient();
+            await client.getValue('API_URL', 'production');
+            await client.getValue('MAX_RETRIES', 'production');
+            await client.getAllValues('production');
+            // OAuth handshake only once
+            expect(getRequestCount('/token')).toBe(1);
         });
     });
 
@@ -296,10 +360,10 @@ describe('ConfigClient Integration Tests', () => {
             const client = createClient();
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1); // No additional request
+            expect(getRequestCount('/config/values')).toBe(1); // No additional request
         });
 
         it('caches different keys independently', async () => {
@@ -307,12 +371,12 @@ describe('ConfigClient Integration Tests', () => {
 
             await client.getValue('API_URL', 'production');
             await client.getValue('MAX_RETRIES', 'production');
-            expect(getRequestCount()).toBe(2); // Two separate fetches
+            expect(getRequestCount('/config/values')).toBe(2); // Two separate fetches
 
             // Both should be cached now
             await client.getValue('API_URL', 'production');
             await client.getValue('MAX_RETRIES', 'production');
-            expect(getRequestCount()).toBe(2); // No additional fetches
+            expect(getRequestCount('/config/values')).toBe(2); // No additional fetches
         });
 
         it('caches per-environment (same key, different env = separate cache entries)', async () => {
@@ -320,12 +384,12 @@ describe('ConfigClient Integration Tests', () => {
 
             await client.getValue('API_URL', 'production');
             await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(2);
+            expect(getRequestCount('/config/values')).toBe(2);
 
             // Both should be independently cached
             const prod = await client.getValue('API_URL', 'production');
             const staging = await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(2); // Still 2 — both from cache
+            expect(getRequestCount('/config/values')).toBe(2); // Still 2 — both from cache
 
             expect(prod).toBe('https://api.smooai.com');
             expect(staging).toBe('https://api.staging.smooai.com');
@@ -335,13 +399,13 @@ describe('ConfigClient Integration Tests', () => {
             const client = createClient();
 
             await client.getAllValues('production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             // These should all come from cache
             const apiUrl = await client.getValue('API_URL', 'production');
             const retries = await client.getValue('MAX_RETRIES', 'production');
             const debug = await client.getValue('DEBUG', 'production');
-            expect(getRequestCount()).toBe(1); // No additional requests
+            expect(getRequestCount('/config/values')).toBe(1); // No additional requests
 
             expect(apiUrl).toBe('https://api.smooai.com');
             expect(retries).toBe(3);
@@ -352,12 +416,12 @@ describe('ConfigClient Integration Tests', () => {
             const client = createClient();
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             client.invalidateCache();
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(2); // Had to fetch again
+            expect(getRequestCount('/config/values')).toBe(2); // Had to fetch again
         });
 
         it('invalidateCache clears all environments', async () => {
@@ -365,40 +429,40 @@ describe('ConfigClient Integration Tests', () => {
 
             await client.getValue('API_URL', 'production');
             await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(2);
+            expect(getRequestCount('/config/values')).toBe(2);
 
             client.invalidateCache();
 
             await client.getValue('API_URL', 'production');
             await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(4); // Both re-fetched
+            expect(getRequestCount('/config/values')).toBe(4); // Both re-fetched
         });
 
         it('getAllValues for one env does not cache another env', async () => {
             const client = createClient();
 
             await client.getAllValues('production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             // Staging values are NOT cached
             await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(2); // Had to fetch
+            expect(getRequestCount('/config/values')).toBe(2); // Had to fetch
         });
 
         it('invalidateCache followed by getAllValues re-populates cache', async () => {
             const client = createClient();
 
             await client.getAllValues('production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             client.invalidateCache();
 
             await client.getAllValues('production');
-            expect(getRequestCount()).toBe(2); // Re-fetched
+            expect(getRequestCount('/config/values')).toBe(2); // Re-fetched
 
             // Should be cached again
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(2); // From cache
+            expect(getRequestCount('/config/values')).toBe(2); // From cache
         });
     });
 
@@ -406,16 +470,58 @@ describe('ConfigClient Integration Tests', () => {
     // Constructor / Configuration
     // -----------------------------------------------------------------------
     describe('constructor', () => {
-        it('throws when baseUrl is missing', () => {
-            expect(() => new ConfigClient({ apiKey: API_KEY, orgId: ORG_ID })).toThrow('baseUrl is required');
+        // SMOODEV-974: stash + clear env vars that ConfigClient defaults from, so
+        // these "required-field-missing" tests don't accidentally pick up a real
+        // SMOOAI_CONFIG_* value from the developer's shell or CI runner.
+        const SAVED_ENV: Record<string, string | undefined> = {};
+        beforeAll(() => {
+            for (const k of [
+                'SMOOAI_CONFIG_API_URL',
+                'SMOOAI_CONFIG_AUTH_URL',
+                'SMOOAI_AUTH_URL',
+                'SMOOAI_CONFIG_CLIENT_ID',
+                'SMOOAI_CONFIG_CLIENT_SECRET',
+                'SMOOAI_CONFIG_API_KEY',
+                'SMOOAI_CONFIG_ORG_ID',
+            ]) {
+                SAVED_ENV[k] = process.env[k];
+                delete process.env[k];
+            }
+        });
+        afterAll(() => {
+            for (const [k, v] of Object.entries(SAVED_ENV)) {
+                if (v === undefined) delete process.env[k];
+                else process.env[k] = v;
+            }
         });
 
-        it('throws when apiKey is missing', () => {
-            expect(() => new ConfigClient({ baseUrl: BASE_URL, orgId: ORG_ID })).toThrow('apiKey is required');
+        it('throws when baseUrl is missing', () => {
+            expect(() => new ConfigClient({ clientId: CLIENT_ID, clientSecret: API_KEY, orgId: ORG_ID })).toThrow('baseUrl is required');
+        });
+
+        it('throws when clientId is missing', () => {
+            expect(() => new ConfigClient({ baseUrl: BASE_URL, clientSecret: API_KEY, orgId: ORG_ID })).toThrow('clientId is required');
+        });
+
+        it('throws when clientSecret is missing', () => {
+            expect(() => new ConfigClient({ baseUrl: BASE_URL, clientId: CLIENT_ID, orgId: ORG_ID })).toThrow('clientSecret is required');
+        });
+
+        it('accepts apiKey as a deprecated alias for clientSecret', async () => {
+            const client = new ConfigClient({
+                baseUrl: BASE_URL,
+                authUrl: AUTH_URL,
+                clientId: CLIENT_ID,
+                apiKey: API_KEY,
+                orgId: ORG_ID,
+                environment: 'production',
+            });
+            const value = await client.getValue('API_URL');
+            expect(value).toBe('https://api.smooai.com');
         });
 
         it('throws when orgId is missing', () => {
-            expect(() => new ConfigClient({ baseUrl: BASE_URL, apiKey: API_KEY })).toThrow('orgId is required');
+            expect(() => new ConfigClient({ baseUrl: BASE_URL, clientId: CLIENT_ID, clientSecret: API_KEY })).toThrow('orgId is required');
         });
 
         it('strips trailing slashes from baseUrl', async () => {
@@ -435,12 +541,12 @@ describe('ConfigClient Integration Tests', () => {
             // 1. Load all values
             const all = await client.getAllValues('production');
             expect(all.API_URL).toBe('https://api.smooai.com');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             // 2. Individual getValue should be cached
             const cached = await client.getValue('API_URL', 'production');
             expect(cached).toBe('https://api.smooai.com');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             // 3. Invalidate
             client.invalidateCache();
@@ -448,7 +554,7 @@ describe('ConfigClient Integration Tests', () => {
             // 4. Re-fetch
             const fresh = await client.getValue('API_URL', 'production');
             expect(fresh).toBe('https://api.smooai.com');
-            expect(getRequestCount()).toBe(2);
+            expect(getRequestCount('/config/values')).toBe(2);
         });
 
         it('works across multiple environments in sequence', async () => {
@@ -461,13 +567,13 @@ describe('ConfigClient Integration Tests', () => {
             expect(prodUrl).toBe('https://api.smooai.com');
             expect(stagingUrl).toBe('https://api.staging.smooai.com');
             expect(devUrl).toBe('http://localhost:3000');
-            expect(getRequestCount()).toBe(3);
+            expect(getRequestCount('/config/values')).toBe(3);
 
             // All should be cached
             await client.getValue('API_URL', 'production');
             await client.getValue('API_URL', 'staging');
             await client.getValue('API_URL', 'development');
-            expect(getRequestCount()).toBe(3); // No new requests
+            expect(getRequestCount('/config/values')).toBe(3); // No new requests
         });
     });
 
@@ -479,11 +585,11 @@ describe('ConfigClient Integration Tests', () => {
             const client = createClient({ cacheTtlMs: 60_000 }); // 60s TTL
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             // Should still be cached
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
         });
 
         it('re-fetches after TTL expires', async () => {
@@ -498,17 +604,17 @@ describe('ConfigClient Integration Tests', () => {
                 const client = createClient({ cacheTtlMs: 100 }); // 100ms TTL
 
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(1);
+                expect(getRequestCount('/config/values')).toBe(1);
 
                 // Still within TTL
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(1);
+                expect(getRequestCount('/config/values')).toBe(1);
 
                 // Advance time past TTL
                 fakeTime += 200;
 
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(2); // Cache expired, re-fetched
+                expect(getRequestCount('/config/values')).toBe(2); // Cache expired, re-fetched
             } finally {
                 Date.now = originalDateNow;
             }
@@ -523,17 +629,17 @@ describe('ConfigClient Integration Tests', () => {
                 const client = createClient({ cacheTtlMs: 100 });
 
                 await client.getAllValues('production');
-                expect(getRequestCount()).toBe(1);
+                expect(getRequestCount('/config/values')).toBe(1);
 
                 // Cached
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(1);
+                expect(getRequestCount('/config/values')).toBe(1);
 
                 // Expire
                 fakeTime += 200;
 
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(2); // Re-fetched
+                expect(getRequestCount('/config/values')).toBe(2); // Re-fetched
             } finally {
                 Date.now = originalDateNow;
             }
@@ -548,13 +654,13 @@ describe('ConfigClient Integration Tests', () => {
                 const client = createClient(); // No TTL
 
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(1);
+                expect(getRequestCount('/config/values')).toBe(1);
 
                 // Advance time significantly
                 fakeTime += 86_400_000; // 24 hours
 
                 await client.getValue('API_URL', 'production');
-                expect(getRequestCount()).toBe(1); // Still cached
+                expect(getRequestCount('/config/values')).toBe(1); // Still cached
             } finally {
                 Date.now = originalDateNow;
             }
@@ -570,42 +676,42 @@ describe('ConfigClient Integration Tests', () => {
 
             await client.getValue('API_URL', 'production');
             await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(2);
+            expect(getRequestCount('/config/values')).toBe(2);
 
             client.invalidateCacheForEnvironment('production');
 
             // Production re-fetched, staging still cached
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(3);
+            expect(getRequestCount('/config/values')).toBe(3);
 
             await client.getValue('API_URL', 'staging');
-            expect(getRequestCount()).toBe(3); // Still cached
+            expect(getRequestCount('/config/values')).toBe(3); // Still cached
         });
 
         it('clears all keys for the environment', async () => {
             const client = createClient();
 
             await client.getAllValues('production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             client.invalidateCacheForEnvironment('production');
 
             // All production keys need re-fetch
             await client.getValue('API_URL', 'production');
             await client.getValue('MAX_RETRIES', 'production');
-            expect(getRequestCount()).toBe(3);
+            expect(getRequestCount('/config/values')).toBe(3);
         });
 
         it('does nothing for non-existent environment', async () => {
             const client = createClient();
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1);
+            expect(getRequestCount('/config/values')).toBe(1);
 
             client.invalidateCacheForEnvironment('nonexistent');
 
             await client.getValue('API_URL', 'production');
-            expect(getRequestCount()).toBe(1); // Still cached
+            expect(getRequestCount('/config/values')).toBe(1); // Still cached
         });
     });
 });
