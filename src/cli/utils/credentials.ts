@@ -63,7 +63,44 @@ export function deriveAuthUrlFromBaseUrl(baseUrl: string): string {
     }
 }
 
+/**
+ * SMOODEV-993 — When SMOOAI_CONFIG_* env vars are fully populated, derive
+ * OAuth credentials from them instead of reading `~/.smooai/credentials.json`.
+ *
+ * This matches how the rest of the smooai monorepo authenticates against the
+ * config API (every script — `scripts/bake-config-dev.ts`,
+ * `smoo-secrets/push-secrets.ts`, the prod deploy baker, `.envrc.currentEnv`,
+ * `sst shell` env injection — uses these env vars). The CLI ignoring them
+ * meant `smooai-config list/get` could silently hit a different org than
+ * every other tool in the same shell, producing misleading "key not found"
+ * + truncated-list output. See SMOODEV-990 investigation.
+ *
+ * Requires all four: SMOOAI_CONFIG_ORG_ID, SMOOAI_CONFIG_CLIENT_ID,
+ * SMOOAI_CONFIG_CLIENT_SECRET, and SMOOAI_CONFIG_API_URL. (API_URL has a
+ * documented default of https://api.smoo.ai in `bake-config-dev.ts` so we
+ * default it here too.) AUTH_URL is derived from API_URL via the existing
+ * `deriveAuthUrlFromBaseUrl` helper, or read from SMOOAI_CONFIG_AUTH_URL /
+ * the legacy SMOOAI_AUTH_URL.
+ *
+ * Returns `null` when env vars are incomplete so the caller falls back to
+ * the credentials.json path unchanged.
+ */
+function loadCredentialsFromEnv(): OAuthCredentials | null {
+    const env = process.env;
+    const clientId = env.SMOOAI_CONFIG_CLIENT_ID;
+    const clientSecret = env.SMOOAI_CONFIG_CLIENT_SECRET ?? env.SMOOAI_CONFIG_API_KEY;
+    const orgId = env.SMOOAI_CONFIG_ORG_ID;
+    if (!clientId || !clientSecret || !orgId) return null;
+    const baseUrl = env.SMOOAI_CONFIG_API_URL ?? 'https://api.smoo.ai';
+    const authUrl = env.SMOOAI_CONFIG_AUTH_URL ?? env.SMOOAI_AUTH_URL ?? deriveAuthUrlFromBaseUrl(baseUrl);
+    return { clientId, clientSecret, orgId, baseUrl, authUrl };
+}
+
 export function loadCredentials(): Credentials | null {
+    // SMOODEV-993: env vars win over the on-disk credentials file.
+    const fromEnv = loadCredentialsFromEnv();
+    if (fromEnv) return fromEnv;
+
     try {
         if (!existsSync(CREDENTIALS_FILE)) return null;
         const raw = readFileSync(CREDENTIALS_FILE, 'utf-8');
