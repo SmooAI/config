@@ -26,6 +26,8 @@ Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-so
 
 **Type-safe config, secrets, and feature flags for every layer of your stack** -- One schema, one API, every language. Rename a key and every call site is a compile error, not a 3 AM page.
 
+> 📣 **The CLI moved.** Use `th config` from the [smooth repo](https://github.com/SmooAI/smooth) for all operator commands (login, get, set, list, push, pull, diff, init, etc.). The standalone `smooai-config` CLI that used to live in this repo is deprecated and being deleted (SMOODEV-1411). **The runtime library `@smooai/config` (TypeScript / Python / Rust / Go / .NET, consumed via `secretConfig.get(...)` / `publicConfig.get(...)` / `featureFlag.get(...)`) is unchanged** — only the operator CLI surface moved to Rust in the smooth repo.
+
 ![NPM Version](https://img.shields.io/npm/v/%40smooai%2Fconfig?style=for-the-badge)
 ![NPM Downloads](https://img.shields.io/npm/dw/%40smooai%2Fconfig?style=for-the-badge)
 ![NPM Last Update](https://img.shields.io/npm/last-update/%40smooai%2Fconfig?style=for-the-badge)
