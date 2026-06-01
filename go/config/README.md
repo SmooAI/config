@@ -285,6 +285,63 @@ Without both set, `NewRuntimeConfigManager` returns a regular `*ConfigManager` c
 
 The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wire-identical to the TypeScript, Python, Rust, and .NET runtimes. A blob baked in any language decrypts in any other.
 
+### Container / Runtime Mode
+
+For long-lived containers (EKS/ECS) the baked blob is the **wrong** default: when the per-build blob key isn't delivered to the pod, resolution silently falls through to the absent file tier and returns the zero value for a required secret (the SMOODEV-1478 CrashLoop). **Container mode** makes the HTTP config API the first-class, **fail-loud** path — a missing required value is an immediate, typed `*ConfigKeyUnresolvedError`, never a silent zero value.
+
+This is the Go side of the five-language parity contract. The behavior (env contract, mode selection, fail-loud semantics, 30s cache TTL, 60s token refresh buffer, 401→refresh→retry) is identical across the TS/dotnet/go/python/rust SDKs — see the shared **[`docs/Container-Runtime-Mode.md`](../../docs/Container-Runtime-Mode.md)** for the env contract, the ExternalSecret (External Secrets Operator) recipe, and a readiness-probe example.
+
+```go
+import (
+    "context"
+    "log"
+    "net/http"
+
+    config "github.com/SmooAI/config/go/config"
+    "github.com/SmooAI/config/go/config/container"
+)
+
+// Validates the container env contract, mints an M2M token, and does an
+// initial fetch — startup fails loudly here, not on first read.
+h, err := container.InitContainerConfig(context.Background(), container.InitContainerConfigOptions{
+    Schema: schema, // your *config.ConfigDefinition
+})
+if err != nil {
+    log.Fatalf("config bootstrap failed: %v", err) // CrashLoop visibly
+}
+
+// Fail-loud: a required secret that doesn't resolve returns a *ConfigKeyUnresolvedError.
+stripeKey, ok, err := h.SecretConfig.Get("stripeApiKey")
+if err != nil {
+    log.Fatal(err)
+}
+_ = ok
+_ = stripeKey
+
+// Kubernetes readiness probe — never errors.
+http.HandleFunc("/healthz/config", func(w http.ResponseWriter, _ *http.Request) {
+    if container.ConfigHealthOf(h).IsHealthy() {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
+    w.WriteHeader(http.StatusServiceUnavailable)
+})
+```
+
+Key API:
+
+| Symbol                                                                     | Purpose                                                                                                                                                                            |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InitContainerConfig(ctx, opts) (*ContainerConfigHandle, error)`           | Validate env, mint token, initial fetch. Fail-loud at startup.                                                                                                                     |
+| `handle.SecretConfig` / `PublicConfig` / `FeatureFlag`                     | Tier accessors. `Get(key) (value, ok, err)` returns `*ConfigKeyUnresolvedError` for a missing required key; `MustGet(key) (value, ok)` is the sync analog that panics on the same. |
+| `handle.Health() ConfigHealth`                                             | Non-throwing readiness status (`"healthy"` / `"unhealthy"` + reason).                                                                                                              |
+| `container.ConfigHealthOf(handle) ConfigHealth`                            | Free-function form; never errors/panics (nil-safe).                                                                                                                                |
+| `container.SelectMode(*SelectModeInputs) string`                           | `"container"` or `"default"` per the §2 selection rules.                                                                                                                           |
+| `container.ConfigBootstrapError{ Missing []string }`                       | Missing/blank container-required env at init.                                                                                                                                      |
+| `container.ConfigKeyUnresolvedError{ Key, Env string; TriedTiers []Tier }` | A required key that resolved absent across all active tiers.                                                                                                                       |
+
+By design, the schema carries no required/optional metadata, so container mode treats **all** schema keys as required; opt specific keys out via `InitContainerConfigOptions.OptionalKeys`. An optional key that resolves absent returns the zero value with `ok=false` and no error.
+
 ## Environment Variables
 
 All clients read from the same set of environment variables:

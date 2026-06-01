@@ -329,6 +329,35 @@ func (c *ConfigClient) GetAllValues(environment string) (map[string]any, error) 
 	return result.Values, nil
 }
 
+// SeedCache pre-populates a single cache entry without a network request.
+// Pass an empty environment to use the client's default. Mirrors the TS
+// ConfigClient.seedCache — used by container mode to record an env-tier
+// override so a subsequent GetCachedValue (sync read) sees it.
+func (c *ConfigClient) SeedCache(key string, value any, environment string) {
+	env := c.resolveEnv(environment)
+	c.mu.Lock()
+	c.cache[env+":"+key] = cacheEntry{value: value, expiresAt: c.computeExpiresAt()}
+	c.mu.Unlock()
+}
+
+// GetCachedValue synchronously reads a value from the local cache without a
+// network request. Returns (nil, false) when the key is absent or its TTL has
+// expired. Mirrors the TS ConfigClient.getCachedValue. Pass an empty
+// environment to use the client's default.
+func (c *ConfigClient) GetCachedValue(key, environment string) (any, bool) {
+	env := c.resolveEnv(environment)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	entry, ok := c.cache[env+":"+key]
+	if !ok {
+		return nil, false
+	}
+	if !entry.expiresAt.IsZero() && !time.Now().Before(entry.expiresAt) {
+		return nil, false
+	}
+	return entry.value, true
+}
+
 // InvalidateCache clears all locally cached values.
 func (c *ConfigClient) InvalidateCache() {
 	c.mu.Lock()
