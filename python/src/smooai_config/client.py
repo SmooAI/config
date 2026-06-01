@@ -162,6 +162,18 @@ class ConfigClient:
         self._set_cached(cache_key, value)
         return value
 
+    def get_cached_value(self, key: str, *, environment: str | None = None) -> Any:
+        """Return a cached value without issuing an HTTP request.
+
+        Returns ``None`` when the key is absent or its cache entry has
+        expired. Used by container mode's sync accessors and last-good
+        serving (a value already seeded via :meth:`get_all_values` /
+        :meth:`seed_cache_from_map` resolves with no network round-trip).
+        """
+        env = environment or self._default_environment
+        _found, value = self._get_cached(f"{env}:{key}")
+        return value
+
     def get_all_values(self, *, environment: str | None = None) -> dict[str, Any]:
         """Get all config values for an environment."""
         env = environment or self._default_environment

@@ -10,6 +10,18 @@ from smooai_config.client import (
 )
 from smooai_config.cloud_region import CloudRegionResult, get_cloud_region
 from smooai_config.config_manager import ConfigManager, UndefinedKeyError
+from smooai_config.container import (
+    DEFAULT_CACHE_TTL_MS,
+    DEFAULT_TOKEN_REFRESH_BUFFER_SECONDS,
+    ConfigBootstrapError,
+    ConfigHealth,
+    ConfigKeyUnresolvedError,
+    ContainerConfigHandle,
+    SelectModeInputs,
+    config_health,
+    init_container_config,
+    select_mode,
+)
 from smooai_config.env_config import find_and_process_env_config
 from smooai_config.file_config import find_and_process_file_config, find_config_directory
 from smooai_config.local import LocalConfigManager
@@ -19,16 +31,23 @@ from smooai_config.schema import ConfigTier, define_config
 from smooai_config.utils import SmooaiConfigError, camel_to_upper_snake, coerce_boolean
 
 __all__ = [
+    "DEFAULT_CACHE_TTL_MS",
+    "DEFAULT_TOKEN_REFRESH_BUFFER_SECONDS",
     "BuildBundleResult",
     "CloudRegionResult",
+    "ConfigBootstrapError",
     "ConfigClient",
+    "ConfigHealth",
+    "ConfigKeyUnresolvedError",
     "ConfigManager",
     "ConfigTier",
+    "ContainerConfigHandle",
     "EvaluateFeatureFlagResponse",
     "FeatureFlagContextError",
     "FeatureFlagEvaluationError",
     "FeatureFlagNotFoundError",
     "LocalConfigManager",
+    "SelectModeInputs",
     "SmooaiConfigError",
     "UndefinedKeyError",
     "build_bundle",
@@ -36,12 +55,15 @@ __all__ = [
     "camel_to_upper_snake",
     "classify_from_schema",
     "coerce_boolean",
+    "config_health",
     "define_config",
     "find_and_process_env_config",
     "find_and_process_file_config",
     "find_config_directory",
     "get_cloud_region",
     "hydrate_config_client",
+    "init_container_config",
     "merge_replace_arrays",
     "read_baked_config",
+    "select_mode",
 ]
