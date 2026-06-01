@@ -239,7 +239,7 @@ M2M credentials never sit in plaintext manifests.
 | ---------- | --------------------------------- | ----------------- |
 | TypeScript | `initContainerConfig({ schema })` | `config.health()` |
 | .NET       | `InitContainerConfig(...)`        | `ConfigHealth()`  |
-| Go         | `InitContainerConfig(ctx, ...)`   | `ConfigHealth()`  |
+| Go         | `InitContainerConfig(ctx, ...)`   | `handle.Health()` / `ConfigHealthOf(handle)` |
 | Python     | `init_container_config(...)`      | `config_health()` |
 | Rust       | `init_container_config(...)`      | `config_health()` |
 
