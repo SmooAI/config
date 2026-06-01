@@ -17,8 +17,8 @@ use std::time::Duration;
 use reqwest::Client;
 use serde_json::json;
 use smooai_config::container::{
-    config_health, init_container_config, select_mode, ConfigError, ConfigHealth, ContainerConfigHandle,
-    InitContainerConfigOptions, Mode, SelectModeInputs, __reset_select_mode_log_for_tests,
+    __reset_select_mode_log_for_tests, config_health, init_container_config, select_mode, ConfigError, ConfigHealth,
+    ContainerConfigHandle, InitContainerConfigOptions, Mode, SelectModeInputs,
 };
 use smooai_config::{ConfigClient, TokenProvider};
 use wiremock::matchers::{header, method, path_regex, query_param};
