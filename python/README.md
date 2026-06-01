@@ -255,6 +255,39 @@ Without both set, `build_config_runtime()` falls back to a plain `ConfigClient` 
 
 The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wire-identical to the TypeScript, Rust, Go, and .NET runtimes. A blob baked in any language decrypts in any other.
 
+## Container / Runtime Mode
+
+For long-lived **containers** (EKS/ECS) the baked blob is the _wrong_ default: when the per-build blob key isn't delivered to the pod, resolution silently falls through to the (absent) file tier and a required secret reads back as `None` — the SMOODEV-1478 CrashLoop class. **Container mode** makes the HTTP config API the first-class, **fail-loud** path: a missing required value raises a typed error at startup instead of detonating downstream.
+
+The full env contract, the Kubernetes/ExternalSecret (External Secrets Operator) recipe, and the readiness-probe wiring are documented once, shared by every SDK, in [`docs/Container-Runtime-Mode.md`](../docs/Container-Runtime-Mode.md). The Python entry point:
+
+```python
+from smooai_config import define_config
+from smooai_config.container import init_container_config, config_health
+
+schema = define_config(public=PublicConfig, secret=SecretConfig)
+
+# Validates the container env contract (SMOOAI_CONFIG_API_URL / CLIENT_ID /
+# CLIENT_SECRET / ORG_ID / ENV), mints an M2M token, and does an initial
+# fetch — auth/network/missing-env failures surface HERE, at startup, not on
+# first read. Missing/blank required env raises ConfigBootstrapError listing
+# exactly which vars are missing.
+config = init_container_config(schema=schema)
+
+# Fail-loud: a required key that resolves absent raises ConfigKeyUnresolvedError
+# (key, env, tried_tiers) instead of returning None. Both get() and get_sync()
+# enforce this. Pass optional_keys=[...] to opt specific keys out.
+stripe_key = config.secret_config.get("stripeApiKey")
+
+# Readiness/liveness probe — never raises; returns a status.
+health = config_health(config)  # or config.health()
+status_code = 200 if health.status == "healthy" else 503
+```
+
+**Design note (mirrors the TS reference):** the schema marks every key optional (no required/optional metadata), so container mode treats **all schema-declared keys as required by default**. Use the `optional_keys` argument to opt a key out of the fail-loud check.
+
+`select_mode()` decides whether to enter container mode: explicit `SMOOAI_CONFIG_MODE=container` wins; otherwise a present blob/file source means default (Lambda/local) mode; otherwise `CLIENT_ID` + `CLIENT_SECRET` + `API_URL` all being set auto-selects container mode.
+
 ## Environment Variables
 
 All clients read from the same set of environment variables:
