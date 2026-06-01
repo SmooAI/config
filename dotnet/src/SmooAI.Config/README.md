@@ -142,6 +142,50 @@ JsonElement value = await client.GetValueAsync("moonshotApiKey");
 Dictionary<string, JsonElement> all = await client.GetAllValuesAsync();
 ```
 
+## Container / Runtime Mode
+
+Running in a long-lived **container** (EKS/ECS) instead of Lambda? Use **container mode** — it makes the HTTP config API the first-class, **fail-loud** path instead of the Lambda-oriented baked blob. A missing required value becomes an immediate, typed `ConfigKeyUnresolvedException` at startup, not a silent `null` that detonates downstream and CrashLoops your pod (the SMOODEV-1478 incident).
+
+> **Rule of thumb: containers use container mode, not the baked blob.**
+
+The behavior and environment contract are identical across the TypeScript, Python, Rust, Go, and .NET SDKs — idioms differ, behavior does not. The canonical, language-agnostic guide (env contract, an ExternalSecret recipe for the External Secrets Operator, and a readiness-probe example) lives in **[`docs/Container-Runtime-Mode.md`](https://github.com/SmooAI/config/blob/main/docs/Container-Runtime-Mode.md)**.
+
+```csharp
+using SmooAI.Config.Container;
+
+// Declare which keys exist (every key is REQUIRED by default in container mode;
+// use OptionalKeys to opt out). Or parse a schema.json via
+// ContainerConfigSchema.FromSchemaFile(...).
+var schema = new ContainerConfigSchema(
+    publicKeys: new[] { "apiBaseUrl" },
+    secretKeys: new[] { "stripeApiKey" });
+
+// Validates the env contract, mints an M2M token, and does an initial
+// fetch-all-values — so auth/network failures surface HERE, at startup,
+// not on first read. Throws ConfigBootstrapException if required env is missing.
+var config = await ContainerConfig.InitContainerConfigAsync(new InitContainerConfigOptions
+{
+    Schema = schema,
+    OptionalKeys = new[] { "someOptionalKey" }, // these return null instead of throwing
+});
+
+// Fail-loud: a required secret that doesn't resolve throws ConfigKeyUnresolvedException.
+var stripeKey = await config.SecretConfig.GetAsync("stripeApiKey");
+
+// Kubernetes readiness/liveness probe — never throws:
+app.MapGet("/healthz/config", () =>
+{
+    var h = ContainerConfig.Health(config);   // or config.Health()
+    return h.IsHealthy ? Results.Ok() : Results.StatusCode(503);
+});
+```
+
+**Environment contract** (the exact same names every SDK uses): `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_CLIENT_ID`, `SMOOAI_CONFIG_CLIENT_SECRET`, `SMOOAI_CONFIG_ORG_ID`, and `SMOOAI_CONFIG_ENV` are required; `SMOOAI_CONFIG_AUTH_URL` defaults to `https://auth.smoo.ai`. A set-but-blank value counts as missing. An explicit `UPPER_SNAKE_CASE(key)` process env var wins over the HTTP value (env-tier precedence). `ContainerConfig.SelectMode()` decides container vs. default mode per the spec (explicit `SMOOAI_CONFIG_MODE=container`, blob/file present → default, or auto-select when the M2M creds are all set).
+
+Values are cached with a 30s TTL; the OAuth token is refreshed 60s before expiry and a 401 invalidates + retries once. A background refresh failure serves the last-good value until the TTL hard-expires, at which point `Health()` reports `unhealthy`.
+
+> **Design note (matches the TypeScript reference):** the schema carries no required/optional metadata, so container mode treats **every** declared key as **required** by default. `InitContainerConfigOptions.OptionalKeys` is the opt-out.
+
 ## Under the hood
 
 If you want the protocol detail — auth is OAuth2 client-credentials against `{baseUrl}/token` (the `api.` subdomain rewrites to `auth.`), tokens are cached in-memory and refreshed 60s before expiry, and the client retries 401 once after re-auth. The baked bundle format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` with AES-256-GCM — wire-identical to the TS / Python / Rust / Go runtimes so a bundle baked in any language decrypts in any other.
