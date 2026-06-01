@@ -235,13 +235,13 @@ M2M credentials never sit in plaintext manifests.
 
 ## 7. Per-language entry points
 
-| SDK        | Init                              | Health            |
-| ---------- | --------------------------------- | ----------------- |
-| TypeScript | `initContainerConfig({ schema })` | `config.health()` |
-| .NET       | `InitContainerConfig(...)`        | `ConfigHealth()`  |
+| SDK        | Init                              | Health                                       |
+| ---------- | --------------------------------- | -------------------------------------------- |
+| TypeScript | `initContainerConfig({ schema })` | `config.health()`                            |
+| .NET       | `InitContainerConfig(...)`        | `ConfigHealth()`                             |
 | Go         | `InitContainerConfig(ctx, ...)`   | `handle.Health()` / `ConfigHealthOf(handle)` |
-| Python     | `init_container_config(...)`      | `config_health()` |
-| Rust       | `init_container_config(...)`      | `config_health()` |
+| Python     | `init_container_config(...)`      | `config_health()`                            |
+| Rust       | `init_container_config(...)`      | `config_health()`                            |
 
 Each SDK's README links back to this doc and shows the language's
 `initContainerConfig` + health snippet.

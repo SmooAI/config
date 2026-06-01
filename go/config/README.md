@@ -330,15 +330,15 @@ http.HandleFunc("/healthz/config", func(w http.ResponseWriter, _ *http.Request) 
 
 Key API:
 
-| Symbol                                                              | Purpose                                                                                  |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| `InitContainerConfig(ctx, opts) (*ContainerConfigHandle, error)`   | Validate env, mint token, initial fetch. Fail-loud at startup.                           |
-| `handle.SecretConfig` / `PublicConfig` / `FeatureFlag`             | Tier accessors. `Get(key) (value, ok, err)` returns `*ConfigKeyUnresolvedError` for a missing required key; `MustGet(key) (value, ok)` is the sync analog that panics on the same. |
-| `handle.Health() ConfigHealth`                                     | Non-throwing readiness status (`"healthy"` / `"unhealthy"` + reason).                    |
-| `container.ConfigHealthOf(handle) ConfigHealth`                    | Free-function form; never errors/panics (nil-safe).                                       |
-| `container.SelectMode(*SelectModeInputs) string`                   | `"container"` or `"default"` per the §2 selection rules.                                  |
-| `container.ConfigBootstrapError{ Missing []string }`               | Missing/blank container-required env at init.                                            |
-| `container.ConfigKeyUnresolvedError{ Key, Env string; TriedTiers []Tier }` | A required key that resolved absent across all active tiers.                      |
+| Symbol                                                                     | Purpose                                                                                                                                                                            |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `InitContainerConfig(ctx, opts) (*ContainerConfigHandle, error)`           | Validate env, mint token, initial fetch. Fail-loud at startup.                                                                                                                     |
+| `handle.SecretConfig` / `PublicConfig` / `FeatureFlag`                     | Tier accessors. `Get(key) (value, ok, err)` returns `*ConfigKeyUnresolvedError` for a missing required key; `MustGet(key) (value, ok)` is the sync analog that panics on the same. |
+| `handle.Health() ConfigHealth`                                             | Non-throwing readiness status (`"healthy"` / `"unhealthy"` + reason).                                                                                                              |
+| `container.ConfigHealthOf(handle) ConfigHealth`                            | Free-function form; never errors/panics (nil-safe).                                                                                                                                |
+| `container.SelectMode(*SelectModeInputs) string`                           | `"container"` or `"default"` per the §2 selection rules.                                                                                                                           |
+| `container.ConfigBootstrapError{ Missing []string }`                       | Missing/blank container-required env at init.                                                                                                                                      |
+| `container.ConfigKeyUnresolvedError{ Key, Env string; TriedTiers []Tier }` | A required key that resolved absent across all active tiers.                                                                                                                       |
 
 By design, the schema carries no required/optional metadata, so container mode treats **all** schema keys as required; opt specific keys out via `InitContainerConfigOptions.OptionalKeys`. An optional key that resolves absent returns the zero value with `ok=false` and no error.
 
