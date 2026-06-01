@@ -78,6 +78,11 @@ public sealed class SmooConfigClient : IDisposable
     /// callers can stub it without hitting the auth server.
     /// </summary>
     internal SmooConfigClient(SmooConfigClientOptions options, HttpClient httpClient, TokenProvider tokenProvider)
+        : this(options, httpClient, tokenProvider, disposeHttpClient: false)
+    {
+    }
+
+    private SmooConfigClient(SmooConfigClientOptions options, HttpClient httpClient, TokenProvider tokenProvider, bool disposeHttpClient)
     {
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
@@ -87,7 +92,20 @@ public sealed class SmooConfigClient : IDisposable
         _defaultEnvironment = options.DefaultEnvironment;
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _tokenProvider = tokenProvider ?? throw new ArgumentNullException(nameof(tokenProvider));
-        _disposeHttpClient = false;
+        _disposeHttpClient = disposeHttpClient;
+    }
+
+    /// <summary>
+    /// Build a client that uses a caller-supplied <see cref="TokenProvider"/>
+    /// (so the M2M token is minted/refreshed by the injected provider) over a
+    /// fresh, self-owned <see cref="HttpClient"/> for the config REST calls.
+    /// Used by container mode's token-provider injection seam.
+    /// </summary>
+    internal static SmooConfigClient CreateWithTokenProvider(SmooConfigClientOptions options, TokenProvider tokenProvider)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(tokenProvider);
+        return new SmooConfigClient(options, new HttpClient(), tokenProvider, disposeHttpClient: true);
     }
 
     /// <summary>Invalidate the cached OAuth token so the next call re-exchanges.</summary>
