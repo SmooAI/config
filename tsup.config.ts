@@ -19,6 +19,8 @@ const serverEntry = [
     'src/server/index.ts',
     'src/server/internal.ts',
     'src/server/sync-worker.ts',
+    'src/container/index.ts',
+    'src/container/errors.ts',
     'src/platform/client.ts',
     'src/platform/build.ts',
     'src/nextjs/index.ts',

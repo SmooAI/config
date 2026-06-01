@@ -492,6 +492,37 @@ client.invalidateCache();
 
 ---
 
+## Container / Runtime Mode (EKS / ECS)
+
+The baked **blob** tier is the blessed path for **Lambda**, but it is the wrong default for long-lived **containers**: when the per-build blob key isn't delivered to the pod, resolution silently falls through to the (absent) file tier and returns `undefined` for a required secret. That caused a real outage — a container got `undefined` for `STRIPE_API_KEY`, `new Stripe(undefined)` threw at module load, the process exited `0` before `listen()`, and the pod CrashLooped with the root cause buried (SMOODEV-1478).
+
+**Container mode** makes the HTTP config API the first-class path for containers, authenticated with an OAuth2 `client_credentials` (M2M) token, and **fails loud**: a required value that doesn't resolve throws a typed error instead of returning `undefined`.
+
+> **Containers use container mode, not the baked blob.** See [`docs/Container-Runtime-Mode.md`](docs/Container-Runtime-Mode.md) for the full env contract, a complete ExternalSecret (External Secrets Operator) recipe, and a readiness-probe example.
+
+```ts
+import { initContainerConfig, ConfigKeyUnresolvedError } from '@smooai/config/container';
+import schema from '../.smooai-config/config';
+
+// Validates the container env, mints a token, and does an initial fetch —
+// startup fails LOUD here (throws), not on first read.
+const config = await initContainerConfig({ schema });
+
+// Fail-loud: a required secret that doesn't resolve throws
+// ConfigKeyUnresolvedError instead of returning undefined.
+const stripeKey = await config.secretConfig.get('stripeApiKey');
+
+// Kubernetes readiness probe — never throws.
+app.get('/healthz/config', (_req, res) => {
+    const h = config.health(); // { status: 'healthy' } | { status: 'unhealthy', reason }
+    res.status(h.status === 'healthy' ? 200 : 503).json(h);
+});
+```
+
+Env contract (identical in every SDK): `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_CLIENT_ID`, `SMOOAI_CONFIG_CLIENT_SECRET`, `SMOOAI_CONFIG_ORG_ID`, `SMOOAI_CONFIG_ENV` (all required), plus optional `SMOOAI_CONFIG_AUTH_URL` and `SMOOAI_CONFIG_MODE=container` (to force the mode). All schema-declared keys are treated as **required** by default; opt specific keys out with `initContainerConfig({ optionalKeys: ['...'] })`.
+
+---
+
 ## Configuration Tiers
 
 | Tier              | Purpose                 | Examples                                 |
