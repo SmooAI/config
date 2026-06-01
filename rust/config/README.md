@@ -293,6 +293,61 @@ Without both set, `build_config_runtime` returns a plain `ConfigManager` so dev 
 
 The blob format is `nonce (12 bytes) || ciphertext || authTag (16 bytes)` — wire-identical to the TypeScript, Python, Go, and .NET runtimes. A blob baked in any language decrypts in any other.
 
+### Container / Runtime Mode
+
+For long-lived **containers** (EKS/ECS) the baked blob is the wrong default — when the per-build blob key isn't delivered to the pod, resolution silently falls through to the (absent) file tier and returns an absent value for a required secret (the SMOODEV-1478 CrashLoop outage). **Container mode** makes the HTTP config API the first-class, **fail-loud** path: a missing required value is an immediate, typed error (`ConfigKeyUnresolvedError`), never a silent absent value.
+
+This is the Rust implementation of the five-language parity contract. The env contract, mode selection, fail-loud semantics, caching, and the Kubernetes / External Secrets Operator recipe are documented once in the shared, language-agnostic guide: [`docs/Container-Runtime-Mode.md`](https://github.com/SmooAI/config/blob/main/docs/Container-Runtime-Mode.md).
+
+```rust
+use smooai_config::container::{init_container_config, ConfigHealth, InitContainerConfigOptions};
+use smooai_config::schema::define_config;
+
+let schema = define_config(None, None, None);
+
+// Validates the container env contract (SMOOAI_CONFIG_API_URL / CLIENT_ID /
+// CLIENT_SECRET / ORG_ID / ENV), mints an M2M OAuth token, and does an initial
+// fetch — auth/network/missing-env failures surface HERE, at startup, not on
+// first read. Missing/blank required env => Err(ConfigError::Bootstrap) listing
+// exactly which vars are missing.
+let handle = init_container_config(InitContainerConfigOptions {
+    schema,
+    // optional_keys lets specific keys be absent; everything else in the schema
+    // is required (container mode's default-required posture).
+    optional_keys: vec!["sendgridApiKey".to_string()],
+    ..Default::default()
+})
+.await?;
+
+// Fail-loud read: a required key that resolves absent returns
+// Err(ConfigError::KeyUnresolved { key, env, tried_tiers }) — never Ok(None).
+let stripe_key = handle.secret_config().get("stripeApiKey").await?;
+
+// Sync read off the cache mirror (same fail-loud contract).
+let api_url = handle.public_config().get_sync("apiBaseUrl")?;
+
+// Non-failing status for a Kubernetes readiness/liveness probe (/healthz/config):
+// Healthy once the initial fetch succeeded; serves last-good within the 30s cache
+// TTL; Unhealthy past hard-expiry on a sustained refresh failure.
+match handle.health() {
+    ConfigHealth::Healthy => { /* return 200 */ }
+    ConfigHealth::Unhealthy { reason } => { /* return 503, log `reason` */ }
+}
+```
+
+Mode selection is available as `select_mode(...)` for callers that need to branch between container mode and the existing blob/file chain (see §2 of the shared doc):
+
+```rust
+use smooai_config::container::{select_mode, Mode};
+
+// Reads SMOOAI_CONFIG_MODE / M2M creds / blob+file presence from the env.
+if select_mode(None) == Mode::Container {
+    // build a container-mode handle
+}
+```
+
+Defaults match every other SDK: `DEFAULT_CACHE_TTL` = 30s, `DEFAULT_TOKEN_REFRESH_BUFFER_SECONDS` = 60. On a `401` the token is invalidated and the request retried once.
+
 ## Environment Variables
 
 All clients read from the same set of environment variables:

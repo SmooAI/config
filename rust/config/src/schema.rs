@@ -15,7 +15,7 @@ pub enum ConfigTier {
 }
 
 /// Result of defining a configuration schema.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigDefinition {
     pub public_schema: serde_json::Value,
     pub secret_schema: serde_json::Value,
