@@ -8,6 +8,7 @@ pub mod build;
 pub mod client;
 pub mod cloud_region;
 pub mod config_manager;
+pub mod container;
 pub mod deferred;
 pub mod env_config;
 pub mod file_config;
@@ -24,6 +25,12 @@ pub use build::{build_bundle, BuildBundleOptions, BuildBundleResult, BuildError,
 pub use client::{ConfigClient, EvaluateFeatureFlagResponse, FeatureFlagEvaluationError};
 pub use cloud_region::{get_cloud_region, get_cloud_region_from_env, CloudRegionResult};
 pub use config_manager::ConfigManager;
+pub use container::{
+    config_health, init_container_config, ConfigBootstrapError, ConfigError, ConfigHealth, ConfigKeyUnresolvedError,
+    ConfigTier as ContainerConfigTier, ContainerConfigHandle, InitContainerConfigOptions, Mode, SelectModeInputs,
+    DEFAULT_CACHE_TTL, DEFAULT_TOKEN_REFRESH_BUFFER_SECONDS,
+};
+pub use container::{select_mode, FeatureFlagAccessor, PublicConfigAccessor, SecretConfigAccessor};
 pub use env_config::find_and_process_env_config;
 pub use file_config::{find_and_process_file_config, find_config_directory};
 pub use local::LocalConfigManager;

@@ -498,6 +498,31 @@ impl ConfigClient {
         })
     }
 
+    /// Read a value from the local cache only, without hitting the server.
+    ///
+    /// Returns `None` when the key is absent or its TTL has expired. Used by
+    /// container mode's sync getters and last-good fallback (SMOODEV-1494): on
+    /// a background HTTP refresh failure the previously-fetched value is served
+    /// from cache until the TTL hard-expires.
+    pub fn get_cached_value(&self, key: &str, environment: Option<&str>) -> Option<serde_json::Value> {
+        let env = self.resolve_env(environment);
+        let cache_key = format!("{}:{}", env, key);
+        self.get_cached(&cache_key)
+    }
+
+    /// Seed a single value into the local cache (subject to the configured TTL)
+    /// without a network round-trip.
+    ///
+    /// Used by container mode's env tier (SMOODEV-1494): when an explicit
+    /// process env override wins, the value is mirrored into the cache so a
+    /// later `get_cached_value` / sync read sees it.
+    pub fn seed_cache(&mut self, key: &str, value: serde_json::Value, environment: Option<&str>) {
+        let env = self.resolve_env(environment).to_string();
+        let cache_key = format!("{}:{}", env, key);
+        let expires_at = self.compute_expires_at();
+        self.cache.insert(cache_key, CacheEntry { value, expires_at });
+    }
+
     /// Clear the entire local cache.
     pub fn invalidate_cache(&mut self) {
         self.cache.clear();
