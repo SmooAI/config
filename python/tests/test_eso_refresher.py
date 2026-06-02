@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import pytest
+
 from smooai_config.eso_refresher import run_eso_refresher
 from smooai_config.utils import SmooaiConfigError
 
@@ -115,5 +116,10 @@ def test_required_fields():
 
 def test_honors_interval_override():
     sched = ManualScheduler()
-    run_eso_refresher(token_source=FakeTokenSource(["t"]), secret_writer=RecordingWriter(), interval_seconds=123.0, scheduler=sched)
+    run_eso_refresher(
+        token_source=FakeTokenSource(["t"]),
+        secret_writer=RecordingWriter(),
+        interval_seconds=123.0,
+        scheduler=sched,
+    )
     assert sched.interval == 123.0

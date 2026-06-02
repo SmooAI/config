@@ -22,6 +22,7 @@ from smooai_config.container import (
     init_container_config,
     select_mode,
 )
+from smooai_config.env_config import find_and_process_env_config
 from smooai_config.eso_manifests import (
     BootstrapSecretRef,
     ExternalSecretOptions,
@@ -36,7 +37,6 @@ from smooai_config.eso_refresher import (
     TokenSource,
     run_eso_refresher,
 )
-from smooai_config.env_config import find_and_process_env_config
 from smooai_config.file_config import find_and_process_file_config, find_config_directory
 from smooai_config.local import LocalConfigManager
 from smooai_config.merge import merge_replace_arrays
@@ -47,6 +47,7 @@ from smooai_config.utils import SmooaiConfigError, camel_to_upper_snake, coerce_
 __all__ = [
     "DEFAULT_CACHE_TTL_MS",
     "DEFAULT_TOKEN_REFRESH_BUFFER_SECONDS",
+    "BootstrapSecretRef",
     "BuildBundleResult",
     "CloudRegionResult",
     "ConfigBootstrapError",
@@ -56,15 +57,22 @@ __all__ = [
     "ConfigManager",
     "ConfigTier",
     "ContainerConfigHandle",
+    "EsoRefresherHandle",
     "EvaluateFeatureFlagResponse",
+    "ExternalSecretOptions",
     "FeatureFlagContextError",
     "FeatureFlagEvaluationError",
     "FeatureFlagNotFoundError",
     "LocalConfigManager",
+    "SecretMapping",
+    "SecretWriter",
     "SelectModeInputs",
     "SmooaiConfigError",
+    "TokenSource",
     "UndefinedKeyError",
     "build_bundle",
+    "build_cluster_secret_store",
+    "build_external_secret",
     "build_config_runtime",
     "camel_to_upper_snake",
     "classify_from_schema",
@@ -79,5 +87,7 @@ __all__ = [
     "init_container_config",
     "merge_replace_arrays",
     "read_baked_config",
+    "resolve_secret_mapping",
+    "run_eso_refresher",
     "select_mode",
 ]
