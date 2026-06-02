@@ -17,8 +17,9 @@ deployable; this gives the refresh ALGORITHM parity in Python.
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Protocol
 
 from smooai_config.utils import SmooaiConfigError
 

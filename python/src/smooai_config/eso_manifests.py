@@ -64,7 +64,8 @@ def build_cluster_secret_store(
 
     ref = bootstrap_secret or BootstrapSecretRef()
     base = api_url.rstrip("/")
-    url = f"{base}/organizations/{org_id}/config/values/{{{{ .remoteRef.key }}}}?environment={quote(environment, safe='')}"
+    env = quote(environment, safe="")
+    url = f"{base}/organizations/{org_id}/config/values/{{{{ .remoteRef.key }}}}?environment={env}"
 
     return {
         "apiVersion": ESO_API_VERSION,

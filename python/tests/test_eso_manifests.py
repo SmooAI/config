@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from smooai_config.eso_manifests import (
     BootstrapSecretRef,
     ExternalSecretOptions,
@@ -40,7 +41,8 @@ def test_cluster_secret_store_overrides():
         bootstrap_secret=BootstrapSecretRef(name="s", namespace="ns", key="k"),
     )
     assert store["metadata"]["name"] == "smooai-config-prod"
-    assert store["spec"]["provider"]["webhook"]["secrets"][0]["secretRef"] == {"name": "s", "namespace": "ns", "key": "k"}
+    ref = store["spec"]["provider"]["webhook"]["secrets"][0]["secretRef"]
+    assert ref == {"name": "s", "namespace": "ns", "key": "k"}
 
 
 def test_cluster_secret_store_required_fields():
@@ -76,7 +78,12 @@ def test_build_external_secret_maps_keys():
 
 def test_build_external_secret_distinct_target():
     es = build_external_secret(
-        ExternalSecretOptions(name="litellm-config-eso", namespace="smooai-litellm", secrets=["mimoApiKey"], target_secret_name="litellm-config-eso")
+        ExternalSecretOptions(
+            name="litellm-config-eso",
+            namespace="smooai-litellm",
+            secrets=["mimoApiKey"],
+            target_secret_name="litellm-config-eso",
+        )
     )
     assert es["spec"]["target"]["name"] == "litellm-config-eso"
 
