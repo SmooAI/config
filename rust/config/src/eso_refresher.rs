@@ -23,10 +23,7 @@ pub const ESO_REFRESHER_DEFAULT_INTERVAL_SECONDS: u64 = 900;
 /// Writes the freshly-minted bearer token into the target Secret. Abstracted so
 /// the refresh loop is unit-testable without a live cluster.
 pub trait SecretWriter {
-    fn patch_bearer_token(
-        &self,
-        token: &str,
-    ) -> impl Future<Output = Result<(), SmooaiConfigError>>;
+    fn patch_bearer_token(&self, token: &str) -> impl Future<Output = Result<(), SmooaiConfigError>>;
 }
 
 /// The slice of `TokenProvider` the refresher needs. The real `TokenProvider`
@@ -160,7 +157,11 @@ mod tests {
 
     #[tokio::test]
     async fn refresh_once_writes_fresh_token() {
-        let r = EsoRefresher::new(FakeTokenSource::new(&["tok-1"]), RecordingWriter::new(0), Duration::ZERO);
+        let r = EsoRefresher::new(
+            FakeTokenSource::new(&["tok-1"]),
+            RecordingWriter::new(0),
+            Duration::ZERO,
+        );
         r.refresh_once().await.unwrap();
         assert_eq!(*r.token_source.invalidations.borrow(), 1);
         assert_eq!(r.secret_writer.written.borrow().clone(), vec!["tok-1".to_string()]);
@@ -168,23 +169,37 @@ mod tests {
 
     #[tokio::test]
     async fn forces_fresh_each_cycle() {
-        let r = EsoRefresher::new(FakeTokenSource::new(&["tok-1", "tok-2"]), RecordingWriter::new(0), Duration::ZERO);
+        let r = EsoRefresher::new(
+            FakeTokenSource::new(&["tok-1", "tok-2"]),
+            RecordingWriter::new(0),
+            Duration::ZERO,
+        );
         r.refresh_once().await.unwrap();
         r.refresh_once().await.unwrap();
         assert_eq!(*r.token_source.calls.borrow(), 2);
         assert_eq!(*r.token_source.invalidations.borrow(), 2);
-        assert_eq!(r.secret_writer.written.borrow().clone(), vec!["tok-1".to_string(), "tok-2".to_string()]);
+        assert_eq!(
+            r.secret_writer.written.borrow().clone(),
+            vec!["tok-1".to_string(), "tok-2".to_string()]
+        );
     }
 
     #[tokio::test]
     async fn refresh_once_propagates_write_failure() {
-        let r = EsoRefresher::new(FakeTokenSource::new(&["tok-1"]), RecordingWriter::new(1), Duration::ZERO);
+        let r = EsoRefresher::new(
+            FakeTokenSource::new(&["tok-1"]),
+            RecordingWriter::new(1),
+            Duration::ZERO,
+        );
         assert!(r.refresh_once().await.is_err());
     }
 
     #[tokio::test]
     async fn defaults_interval_when_zero() {
         let r = EsoRefresher::new(FakeTokenSource::new(&["t"]), RecordingWriter::new(0), Duration::ZERO);
-        assert_eq!(r.interval(), Duration::from_secs(ESO_REFRESHER_DEFAULT_INTERVAL_SECONDS));
+        assert_eq!(
+            r.interval(),
+            Duration::from_secs(ESO_REFRESHER_DEFAULT_INTERVAL_SECONDS)
+        );
     }
 }

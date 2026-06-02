@@ -1,5 +1,12 @@
 # @smooai/library-template
 
+## 6.7.0
+
+### Minor Changes
+
+- ad2c77f: SMOODEV-1526: Port the ESO manifest generator (`buildClusterSecretStore` + `buildExternalSecret`) to the Go, Python, Rust, and C# SDKs for language parity with the TypeScript reference. Each emits the same ClusterSecretStore (webhook → real api.smoo.ai config-values endpoint) and per-workload ExternalSecret (secret-tier config keys → UPPER_SNAKE_CASE env vars, with overrides + duplicate guard), using each language's native snakecase util. Epic SMOODEV-1522.
+- ad2c77f: SMOODEV-1526: Port the ESO bearer-token refresher core (the refresh algorithm + `SecretWriter` abstraction) to the Go, Python, Rust, and C# SDKs for parity with the TypeScript reference. Each mirrors the same behavior — invalidate-then-mint each cycle so the bootstrap Secret always holds a near-full-TTL token, fail-loud initial write, non-fatal loop-tick retries — driven by the language's own TokenProvider and unit-tested with a fake writer (no live cluster). The k8s-backed writer is intentionally an optional adapter so base SDK consumers don't pull a heavy k8s client; the TypeScript sidecar remains the canonical deployable. Epic SMOODEV-1522.
+
 ## 6.6.0
 
 ### Minor Changes
