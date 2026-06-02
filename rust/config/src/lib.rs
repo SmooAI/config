@@ -12,6 +12,7 @@ pub mod container;
 pub mod deferred;
 pub mod env_config;
 pub mod eso_manifests;
+pub mod eso_refresher;
 pub mod file_config;
 pub mod local;
 pub mod merge;
