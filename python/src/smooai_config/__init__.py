@@ -22,6 +22,14 @@ from smooai_config.container import (
     init_container_config,
     select_mode,
 )
+from smooai_config.eso_manifests import (
+    BootstrapSecretRef,
+    ExternalSecretOptions,
+    SecretMapping,
+    build_cluster_secret_store,
+    build_external_secret,
+    resolve_secret_mapping,
+)
 from smooai_config.env_config import find_and_process_env_config
 from smooai_config.file_config import find_and_process_file_config, find_config_directory
 from smooai_config.local import LocalConfigManager
