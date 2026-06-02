@@ -17,7 +17,8 @@
         "url": "https://github.com/SmooAI/config.git"
     },
     "bin": {
-        "smooai-config": "./dist/cli.mjs"
+        "smooai-config": "./dist/cli.mjs",
+        "smooai-config-eso-refresher": "./dist/eso-refresher/run.mjs"
     },
     "files": [
         "dist/**"
@@ -170,6 +171,11 @@
             "import": "./dist/container/index.mjs",
             "require": "./dist/container/index.js"
         },
+        "./eso-refresher": {
+            "types": "./dist/eso-refresher/index.d.ts",
+            "import": "./dist/eso-refresher/index.mjs",
+            "require": "./dist/eso-refresher/index.js"
+        },
         "./platform/client": {
             "types": "./dist/platform/client.d.ts",
             "browser": {
@@ -249,6 +255,7 @@
     },
     "dependencies": {
         "@isaacs/ttlcache": "^1.4.1",
+        "@kubernetes/client-node": "^1.4.0",
         "@smooai/fetch": "^3.3.5",
         "@smooai/logger": "^4.1.4",
         "@smooai/utils": "^1.3.3",

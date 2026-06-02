@@ -21,6 +21,8 @@ const serverEntry = [
     'src/server/sync-worker.ts',
     'src/container/index.ts',
     'src/container/errors.ts',
+    'src/eso-refresher/index.ts',
+    'src/eso-refresher/run.ts',
     'src/platform/client.ts',
     'src/platform/build.ts',
     'src/nextjs/index.ts',
