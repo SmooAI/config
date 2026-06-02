@@ -176,6 +176,11 @@
             "import": "./dist/eso-refresher/index.mjs",
             "require": "./dist/eso-refresher/index.js"
         },
+        "./eso-manifests": {
+            "types": "./dist/eso-manifests/index.d.ts",
+            "import": "./dist/eso-manifests/index.mjs",
+            "require": "./dist/eso-manifests/index.js"
+        },
         "./platform/client": {
             "types": "./dist/platform/client.d.ts",
             "browser": {

@@ -23,6 +23,7 @@ const serverEntry = [
     'src/container/errors.ts',
     'src/eso-refresher/index.ts',
     'src/eso-refresher/run.ts',
+    'src/eso-manifests/index.ts',
     'src/platform/client.ts',
     'src/platform/build.ts',
     'src/nextjs/index.ts',
