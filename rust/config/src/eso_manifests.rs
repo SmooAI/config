@@ -63,18 +63,14 @@ pub struct ClusterSecretStoreOptions {
 ///
 /// org + environment are baked into the URL because ESO's webhook only templates
 /// `{{ .remoteRef.key }}` per-secret — so a store is scoped to one (org, env).
-pub fn build_cluster_secret_store(
-    opts: &ClusterSecretStoreOptions,
-) -> Result<Value, SmooaiConfigError> {
+pub fn build_cluster_secret_store(opts: &ClusterSecretStoreOptions) -> Result<Value, SmooaiConfigError> {
     if opts.api_url.is_empty() {
         return Err(SmooaiConfigError::new(
             "build_cluster_secret_store: api_url is required",
         ));
     }
     if opts.org_id.is_empty() {
-        return Err(SmooaiConfigError::new(
-            "build_cluster_secret_store: org_id is required",
-        ));
+        return Err(SmooaiConfigError::new("build_cluster_secret_store: org_id is required"));
     }
     if opts.environment.is_empty() {
         return Err(SmooaiConfigError::new(
@@ -153,14 +149,9 @@ impl SecretMapping {
 /// Returns `(config_key, env_var)`.
 pub fn resolve_secret_mapping(m: &SecretMapping) -> Result<(String, String), SmooaiConfigError> {
     if m.config_key.is_empty() {
-        return Err(SmooaiConfigError::new(
-            "resolve_secret_mapping: config_key is required",
-        ));
+        return Err(SmooaiConfigError::new("resolve_secret_mapping: config_key is required"));
     }
-    let env_var = m
-        .env_var
-        .clone()
-        .unwrap_or_else(|| camel_to_upper_snake(&m.config_key));
+    let env_var = m.env_var.clone().unwrap_or_else(|| camel_to_upper_snake(&m.config_key));
     Ok((m.config_key.clone(), env_var))
 }
 
@@ -181,14 +172,10 @@ pub struct ExternalSecretOptions {
 /// @smooai/config key).
 pub fn build_external_secret(opts: &ExternalSecretOptions) -> Result<Value, SmooaiConfigError> {
     if opts.name.is_empty() {
-        return Err(SmooaiConfigError::new(
-            "build_external_secret: name is required",
-        ));
+        return Err(SmooaiConfigError::new("build_external_secret: name is required"));
     }
     if opts.namespace.is_empty() {
-        return Err(SmooaiConfigError::new(
-            "build_external_secret: namespace is required",
-        ));
+        return Err(SmooaiConfigError::new("build_external_secret: namespace is required"));
     }
     if opts.secrets.is_empty() {
         return Err(SmooaiConfigError::new(
@@ -208,10 +195,7 @@ pub fn build_external_secret(opts: &ExternalSecretOptions) -> Result<Value, Smoo
         data.push(json!({ "secretKey": env_var, "remoteRef": { "key": config_key } }));
     }
 
-    let target_name = opts
-        .target_secret_name
-        .clone()
-        .unwrap_or_else(|| opts.name.clone());
+    let target_name = opts.target_secret_name.clone().unwrap_or_else(|| opts.name.clone());
     let store_name = opts
         .cluster_secret_store_name
         .clone()
@@ -246,9 +230,7 @@ fn encode_query_component(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(b as char)
-            }
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
             b' ' => out.push_str("%20"),
             _ => {
                 out.push('%');
@@ -311,8 +293,11 @@ mod tests {
     fn resolve_mapping_defaults_and_override() {
         let (_, env) = resolve_secret_mapping(&SecretMapping::new("mimoApiKey")).unwrap();
         assert_eq!(env, "MIMO_API_KEY");
-        let (_, env2) =
-            resolve_secret_mapping(&SecretMapping::with_env_var("alibabaModelStudioApiKey", "DASHSCOPE_API_KEY")).unwrap();
+        let (_, env2) = resolve_secret_mapping(&SecretMapping::with_env_var(
+            "alibabaModelStudioApiKey",
+            "DASHSCOPE_API_KEY",
+        ))
+        .unwrap();
         assert_eq!(env2, "DASHSCOPE_API_KEY");
     }
 
