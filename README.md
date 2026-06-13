@@ -1,78 +1,66 @@
-<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
+<p align="center">
+  <a href="https://smoo.ai"><img src="https://smoo.ai/images/logo/logo.svg" alt="Smoo AI" width="220" /></a>
+</p>
 
-<a name="readme-top"></a>
+<h1 align="center">@smooai/config</h1>
 
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <a href="https://smoo.ai">
-    <img src="images/logo.png" alt="SmooAI Logo" />
-  </a>
-</div>
+<p align="center">
+  <strong>Type-safe config, secrets, and feature flags for every layer of your stack — one schema, one API, every language.</strong>
+</p>
 
-<!-- ABOUT THE PROJECT -->
+<p align="center">
+  <a href="https://www.npmjs.com/package/@smooai/config"><img src="https://img.shields.io/npm/v/@smooai/config?style=flat-square&color=00A6A6&label=npm" alt="npm"></a>
+  <img src="https://img.shields.io/badge/Smoo_AI-platform-00A6A6?style=flat-square" alt="Smoo AI">
+  <img src="https://img.shields.io/badge/license-MIT-F49F0A?style=flat-square" alt="license">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
+  <img src="https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go">
+  <img src="https://img.shields.io/badge/.NET-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET">
+</p>
 
-## About SmooAI
+<p align="center">
+  <a href="#-features">Features</a> ·
+  <a href="#-install">Install</a> ·
+  <a href="#-quick-start-typescript">Quick start</a> ·
+  <a href="#-part-of-smoo-ai">Platform</a>
+</p>
 
-SmooAI is an AI-powered platform for helping businesses multiply their customer, employee, and developer experience.
+---
 
-Learn more on [smoo.ai](https://smoo.ai)
-
-## SmooAI Packages
-
-Check out other SmooAI packages at [smoo.ai/open-source](https://smoo.ai/open-source)
-
-## About @smooai/config
-
-**Type-safe config, secrets, and feature flags for every layer of your stack** -- One schema, one API, every language. Rename a key and every call site is a compile error, not a 3 AM page.
+> Define your config once with Zod (or Valibot, ArkType, Effect), and read it with full type inference everywhere — public config, server-only secrets, and live feature flags. Rename a key and every call site is a compile error, not a 3 AM page. Native clients in TypeScript, Python, Rust, Go, and .NET all read from the same source of truth.
 
 > 📣 **The CLI moved.** Use `th config` from the [smooth repo](https://github.com/SmooAI/smooth) for all operator commands (login, get, set, list, push, pull, diff, init, etc.). The standalone `smooai-config` CLI that used to live in this repo is deprecated and being deleted (SMOODEV-1411). **The runtime library `@smooai/config` (TypeScript / Python / Rust / Go / .NET, consumed via `secretConfig.get(...)` / `publicConfig.get(...)` / `featureFlag.get(...)`) is unchanged** — only the operator CLI surface moved to Rust in the smooth repo.
 
-![NPM Version](https://img.shields.io/npm/v/%40smooai%2Fconfig?style=for-the-badge)
-![NPM Downloads](https://img.shields.io/npm/dw/%40smooai%2Fconfig?style=for-the-badge)
-![NPM Last Update](https://img.shields.io/npm/last-update/%40smooai%2Fconfig?style=for-the-badge)
+## ✨ Features
 
-![GitHub License](https://img.shields.io/github/license/SmooAI/config?style=for-the-badge)
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/SmooAI/config/release.yml?style=for-the-badge)
-![GitHub Repo stars](https://img.shields.io/github/stars/SmooAI/config?style=for-the-badge)
+- **Three tiers, one schema** — public config, secrets, and feature flags defined once with Zod/Valibot/ArkType/Effect, validated everywhere they're read.
+- **Strongly-typed keys** — `defineConfig()` gives you `PublicConfigKeys`, `SecretConfigKeys`, and `FeatureFlagKeys` with full inference. Mis-typed keys fail at compile time, not at runtime.
+- **Any environment, any key** — the same API for `development`, `staging`, and `production`. Override per-stage without touching code.
+- **Zero-latency cold starts** — values are baked into the bundle as env vars (Next.js, Vite) or resolved in-memory from a local runtime (server). No network round-trip on the hot path.
+- **Browser, server, framework-native** — the same typed keys read cleanly from React client components, Server Components, Next.js, Vite, or plain Node.
+- **Live feature flags** — toggled from the dashboard without a redeploy, but still typed.
+- **Native clients in every language** — TypeScript, Python, Rust, Go, and .NET (C#) all read from the same source of truth.
 
----
-
-### What you get
-
-- **Three tiers, one schema** -- public config, secrets, and feature flags defined once with Zod/Valibot/ArkType/Effect, validated everywhere they're read.
-- **Strongly-typed keys** -- `defineConfig()` gives you `PublicConfigKeys`, `SecretConfigKeys`, and `FeatureFlagKeys` with full inference. Mis-typed keys fail at compile time, not at runtime.
-- **Any environment, any key** -- same API for `development`, `staging`, `production`. Override per-stage without touching code.
-- **Zero-latency cold starts** -- values are baked into the bundle as env vars (Next.js, Vite) or resolved in-memory from a local runtime (server). No network round-trip on the hot path.
-- **Browser, server, framework-native** -- the same typed keys read cleanly from React client components, Server Components, Next.js, Vite, or plain Node.
-- **Live feature flags** -- toggled from the dashboard without a redeploy, but still typed.
-- **Native clients in every language** -- TypeScript, Python, Rust, Go, .NET (C#) all read from the same source of truth.
-
----
-
-### Languages / SDKs
+## Languages / SDKs
 
 Pick the SDK that matches your service. Every client reads the same schema, the same encrypted bundle, and the same config API — so a key renamed in one language ripples through all of them.
 
-| SDK            | One-liner                                                                                               | README                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| **TypeScript** | Primary SDK. Schema definition, Next.js / Vite plugins, server runtime, React hooks.                    | [`README.md` (this file)](#about-smooaiconfig)   |
-| **Python**     | Pydantic-validated schemas, sync `ConfigClient`, `LocalConfigManager` + `ConfigManager`, baked runtime. | [`python/README.md`](python/README.md)           |
-| **Go**         | Native struct schemas, thread-safe `ConfigClient` / `ConfigManager`, baked-blob runtime.                | [`go/config/README.md`](go/config/README.md)     |
-| **Rust**       | `JsonSchema`-derived schemas, async `ConfigClient`, sync `ConfigManager`, baked-blob runtime.           | [`rust/config/README.md`](rust/config/README.md) |
-| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`.             | [`dotnet/README.md`](dotnet/README.md)           |
+| SDK            | One-liner                                                                                               | README                                              |
+| -------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| **TypeScript** | Primary SDK. Schema definition, Next.js / Vite plugins, server runtime, React hooks.                    | [`README.md` (this file)](#-quick-start-typescript) |
+| **Python**     | Pydantic-validated schemas, sync `ConfigClient`, `LocalConfigManager` + `ConfigManager`, baked runtime. | [`python/README.md`](python/README.md)              |
+| **Go**         | Native struct schemas, thread-safe `ConfigClient` / `ConfigManager`, baked-blob runtime.                | [`go/config/README.md`](go/config/README.md)        |
+| **Rust**       | `JsonSchema`-derived schemas, async `ConfigClient`, sync `ConfigManager`, baked-blob runtime.           | [`rust/config/README.md`](rust/config/README.md)    |
+| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`.             | [`dotnet/README.md`](dotnet/README.md)              |
 
----
-
-### Install
+## 📦 Install
 
 ```sh
 pnpm add @smooai/config
 ```
 
----
-
-## Quick Start (TypeScript)
+## 🚀 Quick Start (TypeScript)
 
 ### 1. Define your configuration schema
 
@@ -122,9 +110,7 @@ SecretConfigKeys.DATABASE_URL; // "DATABASE_URL"
 }
 ```
 
----
-
-## Next.js Integration
+## 📖 Next.js Integration
 
 ### Inject config into `next.config.ts`
 
@@ -164,7 +150,7 @@ function MyComponent() {
 }
 ```
 
-These functions check `NEXT_PUBLIC_FEATURE_FLAG_*` and `NEXT_PUBLIC_CONFIG_*` env vars automatically -- no provider needed, no loading state.
+These functions check `NEXT_PUBLIC_FEATURE_FLAG_*` and `NEXT_PUBLIC_CONFIG_*` env vars automatically — no provider needed, no loading state.
 
 ### Server Components + Client hydration (zero loading flash)
 
@@ -199,7 +185,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 ```
 
 ```tsx
-// Any client component -- values available synchronously (pre-seeded from SSR)
+// Any client component — values available synchronously (pre-seeded from SSR)
 import { usePublicConfig, useFeatureFlag } from '@smooai/config/nextjs';
 
 function Dashboard() {
@@ -213,9 +199,7 @@ function Dashboard() {
 }
 ```
 
----
-
-## Vite Integration
+## 📖 Vite Integration
 
 ### Vite plugin
 
@@ -234,7 +218,7 @@ export default defineConfig({
 });
 ```
 
-Then read values the same way as Next.js -- `getClientFeatureFlag` and `getClientPublicConfig` from `@smooai/config/client` check `VITE_FEATURE_FLAG_*` and `VITE_CONFIG_*` automatically.
+Then read values the same way as Next.js — `getClientFeatureFlag` and `getClientPublicConfig` from `@smooai/config/client` check `VITE_FEATURE_FLAG_*` and `VITE_CONFIG_*` automatically.
 
 ### Preload config (optional)
 
@@ -254,9 +238,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
----
-
-## Server-Side Config Access
+## 📖 Server-Side Config Access
 
 For Node.js server code, use `buildConfigObject` to get sync and async accessors with full type safety:
 
@@ -414,9 +396,7 @@ These runtimes don't expose Node's `worker_threads` at all, so `.getSync()` is
 a no-go there by design. Use `.get()` (async) everywhere that needs to run on
 the edge. The error surface makes this explicit if you try.
 
----
-
-## React Hooks (framework-agnostic)
+## 📖 React Hooks (framework-agnostic)
 
 For any React app using the runtime config client:
 
@@ -446,9 +426,7 @@ function MyComponent() {
 }
 ```
 
----
-
-## SDK Runtime Client
+## 📖 SDK Runtime Client
 
 All language implementations include a runtime client for fetching configuration values from the Smoo AI config server with local caching.
 
@@ -490,9 +468,7 @@ const allValues = await client.getAllValues();
 client.invalidateCache();
 ```
 
----
-
-## Container / Runtime Mode (EKS / ECS)
+## 📖 Container / Runtime Mode (EKS / ECS)
 
 The baked **blob** tier is the blessed path for **Lambda**, but it is the wrong default for long-lived **containers**: when the per-build blob key isn't delivered to the pod, resolution silently falls through to the (absent) file tier and returns `undefined` for a required secret. That caused a real outage — a container got `undefined` for `STRIPE_API_KEY`, `new Stripe(undefined)` threw at module load, the process exited `0` before `listen()`, and the pod CrashLooped with the root cause buried (SMOODEV-1478).
 
@@ -521,9 +497,7 @@ app.get('/healthz/config', (_req, res) => {
 
 Env contract (identical in every SDK): `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_CLIENT_ID`, `SMOOAI_CONFIG_CLIENT_SECRET`, `SMOOAI_CONFIG_ORG_ID`, `SMOOAI_CONFIG_ENV` (all required), plus optional `SMOOAI_CONFIG_AUTH_URL` and `SMOOAI_CONFIG_MODE=container` (to force the mode). All schema-declared keys are treated as **required** by default; opt specific keys out with `initContainerConfig({ optionalKeys: ['...'] })`.
 
----
-
-## Configuration Tiers
+## 📖 Configuration Tiers
 
 | Tier              | Purpose                 | Examples                                 |
 | ----------------- | ----------------------- | ---------------------------------------- |
@@ -545,11 +519,9 @@ Env contract (identical in every SDK): `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_C
 
 **Machine-to-Machine (M2M)** keys have full access to all tiers and write operations.
 
----
+## 📖 Multi-Language Support
 
-## Multi-Language Support
-
-@smooai/config has native implementations in Python, Rust, Go, and .NET (C#) alongside the primary TypeScript package. Every client reads the same encrypted bundle, the same schema, and the same config API. See the per-SDK READMEs linked above for full usage docs — the snippets below are five-line orientation only.
+`@smooai/config` has native implementations in Python, Rust, Go, and .NET (C#) alongside the primary TypeScript package. Every client reads the same encrypted bundle, the same schema, and the same config API. See the per-SDK READMEs linked above for full usage docs — the snippets below are five-line orientation only.
 
 ### Python — see [`python/README.md`](python/README.md)
 
@@ -607,16 +579,14 @@ using var client = new SmooConfigClient(options);
 var apiUrl = await Public.ApiUrl.ResolveAsync(runtime, client);
 ```
 
----
-
-## Development
+## 📖 Development
 
 ### Prerequisites
 
 - Node.js 22+, pnpm 10+
-- Python 3.13+ with uv (for Python package)
-- Rust toolchain (for Rust package)
-- Go 1.22+ (for Go package)
+- Python 3.13+ with uv (for the Python package)
+- Rust toolchain (for the Rust package)
+- Go 1.22+ (for the Go package)
 
 ### Commands
 
@@ -634,20 +604,28 @@ pnpm check-all             # Full CI parity check
 
 Supports Zod, Valibot, ArkType, Effect Schema, and built-in schema types. See [SCHEMA_USAGE.md](SCHEMA_USAGE.md) for examples with each library.
 
----
+## 🧩 Part of Smoo AI
 
-## Contributing
+`@smooai/config` is part of the [Smoo AI](https://smoo.ai) platform — an AI-powered business platform with AI built into every product. It's one of a family of open-source packages we maintain to keep our own stack honest:
 
-Contributions are welcome! This project uses [changesets](https://github.com/changesets/changesets) to manage versions and releases.
+- [@smooai/logger](https://github.com/SmooAI/logger) — contextual logging for AWS and the browser
+- [@smooai/fetch](https://github.com/SmooAI/fetch) — resilient, type-safe HTTP client
+- [smooth](https://github.com/SmooAI/smooth) — the SmooAI developer toolchain (home of the `th config` CLI)
 
-1. Fork the repository
-2. Create your branch (`git checkout -b amazing-feature`)
-3. Make your changes
-4. Add a changeset: `pnpm changeset`
-5. Commit and push
-6. Open a Pull Request
+## 🤝 Contributing
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+Contributions are welcome. This project uses [changesets](https://github.com/changesets/changesets) to manage versions and releases.
+
+1. Fork the repository.
+2. Create your branch (`git checkout -b amazing-feature`).
+3. Make your changes.
+4. Add a changeset: `pnpm changeset`.
+5. Commit and push.
+6. Open a pull request.
+
+## 📄 License
+
+MIT © SmooAI. See [LICENSE](LICENSE).
 
 ## Contact
 
@@ -659,6 +637,10 @@ Brent Rager
 - [TikTok](https://www.tiktok.com/@brentragertech)
 - [Instagram](https://www.instagram.com/brentragertech/)
 
-Smoo Github: [https://github.com/SmooAI](https://github.com/SmooAI)
+Smoo GitHub: [github.com/SmooAI](https://github.com/SmooAI)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+---
+
+<p align="center">
+  Built by <a href="https://smoo.ai"><strong>Smoo AI</strong></a> — AI built into every product.
+</p>
