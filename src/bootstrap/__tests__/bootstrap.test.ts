@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { resetBootstrapCacheForTests, bootstrapFetch } from '../index';
+import { resetBootstrapCacheForTests, bootstrapFetch, harnessEnvKey } from '../index';
 
 // Snapshot + restore process.env for full test isolation.
 const originalEnv = { ...process.env };
@@ -63,6 +63,39 @@ describe('bootstrapFetch', () => {
         const value = await bootstrapFetch('databaseUrl');
         expect(value).toBe('postgres://example');
         expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    describe('SMOOAI_HARNESS_<KEY> escape hatch', () => {
+        it('maps camelCase keys to SCREAMING_SNAKE harness env names', () => {
+            expect(harnessEnvKey('databaseUrl')).toBe('SMOOAI_HARNESS_DATABASE_URL');
+            expect(harnessEnvKey('rlsDatabaseUrl')).toBe('SMOOAI_HARNESS_RLS_DATABASE_URL');
+            expect(harnessEnvKey('voyageApiKey')).toBe('SMOOAI_HARNESS_VOYAGE_API_KEY');
+        });
+
+        it('short-circuits the HTTP fetch entirely when the override is set', async () => {
+            const fetchMock = mockFetchResponses([]); // any fetch call → "ran out of queued responses"
+            process.env.SMOOAI_HARNESS_DATABASE_URL = 'postgres://forced-prod/db';
+
+            const value = await bootstrapFetch('databaseUrl');
+            expect(value).toBe('postgres://forced-prod/db');
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        it('uses the per-key env name (rlsDatabaseUrl)', async () => {
+            const fetchMock = mockFetchResponses([]);
+            process.env.SMOOAI_HARNESS_RLS_DATABASE_URL = 'postgres://forced-rls/db';
+
+            expect(await bootstrapFetch('rlsDatabaseUrl')).toBe('postgres://forced-rls/db');
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+
+        it('ignores an empty override and falls through to the HTTP fetch', async () => {
+            const fetchMock = mockFetchResponses([{ body: { access_token: 'TOKEN' } }, { body: { values: { databaseUrl: 'postgres://from-http' } } }]);
+            process.env.SMOOAI_HARNESS_DATABASE_URL = '';
+
+            expect(await bootstrapFetch('databaseUrl')).toBe('postgres://from-http');
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+        });
     });
 
     it('returns undefined for a missing key without throwing', async () => {

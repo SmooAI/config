@@ -112,6 +112,16 @@ function resolveEnv(environment?: string): string {
     return stage;
 }
 
+/**
+ * Map a camelCase config key to its `SMOOAI_HARNESS_<SCREAMING_SNAKE>` env-var
+ * name (the documented §15 prod-script override). `databaseUrl` →
+ * `SMOOAI_HARNESS_DATABASE_URL`, `rlsDatabaseUrl` → `SMOOAI_HARNESS_RLS_DATABASE_URL`.
+ * Exported for tests.
+ */
+export function harnessEnvKey(key: string): string {
+    return `SMOOAI_HARNESS_${key.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()}`;
+}
+
 let cached: Record<string, unknown> | undefined;
 let cachedEnv: string | undefined;
 
@@ -130,6 +140,18 @@ export function resetBootstrapCacheForTests(): void {
  * NOT throw on missing keys — only on env/auth/network errors.
  */
 export async function bootstrapFetch(key: string, options?: BootstrapOptions): Promise<string | undefined> {
+    // Local-harness escape hatch (mirrors packages/db `drizzleClient.resolveDbUrl`,
+    // the documented §15 prod-script override): an explicit `SMOOAI_HARNESS_<KEY>`
+    // env var short-circuits the HTTP fetch entirely, so prod-targeting scripts
+    // (db-migrate and friends) can be forced deterministically from a developer
+    // machine. Without this, bootstrapFetch falls through to env='development'
+    // (no SST stage) and silently fetches the WRONG environment's value over HTTP.
+    // The env name is the SCREAMING_SNAKE_CASE of the camelCase key:
+    //   databaseUrl    → SMOOAI_HARNESS_DATABASE_URL
+    //   rlsDatabaseUrl → SMOOAI_HARNESS_RLS_DATABASE_URL
+    const override = process.env[harnessEnvKey(key)];
+    if (override !== undefined && override.length > 0) return override;
+
     const env = resolveEnv(options?.environment);
     if (cached === undefined || cachedEnv !== env) {
         const creds = readCreds();
