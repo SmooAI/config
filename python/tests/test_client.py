@@ -8,9 +8,15 @@ import pytest
 from smooai_config.client import (
     ConfigClient,
     EvaluateFeatureFlagResponse,
+    EvaluateLimitResponse,
     FeatureFlagContextError,
     FeatureFlagEvaluationError,
     FeatureFlagNotFoundError,
+    LimitContextError,
+    LimitEvaluationError,
+    LimitNotFoundError,
+    LimitSpec,
+    clamp_limit,
 )
 from smooai_config.token_provider import TokenProvider
 
@@ -408,3 +414,122 @@ class TestEvaluateFeatureFlag:
             client.evaluate_feature_flag("aboutPage")
 
         assert json.loads(captured["request"].content)["environment"] == "development"
+
+
+class TestEvaluateLimit:
+    """Tests for ConfigClient.evaluate_limit() (SMOODEV-2306)."""
+
+    def test_posts_body_and_returns_numeric_response(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(
+                200,
+                json={"value": 20, "source": "rule", "matchedRuleId": "rule-9"},
+            )
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            result = client.evaluate_limit("agentMaxIterations", {"orgId": "o-1", "agentId": "a-1"})
+
+        assert isinstance(result, EvaluateLimitResponse)
+        assert result.value == 20.0
+        assert result.source == "rule"
+        assert result.matched_rule_id == "rule-9"
+
+        req = captured["request"]
+        assert req.method == "POST"
+        assert str(req.url) == (
+            "https://config.smooai.dev/organizations/org-123/config/limits/agentMaxIterations/evaluate"
+        )
+        assert json.loads(req.content) == {
+            "environment": "production",
+            "context": {"orgId": "o-1", "agentId": "a-1"},
+        }
+
+    def test_defaults_context_and_honors_environment(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"value": 12, "source": "default"})
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            client.evaluate_limit("agentMaxIterations", environment="staging")
+
+        assert json.loads(captured["request"].content) == {
+            "environment": "staging",
+            "context": {},
+        }
+
+    def test_url_encodes_limit_key(self) -> None:
+        captured: dict[str, httpx.Request] = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["request"] = request
+            return httpx.Response(200, json={"value": 0, "source": "default"})
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            client.evaluate_limit("with spaces/and+slashes")
+
+        assert "with%20spaces%2Fand%2Bslashes" in str(captured["request"].url)
+
+    def test_raises_limit_not_found_on_404(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, text="limit not defined")
+
+        with _make_client_with_transport(httpx.MockTransport(handler)) as client:
+            with pytest.raises(LimitNotFoundError) as exc_info:
+                client.evaluate_limit("unknown")
+
+        err = exc_info.value
+        assert isinstance(err, LimitEvaluationError)
+        assert err.key == "unknown"
+        assert err.status_code == 404
+
+    def test_raises_context_and_evaluation_errors(self) -> None:
+        def ctx_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, text="bad context")
+
+        with _make_client_with_transport(httpx.MockTransport(ctx_handler)) as client:
+            with pytest.raises(LimitContextError) as ctx_exc:
+                client.evaluate_limit("agentMaxIterations")
+        assert ctx_exc.value.status_code == 400
+
+        def srv_handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, text="overloaded")
+
+        with _make_client_with_transport(httpx.MockTransport(srv_handler)) as client:
+            with pytest.raises(LimitEvaluationError) as srv_exc:
+                client.evaluate_limit("agentMaxIterations")
+        assert not isinstance(srv_exc.value, LimitNotFoundError)
+        assert not isinstance(srv_exc.value, LimitContextError)
+        assert srv_exc.value.status_code == 503
+
+
+class TestClampLimit:
+    """Tests for clamp_limit() (SMOODEV-2306)."""
+
+    spec = LimitSpec(default=12.0, min=1.0, max=50.0)
+
+    def test_in_range_unchanged(self) -> None:
+        assert clamp_limit(20, self.spec) == 20.0
+
+    def test_clamps_bounds(self) -> None:
+        assert clamp_limit(-5, self.spec) == 1.0
+        assert clamp_limit(1000, self.spec) == 50.0
+
+    def test_fallback_to_default(self) -> None:
+        assert clamp_limit(None, self.spec) == 12.0
+        assert clamp_limit("nope", self.spec) == 12.0
+        assert clamp_limit(True, self.spec) == 12.0  # bool is rejected
+        assert clamp_limit(float("nan"), self.spec) == 12.0
+
+    def test_coerces_numeric_string(self) -> None:
+        assert clamp_limit("30", self.spec) == 30.0
+        assert clamp_limit("999", self.spec) == 50.0
+
+    def test_snaps_to_step(self) -> None:
+        stepped = LimitSpec(default=10.0, min=0.0, max=100.0, step=5.0)
+        assert clamp_limit(12, stepped) == 10.0
+        assert clamp_limit(13, stepped) == 15.0

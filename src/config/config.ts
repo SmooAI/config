@@ -27,6 +27,98 @@ export type BooleanSchema = typeof BooleanSchema;
 export const NumberSchema: unique symbol = Symbol('Number');
 export type NumberSchema = typeof NumberSchema;
 
+/**
+ * SMOODEV-2306 — the fourth config kind: **limits**.
+ *
+ * A limit is a NUMERIC value that resolves contextually (per user / segment /
+ * org) through the SAME server-side segment evaluator as feature flags, and
+ * is **never baked** — it always resolves live. Unlike a hard cap, a limit is
+ * a soft, tunable target: the consuming code still applies its own hard clamp,
+ * and the config value only tunes within `[min, max]`. `default` is the
+ * fallback used by `getLimit()` and whenever resolution yields nothing usable.
+ *
+ * Declare limits with {@link defineLimit} inside `limitsSchema`:
+ *
+ * ```ts
+ * const config = defineConfig({
+ *   limitsSchema: {
+ *     agentMaxIterations: defineLimit({ default: 12, min: 1, max: 50 }),
+ *   },
+ * });
+ * ```
+ *
+ * The client resolves the raw/segmented number from the evaluator and then
+ * applies {@link clampLimit} using this metadata.
+ */
+export interface LimitDefinition {
+    readonly __smooLimit: true;
+    /** Fallback value; also the value `getLimit()` returns when nothing is baked/resolved. */
+    readonly default: number;
+    /** Inclusive lower clamp bound. */
+    readonly min?: number;
+    /** Inclusive upper clamp bound. */
+    readonly max?: number;
+    /** Optional granularity the client snaps the resolved value to (nearest multiple), applied before clamping. */
+    readonly step?: number;
+}
+
+/** Options accepted by {@link defineLimit}. */
+export interface LimitSpec {
+    default: number;
+    min?: number;
+    max?: number;
+    step?: number;
+}
+
+type LimitsSchema<K extends string | number | symbol = string> = Record<K, LimitDefinition>;
+
+/**
+ * Declare a limit (numeric, segment-resolved, clamp-aware) for `limitsSchema`.
+ * Validates the clamp metadata up front so a bad schema fails at definition
+ * time rather than silently mis-clamping at runtime.
+ */
+export function defineLimit(spec: LimitSpec): LimitDefinition {
+    const { default: def, min, max, step } = spec;
+    if (typeof def !== 'number' || !Number.isFinite(def)) {
+        throw new SmooaiConfigError(`defineLimit: \`default\` must be a finite number, got ${String(def)}`);
+    }
+    if (min !== undefined && max !== undefined && min > max) {
+        throw new SmooaiConfigError(`defineLimit: \`min\` (${min}) must be <= \`max\` (${max})`);
+    }
+    if (min !== undefined && def < min) {
+        throw new SmooaiConfigError(`defineLimit: \`default\` (${def}) must be >= \`min\` (${min})`);
+    }
+    if (max !== undefined && def > max) {
+        throw new SmooaiConfigError(`defineLimit: \`default\` (${def}) must be <= \`max\` (${max})`);
+    }
+    if (step !== undefined && (!Number.isFinite(step) || step <= 0)) {
+        throw new SmooaiConfigError(`defineLimit: \`step\` must be a positive number, got ${String(step)}`);
+    }
+    return { __smooLimit: true, default: def, min, max, step };
+}
+
+/**
+ * Clamp a resolved (or raw) limit value into `[min, max]` using a
+ * {@link LimitDefinition}. Non-numeric / non-finite input falls back to
+ * `default`. `step` (if set) snaps to the nearest multiple before clamping.
+ * Pure + deterministic — the client applies this after the server resolves
+ * the segmented number.
+ */
+export function clampLimit(raw: unknown, def: LimitDefinition): number {
+    // Only real numbers and non-empty numeric strings count as a value; null,
+    // undefined, '', booleans, and junk fall back to `default` (note
+    // `Number(null)` / `Number('')` are 0, which would otherwise slip through).
+    let n: number;
+    if (typeof raw === 'number') n = raw;
+    else if (typeof raw === 'string' && raw.trim() !== '') n = Number(raw);
+    else n = Number.NaN;
+    if (!Number.isFinite(n)) n = def.default;
+    if (def.step !== undefined && def.step > 0) n = Math.round(n / def.step) * def.step;
+    if (def.min !== undefined) n = Math.max(def.min, n);
+    if (def.max !== undefined) n = Math.min(def.max, n);
+    return n;
+}
+
 type ConfigSchema<K extends string | number | symbol = string> = Record<K, StringSchema | BooleanSchema | NumberSchema | StandardSchemaV1>;
 
 type OutputType<E> = E extends StringSchema
@@ -195,18 +287,43 @@ function tierConfigSchemaToJsonSchema<T extends ConfigSchema>(configSchema: T): 
  * flat `{ key: 'stringSchema' }` internal form) so local-runtime / source-
  * generator consumers that read `serializedAllConfigSchema` are unaffected.
  */
-export function serializeConfigSchemaToJsonSchema<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>(tiers: {
+/**
+ * Convert a `limitsSchema` tier to a JSON Schema object node. Each limit key
+ * becomes a `{ type: 'number', default, minimum?, maximum?, multipleOf? }`
+ * node so the config server / dashboard render limits as bounded numbers and
+ * the clamp metadata rides along on the wire (SMOODEV-2306).
+ */
+function limitsSchemaToJsonSchema(limitsSchema: LimitsSchema): Record<string, unknown> {
+    const properties: Record<string, unknown> = {};
+    for (const [key, def] of Object.entries(limitsSchema)) {
+        const node: Record<string, unknown> = { type: 'number', default: def.default };
+        if (def.min !== undefined) node.minimum = def.min;
+        if (def.max !== undefined) node.maximum = def.max;
+        if (def.step !== undefined) node.multipleOf = def.step;
+        properties[key] = node;
+    }
+    return { type: 'object', properties };
+}
+
+export function serializeConfigSchemaToJsonSchema<
+    Pub extends ConfigSchema,
+    Sec extends ConfigSchema,
+    FF extends ConfigSchema,
+    Lim extends LimitsSchema,
+>(tiers: {
     publicConfigSchema?: Pub | undefined;
     secretConfigSchema?: Sec | undefined;
     featureFlagSchema?: FF | undefined;
+    limitsSchema?: Lim | undefined;
 }): Record<string, unknown> {
-    const { publicConfigSchema, secretConfigSchema, featureFlagSchema } = tiers;
+    const { publicConfigSchema, secretConfigSchema, featureFlagSchema, limitsSchema } = tiers;
     return {
         type: 'object',
         properties: {
             publicConfigSchema: tierConfigSchemaToJsonSchema(publicConfigSchema ?? ({} as Pub)),
             secretConfigSchema: tierConfigSchemaToJsonSchema(secretConfigSchema ?? ({} as Sec)),
             featureFlagSchema: tierConfigSchemaToJsonSchema(featureFlagSchema ?? ({} as FF)),
+            limitsSchema: limitsSchemaToJsonSchema(limitsSchema ?? ({} as Lim)),
         },
     };
 }
@@ -370,17 +487,19 @@ export /**
  *   })
  * };
  */
-function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema>({
+function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF extends ConfigSchema, Lim extends LimitsSchema>({
     publicConfigSchema,
     secretConfigSchema,
     featureFlagSchema,
+    limitsSchema,
 }: {
     publicConfigSchema?: Pub | undefined;
     secretConfigSchema?: Sec | undefined;
     featureFlagSchema?: FF | undefined;
+    limitsSchema?: Lim | undefined;
 }) {
-    if (!publicConfigSchema && !secretConfigSchema && !featureFlagSchema) {
-        throw new SmooaiConfigError('At least one of publicConfigSchema, secretConfigSchema, or featureFlagSchema must be provided');
+    if (!publicConfigSchema && !secretConfigSchema && !featureFlagSchema && !limitsSchema) {
+        throw new SmooaiConfigError('At least one of publicConfigSchema, secretConfigSchema, featureFlagSchema, or limitsSchema must be provided');
     }
 
     type StandardPublicConfigSchema = {
@@ -408,6 +527,14 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
 
     const FeatureFlagKeys = mapKeysToUpperSnake(featureFlagSchema ?? ({} as FF));
 
+    const LimitKeys = mapKeysToUpperSnake(limitsSchema ?? ({} as Lim));
+
+    // Runtime map of limit key -> clamp metadata. Limits never bake and are
+    // not part of `allConfigSchema` (their value kind is a LimitDefinition
+    // object, not a Str/Bool/Num schema), so they're carried separately here
+    // for the client/server limit accessors to clamp against.
+    const _limitsMeta: Record<string, LimitDefinition> = { ...(limitsSchema ?? ({} as Lim)) };
+
     const AllConfigKeys = mapKeysToUpperSnake({
         ...allPublicConfigSchema,
         ...(secretConfigSchema ?? ({} as Sec)),
@@ -432,6 +559,7 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
         publicConfigSchema: allPublicConfigSchema as Pub,
         secretConfigSchema,
         featureFlagSchema,
+        limitsSchema,
     });
 
     // const { objectWithDeferFunctions: allConfigZodSchemaWithDeferFunctions, object: allConfigZodSchema } = generateConfigSchema(allConfigSchema);
@@ -467,6 +595,8 @@ function defineConfig<Pub extends ConfigSchema, Sec extends ConfigSchema, FF ext
         PublicConfigKeys,
         SecretConfigKeys,
         FeatureFlagKeys,
+        LimitKeys,
+        _limitsMeta,
         serializedAllConfigSchema,
         serializedAllConfigSchemaJsonSchema,
         _configTypeInput,
@@ -550,6 +680,7 @@ export type InferConfigTypes<T> = T extends {
     PublicConfigKeys: infer PK;
     SecretConfigKeys: infer SK;
     FeatureFlagKeys: infer FK;
+    LimitKeys: infer LK;
     serializedAllConfigSchema: infer _SACS;
     serializedAllConfigSchemaJsonSchema?: infer _SJS;
     _configType: infer CT;
@@ -563,6 +694,7 @@ export type InferConfigTypes<T> = T extends {
           PublicConfigKeys: PK;
           SecretConfigKeys: SK;
           FeatureFlagKeys: FK;
+          LimitKeys: LK;
           ConfigTypeInput: CIT;
           ConfigTypeOutput: COT;
           ConfigType: CT;

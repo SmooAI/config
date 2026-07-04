@@ -24,7 +24,10 @@ pub mod utils;
 
 pub use bootstrap::{bootstrap_fetch, BootstrapError};
 pub use build::{build_bundle, BuildBundleOptions, BuildBundleResult, BuildError, Classification, Classifier};
-pub use client::{ConfigClient, EvaluateFeatureFlagResponse, FeatureFlagEvaluationError};
+pub use client::{
+    clamp_limit, ConfigClient, EvaluateFeatureFlagResponse, EvaluateLimitResponse, FeatureFlagEvaluationError,
+    LimitEvaluationError, LimitSpec,
+};
 pub use cloud_region::{get_cloud_region, get_cloud_region_from_env, CloudRegionResult};
 pub use config_manager::ConfigManager;
 pub use container::{

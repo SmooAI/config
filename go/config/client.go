@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -552,4 +553,189 @@ func (c *ConfigClient) EvaluateFeatureFlag(
 	}
 
 	return &result, nil
+}
+
+// --- SMOODEV-2306: limits ---------------------------------------------------
+// Limits are the numeric sibling of feature flags: same segment evaluator,
+// resolved live (never baked), value typed as a number. EvaluateLimit returns
+// the RAW resolved value; the caller clamps it with ClampLimit using the
+// schema's LimitSpec.
+
+// EvaluateLimitResponse is the wire contract for the segment-aware limit
+// evaluator. It mirrors EvaluateFeatureFlagResponse but Value is numeric and
+// pre-clamp.
+type EvaluateLimitResponse struct {
+	// Value is the raw resolved numeric value (post rules + rollout, pre clamp).
+	Value float64 `json:"value"`
+	// MatchedRuleID is the id of the rule that fired, if any.
+	MatchedRuleID *string `json:"matchedRuleId,omitempty"`
+	// RolloutBucket is the 0-99 bucket the context was assigned to, if a rollout ran.
+	RolloutBucket *int `json:"rolloutBucket,omitempty"`
+	// Source is which branch the evaluator returned from: "raw" | "rule" | "rollout" | "default".
+	Source string `json:"source"`
+}
+
+// LimitErrorKind categorizes errors from EvaluateLimit. Mirrors FeatureFlagErrorKind.
+type LimitErrorKind int
+
+const (
+	// LimitKindServer covers 5xx responses and any non-404 / non-400 HTTP errors.
+	LimitKindServer LimitErrorKind = iota
+	// LimitKindNotFound is a 404 — the limit key is not defined in the org's schema.
+	LimitKindNotFound
+	// LimitKindContext is a 400 — invalid context or missing environment.
+	LimitKindContext
+)
+
+// String returns the lowercase name of the kind.
+func (k LimitErrorKind) String() string {
+	switch k {
+	case LimitKindNotFound:
+		return "not_found"
+	case LimitKindContext:
+		return "context"
+	default:
+		return "server"
+	}
+}
+
+// Sentinel errors so callers can use errors.Is to match a limit error category.
+var (
+	// ErrLimitNotFound matches any LimitEvaluationError with Kind == LimitKindNotFound.
+	ErrLimitNotFound = errors.New("limit not found")
+	// ErrLimitContext matches any LimitEvaluationError with Kind == LimitKindContext.
+	ErrLimitContext = errors.New("limit context invalid")
+	// ErrLimitServer matches any LimitEvaluationError with Kind == LimitKindServer.
+	ErrLimitServer = errors.New("limit server error")
+)
+
+// LimitEvaluationError is returned from EvaluateLimit on a non-2xx response.
+// Mirrors FeatureFlagEvaluationError.
+type LimitEvaluationError struct {
+	// Key is the limit key the caller asked to evaluate.
+	Key string
+	// StatusCode is the HTTP status returned by the server.
+	StatusCode int
+	// Kind categorizes the error (not found / context / server).
+	Kind LimitErrorKind
+	// ServerMessage is the raw response body text, if any.
+	ServerMessage string
+}
+
+// Error implements the error interface.
+func (e *LimitEvaluationError) Error() string {
+	if e.ServerMessage != "" {
+		return fmt.Sprintf("limit %q evaluation failed: HTTP %d — %s", e.Key, e.StatusCode, e.ServerMessage)
+	}
+	return fmt.Sprintf("limit %q evaluation failed: HTTP %d", e.Key, e.StatusCode)
+}
+
+// Is supports errors.Is matching against the sentinel errors above.
+func (e *LimitEvaluationError) Is(target error) bool {
+	switch target {
+	case ErrLimitNotFound:
+		return e.Kind == LimitKindNotFound
+	case ErrLimitContext:
+		return e.Kind == LimitKindContext
+	case ErrLimitServer:
+		return e.Kind == LimitKindServer
+	}
+	return false
+}
+
+// EvaluateLimit evaluates a segment-aware limit against the server (SMOODEV-2306).
+//
+// Mirrors EvaluateFeatureFlag exactly — always a network call — but returns a
+// numeric value. The result is the RAW resolved number; clamp it with
+// ClampLimit using the limit's LimitSpec.
+func (c *ConfigClient) EvaluateLimit(
+	ctx context.Context,
+	key string,
+	evalContext map[string]any,
+	environment string,
+) (*EvaluateLimitResponse, error) {
+	env := c.resolveEnv(environment)
+
+	if evalContext == nil {
+		evalContext = map[string]any{}
+	}
+
+	body, err := json.Marshal(struct {
+		Environment string         `json:"environment"`
+		Context     map[string]any `json:"context"`
+	}{
+		Environment: env,
+		Context:     evalContext,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate limit %q: marshal body: %w", key, err)
+	}
+
+	u := fmt.Sprintf("%s/organizations/%s/config/limits/%s/evaluate",
+		c.baseURL, c.orgID, url.PathEscape(key))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate limit %q: build request: %w", key, err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.doRequestWithRetry(req)
+	if err != nil {
+		return nil, fmt.Errorf("config evaluate limit %q: %w", key, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(resp.Body)
+		kind := LimitKindServer
+		switch resp.StatusCode {
+		case http.StatusNotFound:
+			kind = LimitKindNotFound
+		case http.StatusBadRequest:
+			kind = LimitKindContext
+		}
+		return nil, &LimitEvaluationError{
+			Key:           key,
+			StatusCode:    resp.StatusCode,
+			Kind:          kind,
+			ServerMessage: strings.TrimSpace(string(msg)),
+		}
+	}
+
+	var result EvaluateLimitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("config evaluate limit %q: decode response: %w", key, err)
+	}
+
+	return &result, nil
+}
+
+// LimitSpec is the clamp metadata for a limit: Default fallback plus optional
+// Min/Max/Step bounds. Nil Min/Max/Step means that bound is unset.
+type LimitSpec struct {
+	Default float64
+	Min     *float64
+	Max     *float64
+	Step    *float64
+}
+
+// ClampLimit clamps a raw/resolved limit value into [Min, Max] using a
+// LimitSpec. Non-finite input falls back to Default; Step (if set) snaps to the
+// nearest multiple before clamping. Pure — parity with the TS clampLimit.
+func ClampLimit(raw float64, spec LimitSpec) float64 {
+	n := raw
+	if math.IsNaN(n) || math.IsInf(n, 0) {
+		n = spec.Default
+	}
+	if spec.Step != nil && *spec.Step > 0 {
+		n = math.Round(n / *spec.Step) * *spec.Step
+	}
+	if spec.Min != nil && n < *spec.Min {
+		n = *spec.Min
+	}
+	if spec.Max != nil && n > *spec.Max {
+		n = *spec.Max
+	}
+	return n
 }
