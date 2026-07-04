@@ -116,9 +116,9 @@ function envVarNameFor(key: string): string {
  * properties of undefined (reading 'replace')" stack from envVarNameFor,
  * which has cost real prod debug time (SMOODEV-841).
  */
-export function assertKeyDefined(key: unknown, tier: 'public' | 'secret' | 'featureFlag'): asserts key is string {
+export function assertKeyDefined(key: unknown, tier: 'public' | 'secret' | 'featureFlag' | 'limit'): asserts key is string {
     if (typeof key === 'string' && key.length > 0) return;
-    const tierEnum = tier === 'public' ? 'PublicConfigKeys' : tier === 'secret' ? 'SecretConfigKeys' : 'FeatureFlagKeys';
+    const tierEnum = tier === 'public' ? 'PublicConfigKeys' : tier === 'secret' ? 'SecretConfigKeys' : tier === 'limit' ? 'LimitKeys' : 'FeatureFlagKeys';
     throw new Error(
         `@smooai/config: ${tier}Config.get() called with ${key === undefined ? 'undefined' : key === null ? 'null' : `non-string (${typeof key})`} key. ` +
             `Most common cause: reading \`${tierEnum}.<X>\` for a key that's not declared in your schema. ` +

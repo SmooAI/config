@@ -254,6 +254,72 @@ public sealed class SmooConfigClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Evaluate a segment-aware limit against the server (SMOODEV-2306). The
+    /// numeric sibling of <see cref="EvaluateFeatureFlagAsync"/>: same segment
+    /// machinery, resolved live, but returns a numeric value. The result is the
+    /// RAW resolved number — clamp it with <see cref="LimitSpec.Clamp"/>.
+    /// </summary>
+    /// <param name="key">Limit key.</param>
+    /// <param name="context">Attributes the server's segment rules may reference (e.g. <c>{ orgId, agentId }</c>). A null map is sent as <c>{}</c>.</param>
+    /// <param name="environment">Environment name; falls back to <c>DefaultEnvironment</c>.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="LimitEvaluationException">Thrown on any non-2xx response.</exception>
+    public async Task<EvaluateLimitResponse> EvaluateLimitAsync(
+        string key,
+        IReadOnlyDictionary<string, object?>? context = null,
+        string? environment = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException(
+                "@smooai/config: EvaluateLimit called with null/empty key. " +
+                "Most common cause: reading a typed-keys constant for a key that's not declared in your schema. " +
+                "Add it to .smooai-config/config.ts and run `smooai-config push`.",
+                nameof(key));
+        }
+
+        var env = ResolveEnv(environment);
+        var body = new EvaluateFeatureFlagRequest
+        {
+            Environment = env,
+            Context = context ?? new Dictionary<string, object?>(),
+        };
+
+        var url = $"{_baseUrl}/organizations/{_orgId}/config/limits/{Uri.EscapeDataString(key)}/evaluate";
+
+        var response = await SendOnceAsync(HttpMethod.Post, url, body, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (response.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                response.Dispose();
+                _tokenProvider.Invalidate();
+                response = await SendOnceAsync(HttpMethod.Post, url, body, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var text = await SafeReadAsync(response, cancellationToken).ConfigureAwait(false);
+                var kind = response.StatusCode switch
+                {
+                    HttpStatusCode.NotFound => LimitErrorKind.NotFound,
+                    HttpStatusCode.BadRequest => LimitErrorKind.Context,
+                    _ => LimitErrorKind.Server,
+                };
+                throw new LimitEvaluationException(key, (int)response.StatusCode, kind, string.IsNullOrWhiteSpace(text) ? null : text.Trim());
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<EvaluateLimitResponse>(JsonOptions, cancellationToken).ConfigureAwait(false);
+            return result ?? new EvaluateLimitResponse();
+        }
+        finally
+        {
+            response.Dispose();
+        }
+    }
+
     private string ResolveEnv(string? environment)
         => string.IsNullOrWhiteSpace(environment) ? _defaultEnvironment : environment!;
 

@@ -23,9 +23,11 @@ Bearer token, which the backend rejected with 401. The SDK now mints a
 JWT via the OAuth ``client_credentials`` grant before each call.
 """
 
+import math
 import os
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import quote
 
@@ -274,6 +276,49 @@ class ConfigClient:
 
         return EvaluateFeatureFlagResponse.model_validate(response.json())
 
+    def evaluate_limit(
+        self,
+        key: str,
+        context: dict[str, Any] | None = None,
+        environment: str | None = None,
+    ) -> "EvaluateLimitResponse":
+        """Evaluate a segment-aware limit against the server (SMOODEV-2306).
+
+        The numeric sibling of :meth:`evaluate_feature_flag`: same segment
+        machinery, resolved live (never baked), ``value`` typed as a number.
+        Returns the RAW resolved value; clamp it with :func:`clamp_limit` using
+        the limit's :class:`LimitSpec`.
+
+        Args:
+            key: Limit key.
+            context: Attributes the server's segment rules may reference
+                (e.g. ``{"orgId": ..., "agentId": ...}``). Defaults to ``{}``.
+            environment: Environment name (defaults to the client's default).
+
+        Raises:
+            LimitNotFoundError: Server returned 404 — limit not defined.
+            LimitContextError: Server returned 400 — invalid context/environment.
+            LimitEvaluationError: Server returned any other non-2xx status.
+        """
+        env = environment or self._default_environment
+        ctx = context if context is not None else {}
+
+        encoded_key = quote(key, safe="")
+        response = self._request_with_retry(
+            "POST",
+            f"/organizations/{self._org_id}/config/limits/{encoded_key}/evaluate",
+            json={"environment": env, "context": ctx},
+        )
+
+        if response.status_code == 404:
+            raise LimitNotFoundError(key)
+        if response.status_code == 400:
+            raise LimitContextError(key, _safe_text(response))
+        if not response.is_success:
+            raise LimitEvaluationError(key, response.status_code, _safe_text(response))
+
+        return EvaluateLimitResponse.model_validate(response.json())
+
     def close(self) -> None:
         """Close the HTTP client (if owned by this client)."""
         if self._owns_http_client:
@@ -341,3 +386,93 @@ class FeatureFlagContextError(FeatureFlagEvaluationError):
 
     def __init__(self, key: str, server_message: str | None = None) -> None:
         super().__init__(key, 400, server_message or "invalid context or environment")
+
+
+# --- SMOODEV-2306: limits ---------------------------------------------------
+
+
+class EvaluateLimitResponse(BaseModel):
+    """Response from the server-side limit evaluator.
+
+    Mirrors :class:`EvaluateFeatureFlagResponse` but ``value`` is the RAW
+    resolved number (pre client-side clamp).
+    """
+
+    value: float = 0.0
+    """The raw resolved numeric value (post rules + rollout, pre clamp)."""
+
+    matched_rule_id: str | None = Field(default=None, alias="matchedRuleId")
+    """Id of the rule that fired, if any."""
+
+    rollout_bucket: int | None = Field(default=None, alias="rolloutBucket")
+    """0–99 bucket the context was assigned to, if a rollout ran."""
+
+    source: Literal["raw", "rule", "rollout", "default"]
+    """Which branch the evaluator returned from."""
+
+    model_config = {"populate_by_name": True}
+
+
+class LimitEvaluationError(SmooaiConfigError):
+    """Base class for errors raised by :meth:`ConfigClient.evaluate_limit`."""
+
+    def __init__(self, key: str, status_code: int, server_message: str | None = None) -> None:
+        self.key = key
+        self.status_code = status_code
+        self.server_message = server_message
+        suffix = f" — {server_message}" if server_message else ""
+        super().__init__(f'Limit "{key}" evaluation failed: HTTP {status_code}{suffix}')
+
+
+class LimitNotFoundError(LimitEvaluationError):
+    """Server returned 404 — the limit key is not defined in the org's schema."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__(key, 404, "limit not defined in schema")
+
+
+class LimitContextError(LimitEvaluationError):
+    """Server returned 400 — invalid context or missing environment."""
+
+    def __init__(self, key: str, server_message: str | None = None) -> None:
+        super().__init__(key, 400, server_message or "invalid context or environment")
+
+
+@dataclass(frozen=True)
+class LimitSpec:
+    """Clamp metadata for a limit: ``default`` fallback + ``min``/``max``/``step`` bounds."""
+
+    default: float
+    min: float | None = None
+    max: float | None = None
+    step: float | None = None
+
+
+def clamp_limit(raw: object, spec: LimitSpec) -> float:
+    """Clamp a raw/resolved limit value into ``[min, max]`` using a :class:`LimitSpec`.
+
+    Non-numeric / non-finite input falls back to ``default``; ``step`` (if set)
+    snaps to the nearest multiple before clamping. Parity with the TS
+    ``clampLimit`` — note ``bool`` is rejected even though it's an ``int``.
+    """
+    if isinstance(raw, bool):
+        n = float("nan")
+    elif isinstance(raw, (int, float)):
+        n = float(raw)
+    elif isinstance(raw, str) and raw.strip() != "":
+        try:
+            n = float(raw)
+        except ValueError:
+            n = float("nan")
+    else:
+        n = float("nan")
+
+    if not math.isfinite(n):
+        n = spec.default
+    if spec.step is not None and spec.step > 0:
+        n = round(n / spec.step) * spec.step
+    if spec.min is not None:
+        n = max(spec.min, n)
+    if spec.max is not None:
+        n = min(spec.max, n)
+    return n

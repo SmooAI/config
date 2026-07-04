@@ -180,6 +180,123 @@ impl FeatureFlagEvaluationError {
     }
 }
 
+// --- SMOODEV-2306: limits ---------------------------------------------------
+// Limits are the numeric sibling of feature flags: same segment evaluator,
+// resolved live (never baked), value typed as a number. `evaluate_limit`
+// returns the RAW resolved value; the caller clamps it with [`clamp_limit`]
+// using the schema's [`LimitSpec`]. The motivating consumer is smooth-operator
+// reading `agentMaxIterations` by `{orgId, agentId}`.
+
+/// Response from the server-side limit evaluator. Mirrors
+/// [`EvaluateFeatureFlagResponse`] but `value` is the raw resolved number
+/// (pre-clamp). Wire contract of
+/// `POST /organizations/{org_id}/config/limits/{key}/evaluate`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EvaluateLimitResponse {
+    /// The raw resolved numeric value (post rules + rollout, pre client-side clamp).
+    pub value: f64,
+    /// Id of the rule that fired, if any.
+    #[serde(rename = "matchedRuleId", skip_serializing_if = "Option::is_none")]
+    pub matched_rule_id: Option<String>,
+    /// 0–99 bucket the context was assigned to, if a rollout ran.
+    #[serde(rename = "rolloutBucket", skip_serializing_if = "Option::is_none")]
+    pub rollout_bucket: Option<u32>,
+    /// Which branch the evaluator returned from: `"raw"`, `"rule"`, `"rollout"`, or `"default"`.
+    pub source: String,
+}
+
+/// Errors produced by [`ConfigClient::evaluate_limit`]. Mirrors
+/// [`FeatureFlagEvaluationError`].
+#[derive(Debug, Error)]
+pub enum LimitEvaluationError {
+    /// Server returned 404 — the limit key is not defined in the org's schema.
+    #[error("Limit \"{key}\" evaluation failed: HTTP 404 — limit not defined in schema")]
+    NotFound { key: String },
+    /// Server returned 400 — invalid context or environment.
+    #[error("Limit \"{key}\" evaluation failed: HTTP 400 — {message}")]
+    ContextError { key: String, message: String },
+    /// Server returned a non-success status other than 400 / 404.
+    #[error("Limit \"{key}\" evaluation failed: HTTP {status}{}", if .message.is_empty() { String::new() } else { format!(" — {}", .message) })]
+    Evaluation { key: String, status: u16, message: String },
+    /// Underlying HTTP transport or JSON deserialization failure.
+    #[error("Limit \"{key}\" evaluation failed: {source}")]
+    Request {
+        key: String,
+        #[source]
+        source: reqwest::Error,
+    },
+}
+
+impl LimitEvaluationError {
+    /// The limit key the failed evaluation was for.
+    pub fn key(&self) -> &str {
+        match self {
+            Self::NotFound { key } => key,
+            Self::ContextError { key, .. } => key,
+            Self::Evaluation { key, .. } => key,
+            Self::Request { key, .. } => key,
+        }
+    }
+
+    /// The HTTP status code, if the failure came from a server response.
+    pub fn status_code(&self) -> Option<u16> {
+        match self {
+            Self::NotFound { .. } => Some(404),
+            Self::ContextError { .. } => Some(400),
+            Self::Evaluation { status, .. } => Some(*status),
+            Self::Request { .. } => None,
+        }
+    }
+}
+
+/// Clamp metadata for a limit — the numeric counterpart of a feature-flag
+/// schema entry. `default` is the fallback used when the raw value is
+/// non-finite; `min`/`max` bound the clamp; `step` (if set) snaps to the
+/// nearest multiple before clamping.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LimitSpec {
+    pub default: f64,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub step: Option<f64>,
+}
+
+impl LimitSpec {
+    /// A spec with just a default and no bounds.
+    pub fn new(default: f64) -> Self {
+        Self {
+            default,
+            min: None,
+            max: None,
+            step: None,
+        }
+    }
+}
+
+/// Clamp a raw/resolved limit value into `[min, max]` using a [`LimitSpec`].
+/// Non-finite input falls back to `default`; `step` snaps to the nearest
+/// multiple before clamping. Pure + deterministic — parity with the TS
+/// `clampLimit`.
+pub fn clamp_limit(raw: f64, spec: &LimitSpec) -> f64 {
+    let mut n = if raw.is_finite() { raw } else { spec.default };
+    if let Some(step) = spec.step {
+        if step > 0.0 {
+            n = (n / step).round() * step;
+        }
+    }
+    if let Some(min) = spec.min {
+        if n < min {
+            n = min;
+        }
+    }
+    if let Some(max) = spec.max {
+        if n > max {
+            n = max;
+        }
+    }
+    n
+}
+
 impl ConfigClient {
     /// Create a new config client with explicit parameters.
     ///
@@ -491,6 +608,85 @@ impl ConfigClient {
                 message,
             },
             _ => FeatureFlagEvaluationError::Evaluation {
+                key: key.to_string(),
+                status: status_code,
+                message,
+            },
+        })
+    }
+
+    /// Evaluate a segment-aware limit on the server (SMOODEV-2306).
+    ///
+    /// Mirrors [`evaluate_feature_flag`](Self::evaluate_feature_flag) exactly —
+    /// always a network call, same segment machinery — but returns a numeric
+    /// value. The result is the RAW resolved number; clamp it with
+    /// [`clamp_limit`] using the limit's [`LimitSpec`].
+    ///
+    /// # Arguments
+    /// * `key` — Limit key. URL-encoded before being placed in the path.
+    /// * `context` — Attributes the server's segment rules may reference
+    ///   (e.g. `{ "orgId": ..., "agentId": ... }`). `None` == empty map.
+    /// * `environment` — Environment name (defaults to the client's default).
+    ///
+    /// # Errors
+    /// * [`LimitEvaluationError::NotFound`] — 404, limit not defined.
+    /// * [`LimitEvaluationError::ContextError`] — 400, bad context.
+    /// * [`LimitEvaluationError::Evaluation`] — other non-2xx status.
+    /// * [`LimitEvaluationError::Request`] — transport / parse failure.
+    pub async fn evaluate_limit(
+        &self,
+        key: &str,
+        context: Option<HashMap<String, serde_json::Value>>,
+        environment: Option<&str>,
+    ) -> Result<EvaluateLimitResponse, LimitEvaluationError> {
+        let env = self.resolve_env(environment).to_string();
+        let encoded_key = utf8_percent_encode(key, PATH_SEGMENT_ENCODE_SET).to_string();
+        let url = format!(
+            "{}/organizations/{}/config/limits/{}/evaluate",
+            self.base_url, self.org_id, encoded_key
+        );
+
+        let body = serde_json::json!({
+            "environment": env,
+            "context": context.unwrap_or_default(),
+        });
+
+        let response = self
+            .send_with_retry(reqwest::Method::POST, &url, Some(&body), &[])
+            .await
+            .map_err(|err| match err {
+                ConfigClientError::Request(source) => LimitEvaluationError::Request {
+                    key: key.to_string(),
+                    source,
+                },
+                other => LimitEvaluationError::Evaluation {
+                    key: key.to_string(),
+                    status: 0,
+                    message: other.to_string(),
+                },
+            })?;
+
+        let status = response.status();
+        if status.is_success() {
+            return response
+                .json::<EvaluateLimitResponse>()
+                .await
+                .map_err(|source| LimitEvaluationError::Request {
+                    key: key.to_string(),
+                    source,
+                });
+        }
+
+        let status_code = status.as_u16();
+        let message = response.text().await.unwrap_or_default();
+
+        Err(match status_code {
+            404 => LimitEvaluationError::NotFound { key: key.to_string() },
+            400 => LimitEvaluationError::ContextError {
+                key: key.to_string(),
+                message,
+            },
+            _ => LimitEvaluationError::Evaluation {
                 key: key.to_string(),
                 status: status_code,
                 message,
@@ -1168,6 +1364,64 @@ mod integration_tests {
         }
         assert_eq!(err.status_code(), Some(503));
     }
+
+    // --- SMOODEV-2306: limit evaluator (POST /config/limits/{key}/evaluate) ---
+
+    #[tokio::test]
+    async fn test_evaluate_limit_posts_body_and_returns_numeric_response() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_matcher(
+                "/organizations/test-org/config/limits/agentMaxIterations/evaluate",
+            ))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .and(body_json(serde_json::json!({
+                "environment": "production",
+                "context": { "orgId": "o-1", "agentId": "a-1" }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "value": 20,
+                "source": "rule",
+                "matchedRuleId": "rule-9"
+            })))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = test_client(&mock_server, "test-api-key", "production").await;
+        let mut ctx = HashMap::new();
+        ctx.insert("orgId".to_string(), serde_json::json!("o-1"));
+        ctx.insert("agentId".to_string(), serde_json::json!("a-1"));
+
+        let result = client
+            .evaluate_limit("agentMaxIterations", Some(ctx), None)
+            .await
+            .expect("evaluator returns 200");
+
+        assert_eq!(result.value, 20.0);
+        assert_eq!(result.source, "rule");
+        assert_eq!(result.matched_rule_id.as_deref(), Some("rule-9"));
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_limit_maps_404_to_not_found() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path_regex(r"/organizations/.+/config/limits/.+/evaluate"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("limit not defined"))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = test_client(&mock_server, "test-api-key", "production").await;
+        let err = client.evaluate_limit("unknown", None, None).await.unwrap_err();
+        match err {
+            LimitEvaluationError::NotFound { key } => assert_eq!(key, "unknown"),
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1236,5 +1490,54 @@ mod evaluate_response_tests {
             message: "bg".into(),
         };
         assert_eq!(err.status_code(), Some(502));
+    }
+
+    // --- SMOODEV-2306: limits ---
+
+    #[test]
+    fn test_clamp_limit_bounds_and_fallback() {
+        let spec = LimitSpec {
+            default: 12.0,
+            min: Some(1.0),
+            max: Some(50.0),
+            step: None,
+        };
+        assert_eq!(clamp_limit(20.0, &spec), 20.0);
+        assert_eq!(clamp_limit(-5.0, &spec), 1.0);
+        assert_eq!(clamp_limit(1000.0, &spec), 50.0);
+        // Non-finite (NaN or ±Inf) falls back to `default`, parity with the TS
+        // `Number.isFinite` guard.
+        assert_eq!(clamp_limit(f64::NAN, &spec), 12.0);
+        assert_eq!(clamp_limit(f64::INFINITY, &spec), 12.0);
+    }
+
+    #[test]
+    fn test_clamp_limit_snaps_to_step() {
+        let spec = LimitSpec {
+            default: 10.0,
+            min: Some(0.0),
+            max: Some(100.0),
+            step: Some(5.0),
+        };
+        assert_eq!(clamp_limit(12.0, &spec), 10.0);
+        assert_eq!(clamp_limit(13.0, &spec), 15.0);
+    }
+
+    #[test]
+    fn test_limit_error_helpers_and_serde_skip() {
+        let err = LimitEvaluationError::NotFound { key: "k".into() };
+        assert_eq!(err.key(), "k");
+        assert_eq!(err.status_code(), Some(404));
+
+        // matchedRuleId / rolloutBucket are omitted when None.
+        let resp = EvaluateLimitResponse {
+            value: 7.0,
+            matched_rule_id: None,
+            rollout_bucket: None,
+            source: "default".into(),
+        };
+        let s = serde_json::to_string(&resp).unwrap();
+        assert!(!s.contains("matchedRuleId"));
+        assert!(!s.contains("rolloutBucket"));
     }
 }

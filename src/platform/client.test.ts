@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ConfigClient, FeatureFlagContextError, FeatureFlagEvaluationError, FeatureFlagNotFoundError } from './client';
+import {
+    ConfigClient,
+    FeatureFlagContextError,
+    FeatureFlagEvaluationError,
+    FeatureFlagNotFoundError,
+    LimitContextError,
+    LimitEvaluationError,
+    LimitNotFoundError,
+} from './client';
 import { TokenProvider } from './TokenProvider';
 
 // Mock @smooai/fetch module
@@ -262,6 +270,83 @@ describe('ConfigClient', () => {
             expect(err).not.toBeInstanceOf(FeatureFlagNotFoundError);
             expect(err).not.toBeInstanceOf(FeatureFlagContextError);
             expect(err.statusCode).toBe(503);
+        });
+    });
+
+    describe('evaluateLimit', () => {
+        it('POSTs to the limits evaluator and returns the numeric response', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ value: 20, source: 'rule', matchedRuleId: 'rule-9' }),
+            });
+
+            const result = await client.evaluateLimit('agentMaxIterations', { orgId: 'o-1', agentId: 'a-1' });
+
+            expect(result).toEqual({ value: 20, source: 'rule', matchedRuleId: 'rule-9' });
+            expect(mockFetch).toHaveBeenCalledWith(
+                'https://api.smooai.dev/organizations/org-123/config/limits/agentMaxIterations/evaluate',
+                expect.objectContaining({
+                    method: 'POST',
+                    body: JSON.stringify({ environment: 'production', context: { orgId: 'o-1', agentId: 'a-1' } }),
+                    headers: expect.objectContaining({
+                        Authorization: 'Bearer test-access-token',
+                        'Content-Type': 'application/json',
+                    }),
+                }),
+            );
+        });
+
+        it('defaults context to {} and honors an environment override', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ value: 12, source: 'default' }),
+            });
+
+            await client.evaluateLimit('agentMaxIterations', undefined, 'staging');
+
+            expect(mockFetch).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({ body: JSON.stringify({ environment: 'staging', context: {} }) }),
+            );
+        });
+
+        it('URL-encodes limit keys with special characters', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ value: 0, source: 'default' }) });
+
+            await client.evaluateLimit('with spaces/and+slashes');
+
+            expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('with%20spaces%2Fand%2Bslashes'), expect.anything());
+        });
+
+        it('throws LimitNotFoundError on 404', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 404, text: () => Promise.resolve('limit not defined') });
+
+            const err = await client.evaluateLimit('unknown').catch((e) => e);
+            expect(err).toBeInstanceOf(LimitNotFoundError);
+            expect(err).toBeInstanceOf(LimitEvaluationError);
+            expect(err.key).toBe('unknown');
+            expect(err.statusCode).toBe(404);
+        });
+
+        it('throws LimitContextError on 400 and LimitEvaluationError on 5xx', async () => {
+            const client = new ConfigClient(BASE_OPTIONS);
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 400, text: () => Promise.resolve('bad context') });
+            const ctxErr = await client.evaluateLimit('agentMaxIterations').catch((e) => e);
+            expect(ctxErr).toBeInstanceOf(LimitContextError);
+            expect(ctxErr.statusCode).toBe(400);
+
+            mockFetch.mockResolvedValueOnce({ ok: false, status: 503, text: () => Promise.resolve('overloaded') });
+            const srvErr = await client.evaluateLimit('agentMaxIterations').catch((e) => e);
+            expect(srvErr).toBeInstanceOf(LimitEvaluationError);
+            expect(srvErr).not.toBeInstanceOf(LimitNotFoundError);
+            expect(srvErr).not.toBeInstanceOf(LimitContextError);
+            expect(srvErr.statusCode).toBe(503);
         });
     });
 });

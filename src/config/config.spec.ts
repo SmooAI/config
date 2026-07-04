@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { describe, expect, it } from 'vitest';
 import z from 'zod';
-import { defineConfig, InferConfigTypes, StringSchema, NumberSchema, BooleanSchema, serializeConfigSchemaToJsonSchema } from './config';
+import { defineConfig, defineLimit, InferConfigTypes, StringSchema, NumberSchema, BooleanSchema, serializeConfigSchemaToJsonSchema } from './config';
 import { generateZodSchemas, parseConfig } from './parseConfigSchema';
 
 describe('defineConfig', () => {
@@ -279,11 +279,12 @@ describe('defineConfig', () => {
 });
 
 describe('serializeConfigSchemaToJsonSchema (SMOODEV-671 tiered wire format)', () => {
-    it('wraps all three tiers under their canonical keys', () => {
+    it('wraps all four tiers under their canonical keys', () => {
         const jsonSchema = serializeConfigSchemaToJsonSchema({
             publicConfigSchema: { apiUrl: StringSchema, debugMode: BooleanSchema, maxRetries: NumberSchema },
             secretConfigSchema: { apiKey: StringSchema },
             featureFlagSchema: { enableNewUI: BooleanSchema },
+            limitsSchema: { agentMaxIterations: defineLimit({ default: 12, min: 1, max: 50 }) },
         });
 
         expect(jsonSchema).toEqual({
@@ -307,6 +308,12 @@ describe('serializeConfigSchemaToJsonSchema (SMOODEV-671 tiered wire format)', (
                     type: 'object',
                     properties: {
                         enableNewUI: { type: 'boolean' },
+                    },
+                },
+                limitsSchema: {
+                    type: 'object',
+                    properties: {
+                        agentMaxIterations: { type: 'number', default: 12, minimum: 1, maximum: 50 },
                     },
                 },
             },

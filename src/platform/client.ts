@@ -307,12 +307,134 @@ export class ConfigClient {
             return throwFlagError(key, status, inner.response?.dataString ?? inner.response?.data?.message);
         }
     }
+
+    /**
+     * Evaluate a segment-aware limit against the server (SMOODEV-2306).
+     *
+     * Mirrors {@link evaluateFeatureFlag} exactly — always a network call, same
+     * segment machinery — but returns a numeric `value`. The result is the RAW
+     * resolved number; callers clamp it into `[min, max]` with `clampLimit`
+     * (the `limit` tier on `buildClientConfig` / `buildConfig` does this for
+     * you using the schema metadata).
+     *
+     * @param key - Limit key.
+     * @param context - Attributes the server's segment rules may reference
+     *   (e.g. `{ orgId, agentId, plan }`). Unreferenced keys are ignored.
+     * @param environment - Environment name (defaults to the client's default).
+     */
+    async evaluateLimit(key: string, context: Record<string, unknown> = {}, environment?: string): Promise<EvaluateLimitResponse> {
+        const env = environment ?? this.defaultEnvironment;
+        const url = `${this.baseUrl}/organizations/${this.orgId}/config/limits/${encodeURIComponent(key)}/evaluate`;
+        const send = async (): Promise<Response> =>
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    Authorization: await this.authHeader(),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ environment: env, context }),
+            });
+
+        const dispatchOrThrow = async (response: Response): Promise<EvaluateLimitResponse> => {
+            if (response.status === 404) {
+                throw new LimitNotFoundError(key);
+            }
+            if (response.status === 400) {
+                const text = await response.text().catch(() => '');
+                throw new LimitContextError(key, text);
+            }
+            if (!response.ok) {
+                const text = await response.text().catch(() => '');
+                throw new LimitEvaluationError(key, response.status, text);
+            }
+            return (await response.json()) as EvaluateLimitResponse;
+        };
+
+        try {
+            const response = await send();
+            return await dispatchOrThrow(response);
+        } catch (err) {
+            const inner = err as { response?: Response & { status?: number; isJson?: boolean; data?: { message?: string }; dataString?: string } };
+            const status = inner?.response?.status;
+            if (status === undefined) throw err; // not an HTTPResponseError — propagate
+            if (status === 401) {
+                this.tokenProvider.invalidate();
+                const response = await send();
+                try {
+                    return await dispatchOrThrow(response);
+                } catch (innerErr) {
+                    const r = (innerErr as { response?: { status?: number; dataString?: string; data?: { message?: string } } }).response;
+                    if (r?.status === undefined) throw innerErr;
+                    return throwLimitError(key, r.status, r.dataString ?? r.data?.message);
+                }
+            }
+            return throwLimitError(key, status, inner.response?.dataString ?? inner.response?.data?.message);
+        }
+    }
 }
 
 function throwFlagError(key: string, status: number, body?: string): never {
     if (status === 404) throw new FeatureFlagNotFoundError(key);
     if (status === 400) throw new FeatureFlagContextError(key, body);
     throw new FeatureFlagEvaluationError(key, status, body);
+}
+
+// --- SMOODEV-2306: limits ---------------------------------------------------
+// Limits are the numeric sibling of feature flags: they resolve LIVE through
+// the same segment evaluator, just typed as a number. `evaluateLimit` returns
+// the RAW resolved number (post rules + rollout). The CLIENT clamps it into
+// `[min, max]` using the schema's LimitDefinition — see `clampLimit` in
+// `@/config/config` and the `limit` tier on `buildClientConfig` / `buildConfig`.
+
+/**
+ * Response from the server-side limit evaluator. Mirrors
+ * `EvaluateFeatureFlagResponse` but `value` is the RAW resolved number,
+ * pre-clamp. Matches the wire contract of
+ * `POST /organizations/{org_id}/config/limits/{key}/evaluate`.
+ */
+export interface EvaluateLimitResponse {
+    /** The raw resolved numeric value (post rules + rollout, pre client-side clamp). */
+    value: number;
+    /** Id of the rule that fired, if any. */
+    matchedRuleId?: string;
+    /** 0–99 bucket the context was assigned to, if a rollout ran. */
+    rolloutBucket?: number;
+    /** Which branch the evaluator returned from. */
+    source: 'raw' | 'rule' | 'rollout' | 'default';
+}
+
+function throwLimitError(key: string, status: number, body?: string): never {
+    if (status === 404) throw new LimitNotFoundError(key);
+    if (status === 400) throw new LimitContextError(key, body);
+    throw new LimitEvaluationError(key, status, body);
+}
+
+/** Base class for errors thrown by `evaluateLimit`. Mirrors `FeatureFlagEvaluationError`. */
+export class LimitEvaluationError extends Error {
+    constructor(
+        public readonly key: string,
+        public readonly statusCode: number,
+        public readonly serverMessage?: string,
+    ) {
+        super(`Limit "${key}" evaluation failed: HTTP ${statusCode}${serverMessage ? ` — ${serverMessage}` : ''}`);
+        this.name = 'LimitEvaluationError';
+    }
+}
+
+/** Server returned 404 — the limit key is not defined in the org's schema. */
+export class LimitNotFoundError extends LimitEvaluationError {
+    constructor(key: string) {
+        super(key, 404, 'limit not defined in schema');
+        this.name = 'LimitNotFoundError';
+    }
+}
+
+/** Server returned 400 — invalid context or missing environment. */
+export class LimitContextError extends LimitEvaluationError {
+    constructor(key: string, serverMessage?: string) {
+        super(key, 400, serverMessage ?? 'invalid context or environment');
+        this.name = 'LimitContextError';
+    }
 }
 
 /**

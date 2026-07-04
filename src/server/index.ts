@@ -44,7 +44,8 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { defineConfig, InferConfigTypes } from '@/config/config';
+import { clampLimit, defineConfig, InferConfigTypes, LimitDefinition } from '@/config/config';
+import { convertKeyToUpperSnakeCase } from '@/utils';
 import { createSyncFn } from 'synckit';
 import { assertKeyDefined, buildConfigAsync, BuildConfigAsyncOptions } from './internal';
 import { WORKER_SOURCE } from './sync-worker-source.generated';
@@ -128,8 +129,16 @@ export function buildConfig<Schema extends ReturnType<typeof defineConfig>>(sche
     type PublicKey = Extract<InferConfigTypes<Schema>['PublicConfigKeys'][keyof InferConfigTypes<Schema>['PublicConfigKeys']], keyof ConfigType>;
     type SecretKey = Extract<InferConfigTypes<Schema>['SecretConfigKeys'][keyof InferConfigTypes<Schema>['SecretConfigKeys']], keyof ConfigType>;
     type FlagKey = Extract<InferConfigTypes<Schema>['FeatureFlagKeys'][keyof InferConfigTypes<Schema>['FeatureFlagKeys']], keyof ConfigType>;
+    type LimitKey = InferConfigTypes<Schema>['LimitKeys'][keyof InferConfigTypes<Schema>['LimitKeys']] & string;
 
     const asyncCore = buildConfigAsync(schema, options);
+
+    // Limits (SMOODEV-2306) never bake and are not part of the resolution
+    // chain — they resolve live via the segment evaluator. `getLimit` is the
+    // sync fallback: an env override (`process.env[UPPER_SNAKE(key)]`) or the
+    // schema default, clamped. For live segment resolution on the server use
+    // `createLimitEvaluator(new ConfigClient())` from `@smooai/config/client`.
+    const limitsMeta: Record<string, LimitDefinition> = schema._limitsMeta ?? {};
 
     // One worker per tier keeps bundles simple and lets synckit keep a
     // warm thread per tier so repeated reads in hot paths don't repay the
@@ -169,6 +178,14 @@ export function buildConfig<Schema extends ReturnType<typeof defineConfig>>(sche
             getSync: <K extends FlagKey>(key: K): ConfigType[K] | undefined => {
                 assertKeyDefined(key, 'featureFlag');
                 return unpack<ConfigType[K]>(flagSync(schema, 'flag', key) as WorkerEnvelope, key as string);
+            },
+        },
+        limit: {
+            getLimit: (key: LimitKey): number => {
+                assertKeyDefined(key, 'limit');
+                const meta = limitsMeta[key] ?? { __smooLimit: true, default: 0 };
+                const envVal = process.env[convertKeyToUpperSnakeCase(key)];
+                return clampLimit(envVal ?? meta.default, meta);
             },
         },
         invalidateCaches: asyncCore.invalidateCaches,

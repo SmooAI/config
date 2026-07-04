@@ -27,11 +27,28 @@
  * `createFeatureFlagChecker`, `toUpperSnakeCase`) are still exported at
  * module scope — React hooks and legacy call sites depend on them.
  */
-import { defineConfig, InferConfigTypes } from '@/config/config';
-import { ConfigClient, ConfigClientOptions, EvaluateFeatureFlagResponse } from '@/platform/client';
+import { clampLimit, defineConfig, InferConfigTypes, LimitDefinition } from '@/config/config';
+import { ConfigClient, ConfigClientOptions, EvaluateFeatureFlagResponse, EvaluateLimitResponse } from '@/platform/client';
 
-export type { EvaluateFeatureFlagResponse } from '@/platform/client';
+export type { EvaluateFeatureFlagResponse, EvaluateLimitResponse } from '@/platform/client';
 export { FeatureFlagContextError, FeatureFlagEvaluationError, FeatureFlagNotFoundError } from '@/platform/client';
+export { LimitContextError, LimitEvaluationError, LimitNotFoundError } from '@/platform/client';
+
+/** Clamped result returned by the `limit` tier's `evaluateLimit`. */
+export interface ClampedLimitResult {
+    /** The clamped value (raw resolved number pushed into `[min, max]`). */
+    value: number;
+    /** The raw resolved number the server returned, before clamping. */
+    rawValue: number;
+    /** Id of the rule that fired, if any. */
+    matchedRuleId?: string;
+    /** 0–99 bucket the context was assigned to, if a rollout ran. */
+    rolloutBucket?: number;
+    /** Which branch the evaluator returned from. */
+    source: EvaluateLimitResponse['source'];
+    /** True if the clamp changed the raw value (or the raw value was non-finite). */
+    clamped: boolean;
+}
 
 /**
  * Convert a camelCase key to UPPER_SNAKE_CASE.
@@ -50,9 +67,9 @@ export function toUpperSnakeCase(key: string): string {
  * cryptic "Cannot read properties of undefined (reading 'replace')".
  * Mirrors `assertKeyDefined` in `@/server/internal` (SMOODEV-841).
  */
-function assertClientKeyDefined(key: unknown, tier: 'public' | 'featureFlag'): asserts key is string {
+function assertClientKeyDefined(key: unknown, tier: 'public' | 'featureFlag' | 'limit'): asserts key is string {
     if (typeof key === 'string' && key.length > 0) return;
-    const tierEnum = tier === 'public' ? 'PublicConfigKeys' : 'FeatureFlagKeys';
+    const tierEnum = tier === 'public' ? 'PublicConfigKeys' : tier === 'limit' ? 'LimitKeys' : 'FeatureFlagKeys';
     throw new Error(
         `@smooai/config (client): ${tier}Config.get() called with ${key === undefined ? 'undefined' : key === null ? 'null' : `non-string (${typeof key})`} key. ` +
             `Most common cause: reading \`${tierEnum}.<X>\` for a key that's not declared in your schema. ` +
@@ -182,6 +199,42 @@ export function createFeatureFlagEvaluator<T extends Record<string, string>>(
     return (key, context, environment) => client.evaluateFeatureFlag(key as string, context ?? {}, environment);
 }
 
+/**
+ * Read a limit's baked value from the bundler env bag (SMOODEV-2306).
+ *
+ * Looks up `NEXT_PUBLIC_LIMIT_{KEY}` / `VITE_LIMIT_{KEY}` (first hit wins),
+ * mirroring `getClientFeatureFlag`. Returns `undefined` when not baked — the
+ * `limit` tier then falls back to the schema `default`. Limits are designed to
+ * resolve live via `evaluateLimit`; the baked/default read is the sync fallback.
+ */
+export function getClientLimit(key: string): number | undefined {
+    assertClientKeyDefined(key, 'limit');
+    const envKey = toUpperSnakeCase(key);
+    const env = readClientEnv();
+    const raw = env[`NEXT_PUBLIC_LIMIT_${envKey}`] ?? env[`VITE_LIMIT_${envKey}`];
+    if (raw === undefined) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Create a typed segment-aware limit evaluator from a config's `LimitKeys` and
+ * a `ConfigClient`. Mirrors {@link createFeatureFlagEvaluator}. Returns the RAW
+ * resolved number; clamp it with `clampLimit` (or use the `limit` tier on
+ * `buildClientConfig`, which clamps for you using the schema metadata).
+ *
+ * @example
+ * ```ts
+ * const evaluateLimit = createLimitEvaluator<typeof LimitKeys>(client);
+ * const { value } = await evaluateLimit('agentMaxIterations', { orgId, agentId });
+ * ```
+ */
+export function createLimitEvaluator<T extends Record<string, string>>(
+    client: ConfigClient,
+): (key: T[keyof T], context?: Record<string, unknown>, environment?: string) => Promise<EvaluateLimitResponse> {
+    return (key, context, environment) => client.evaluateLimit(key as string, context ?? {}, environment);
+}
+
 export interface BuildClientConfigOptions {
     /** Override the ConfigClient used for HTTP-tier lookups. */
     httpClient?: ConfigClient;
@@ -205,10 +258,13 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
     type ConfigType = InferConfigTypes<Schema>['ConfigType'];
     type PublicKey = Extract<InferConfigTypes<Schema>['PublicConfigKeys'][keyof InferConfigTypes<Schema>['PublicConfigKeys']], keyof ConfigType>;
     type FlagKey = Extract<InferConfigTypes<Schema>['FeatureFlagKeys'][keyof InferConfigTypes<Schema>['FeatureFlagKeys']], keyof ConfigType>;
+    type LimitKey = InferConfigTypes<Schema>['LimitKeys'][keyof InferConfigTypes<Schema>['LimitKeys']] & string;
 
-    // Reference schema to satisfy the type parameter — ensures TS narrows
-    // correctly even though this branch doesn't hit the schema at runtime.
-    void schema;
+    // Limits carry clamp metadata (min/max/default/step) that lives on the
+    // schema, not in the resolution chain. Read it here so the `limit` tier can
+    // clamp resolved values client-side.
+    const limitsMeta: Record<string, LimitDefinition> = schema._limitsMeta ?? {};
+    const metaFor = (key: string): LimitDefinition => limitsMeta[key] ?? { __smooLimit: true, default: 0 };
 
     const httpClient = options?.httpClient ?? new ConfigClient({ cacheTtlMs: 30_000, ...(options?.httpClientOptions ?? {}) });
 
@@ -254,6 +310,33 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
                 assertClientKeyDefined(key, 'featureFlag');
                 const v = getClientFeatureFlag(key as string);
                 return v as unknown as ConfigType[K] | undefined;
+            },
+        },
+        /**
+         * Limits (SMOODEV-2306). `getLimit` is the sync fallback (baked env or
+         * schema default, clamped); `evaluateLimit` is the live segment-resolved
+         * read, clamped into `[min, max]` using the schema metadata.
+         */
+        limit: {
+            getLimit: (key: LimitKey): number => {
+                assertClientKeyDefined(key, 'limit');
+                const meta = metaFor(key);
+                const baked = getClientLimit(key);
+                return clampLimit(baked ?? meta.default, meta);
+            },
+            evaluateLimit: async (key: LimitKey, context?: Record<string, unknown>, environment?: string): Promise<ClampedLimitResult> => {
+                assertClientKeyDefined(key, 'limit');
+                const meta = metaFor(key);
+                const res = await httpClient.evaluateLimit(key, context ?? {}, environment);
+                const value = clampLimit(res.value, meta);
+                return {
+                    value,
+                    rawValue: res.value,
+                    matchedRuleId: res.matchedRuleId,
+                    rolloutBucket: res.rolloutBucket,
+                    source: res.source,
+                    clamped: value !== res.value,
+                };
             },
         },
     };
