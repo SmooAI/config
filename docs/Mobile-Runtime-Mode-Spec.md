@@ -2,7 +2,7 @@
 
 > Status: authoritative parity contract for the **mobile** SDKs (Swift `/swift`,
 > Kotlin `/kotlin`). Sibling of `Container-Runtime-Mode-Spec.md`. Defined by
-> ADR-073 in the smooai monorepo (`docs/Decisions/ADR-073-mobile-first-class-config-swift-kotlin.md`).
+> ADR-074 in the smooai monorepo (`docs/Decisions/ADR-074-mobile-first-class-config-swift-kotlin.md`).
 
 ## 1. Why mobile is its own mode
 

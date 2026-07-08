@@ -20,7 +20,7 @@ public struct EvaluationResult: Sendable, Codable, Equatable {
 }
 
 /// Options for `SmooConfig` — the mobile runtime mode of @smooai/config
-/// (ADR-073). Public config arrives via a build-time-baked bundle plus an
+/// (ADR-074). Public config arrives via a build-time-baked bundle plus an
 /// optional HTTP refresh; flags/limits are always evaluated live against the
 /// app-config surface (`/config/app/*`) with the Supabase user JWT.
 public struct SmooConfigOptions: Sendable {
@@ -59,7 +59,7 @@ public enum SmooConfigError: Error, Equatable {
     case invalidResponse
 }
 
-/// Mobile runtime mode client (ADR-073, SMOODEV-2380).
+/// Mobile runtime mode client (ADR-074, SMOODEV-2380).
 ///
 /// Read chains — offline-safe by construction, every accessor resolves
 /// without network:

@@ -39,7 +39,7 @@ public class SmooConfigException(message: String, public val statusCode: Int? = 
 
 /**
  * Options for [SmooConfig] — the mobile runtime mode of @smooai/config
- * (ADR-073, docs/Mobile-Runtime-Mode-Spec.md). Public config arrives via a
+ * (ADR-074, docs/Mobile-Runtime-Mode-Spec.md). Public config arrives via a
  * build-time-baked bundle plus an optional HTTP refresh; flags/limits are
  * always evaluated live against the app-config surface (`/config/app/...`)
  * with the end-user bearer token.
@@ -62,7 +62,7 @@ public class SmooConfigOptions(
 )
 
 /**
- * Mobile runtime mode client (ADR-073, SMOODEV-2381) — the Kotlin twin of the
+ * Mobile runtime mode client (ADR-074, SMOODEV-2381) — the Kotlin twin of the
  * Swift `SmooConfig`. Read chains are offline-safe by construction:
  * - public config: baked bundle → http-refreshed cache → null
  * - feature flags / limits: http → last-cached value (disk) → caller default
@@ -174,7 +174,7 @@ public class SmooConfig(private val options: SmooConfigOptions) {
 /**
  * Offline cache: last-known public values and last evaluation result per
  * flag/limit key. Plain JSON file — only PUBLIC-tier data ever flows through
- * this surface, so no encryption is needed (ADR-073).
+ * this surface, so no encryption is needed (ADR-074).
  */
 internal class DiskCache(directory: File?, private val json: Json) {
     @Serializable

@@ -1,0 +1,10 @@
+# JitPack build for the Kotlin mobile SDK (SMOODEV-2382, ADR-074).
+# Android consumers pin a commit:
+#   repositories { maven("https://jitpack.io") }
+#   implementation("com.github.SmooAI:config:<sha>")
+# Maven Central under ai.smoo is the durable follow-up (needs Sonatype +
+# smoo.ai group verification).
+jdk:
+    - openjdk17
+install:
+    - cd kotlin && gradle publishToMavenLocal -Pversion=$VERSION --console=plain

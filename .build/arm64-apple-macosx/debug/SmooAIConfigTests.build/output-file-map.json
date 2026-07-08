@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/primary.swiftdeps"
+  },
+  "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift": {
+    "dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.d",
+    "object": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o",
+    "swiftmodule": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swiftdeps",
+    "diagnostics": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.dia"
+  }
+}

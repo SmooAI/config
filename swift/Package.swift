@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// SmooAIConfig — the mobile runtime mode of @smooai/config (ADR-073, SMOODEV-2380).
+// SmooAIConfig — the mobile runtime mode of @smooai/config (ADR-074, SMOODEV-2380).
 // Zero external dependencies by design (Foundation only), mirroring the
 // SDK-free ethos of the consuming apps' core packages.
 import PackageDescription
