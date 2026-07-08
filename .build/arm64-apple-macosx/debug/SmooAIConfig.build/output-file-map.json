@@ -1,0 +1,26 @@
+{
+  "": {
+    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/primary.swiftdeps"
+  },
+  "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift": {
+    "dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.d",
+    "object": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o",
+    "swiftmodule": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache~partial.swiftmodule",
+    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swiftdeps",
+    "diagnostics": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.dia"
+  },
+  "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift": {
+    "dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.d",
+    "object": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o",
+    "swiftmodule": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue~partial.swiftmodule",
+    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swiftdeps",
+    "diagnostics": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.dia"
+  },
+  "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift": {
+    "dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.d",
+    "object": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o",
+    "swiftmodule": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig~partial.swiftmodule",
+    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swiftdeps",
+    "diagnostics": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.dia"
+  }
+}

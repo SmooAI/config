@@ -1,14 +1,16 @@
 // SmooAIConfig — the mobile runtime mode of @smooai/config for Kotlin/Android
-// (ADR-073, SMOODEV-2381). Pure-Kotlin JVM library (no Android SDK) with a
+// (ADR-074, SMOODEV-2381). Pure-Kotlin JVM library (no Android SDK) with a
 // caller-injected Ktor engine, mirroring the consuming app's :core module.
 // Versions match apps/mobile/android/core (Kotlin 2.1.20, Ktor 3.2.3).
 plugins {
     kotlin("jvm") version "2.1.20"
     kotlin("plugin.serialization") version "2.1.20"
+    `maven-publish`
 }
 
 group = "ai.smoo"
-version = "0.1.0"
+// JitPack passes -Pversion=<tag/sha> (see /jitpack.yml); default for local dev.
+version = (findProperty("version") as String?)?.takeIf { it != "unspecified" } ?: "0.1.0"
 
 repositories {
     mavenCentral()
@@ -30,4 +32,13 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// JitPack runs `gradle publishToMavenLocal` (see /jitpack.yml).
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+        }
+    }
 }

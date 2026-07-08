@@ -4,7 +4,7 @@ import Foundation
 /// last evaluation result per flag/limit key. Plain JSON file in the caches
 /// directory — PUBLIC-tier data only ever flows through this surface, so no
 /// encryption is needed (mirror of the plaintext baked bundle rationale in
-/// ADR-073).
+/// ADR-074).
 struct DiskCache {
     private struct Payload: Codable {
         var publicValues: [String: JSONValue]?

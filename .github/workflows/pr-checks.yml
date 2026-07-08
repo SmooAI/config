@@ -94,8 +94,9 @@ jobs:
         timeout-minutes: 15
         steps:
             - uses: actions/checkout@v4
+            # Root manifest (SMOODEV-2382) — same sources/tests as swift/Package.swift,
+            # and validates what SPM consumers actually resolve.
             - name: Swift build + test
-              working-directory: swift
               run: swift test
 
     kotlin_checks:
