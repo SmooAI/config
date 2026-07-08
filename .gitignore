@@ -75,3 +75,7 @@ src/server/sync-worker-source.generated.ts
 
 # Swift build artifacts
 swift/.build/
+
+# Kotlin build artifacts
+kotlin/build/
+kotlin/.gradle/
