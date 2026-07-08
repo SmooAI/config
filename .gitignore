@@ -72,3 +72,6 @@ dotnet/dist/
 .pulumi
 
 src/server/sync-worker-source.generated.ts
+
+# Swift build artifacts
+swift/.build/

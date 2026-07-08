@@ -85,3 +85,15 @@ jobs:
                   dotnet restore
                   dotnet build -c Release --no-restore
                   dotnet test -c Release --no-build --verbosity normal
+
+    # Swift needs a macOS runner (SMOODEV-2380) — the linux Swift toolchain's
+    # FoundationNetworking URLSession diverges from the Darwin one the SDK's
+    # consumers (iOS apps) actually run on.
+    swift_checks:
+        runs-on: macos-26
+        timeout-minutes: 15
+        steps:
+            - uses: actions/checkout@v4
+            - name: Swift build + test
+              working-directory: swift
+              run: swift test
