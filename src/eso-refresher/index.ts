@@ -147,8 +147,12 @@ export interface EsoRefresherHandle {
 
 function defaultScheduler(fn: () => void, ms: number): { clear: () => void } {
     const t = setInterval(fn, ms);
-    // Don't keep the event loop alive solely for the timer in tests/CLI teardown.
-    if (typeof t.unref === 'function') t.unref();
+    // SMOODEV-1527: do NOT unref() — the interval is what keeps the daemon's
+    // event loop alive. A pending `await new Promise(() => {})` in main() does
+    // NOT hold the loop open by itself, so unref'ing here let the process exit 0
+    // right after the initial mint → CrashLoopBackOff. Tests inject their own
+    // scheduler, so this only affects the real CLI/sidecar (where we WANT it
+    // to keep running). `stop()` still calls clear() for clean shutdown.
     return { clear: () => clearInterval(t) };
 }
 
@@ -245,6 +249,7 @@ export async function main(): Promise<void> {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
 
-    // Keep alive — the interval timer is unref'd, so hold the loop open explicitly.
+    // The ref'd interval (SMOODEV-1527) is what actually holds the event loop
+    // open; this pending promise only keeps main() from returning.
     await new Promise<never>(() => {});
 }
