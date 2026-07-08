@@ -75,22 +75,20 @@ final class SmooConfigTests: XCTestCase {
 
     // MARK: - Public config
 
-    func testBundledPublicValue() async {
+    // No `await`: publicValue is synchronous by contract (spec row 2 — boot
+    // config resolves without suspension), matching the Kotlin twin.
+    func testBundledPublicValueResolvesSynchronously() {
         let config = makeConfig(bundle: #"{"values":{"supabaseHost":"db.smoo.ai","retries":3}}"#)
-        let host = await config.publicValue(forKey: "supabaseHost")
-        XCTAssertEqual(host?.stringValue, "db.smoo.ai")
-        let retries = await config.publicValue(forKey: "retries")
-        XCTAssertEqual(retries?.numberValue, 3)
-        let missing = await config.publicValue(forKey: "nope")
-        XCTAssertNil(missing)
+        XCTAssertEqual(config.publicValue(forKey: "supabaseHost")?.stringValue, "db.smoo.ai")
+        XCTAssertEqual(config.publicValue(forKey: "retries")?.numberValue, 3)
+        XCTAssertNil(config.publicValue(forKey: "nope"))
     }
 
     func testRefreshedValuesWinOverBundle() async throws {
         StubURLProtocol.handlers = [("/config/app/values", 200, #"{"values":{"supabaseHost":"db2.smoo.ai"}}"#)]
         let config = makeConfig(bundle: #"{"values":{"supabaseHost":"db.smoo.ai"}}"#)
         try await config.refreshPublicValues()
-        let host = await config.publicValue(forKey: "supabaseHost")
-        XCTAssertEqual(host?.stringValue, "db2.smoo.ai")
+        XCTAssertEqual(config.publicValue(forKey: "supabaseHost")?.stringValue, "db2.smoo.ai")
         // Bearer token attached
         let auth = StubURLProtocol.requests.first?.value(forHTTPHeaderField: "Authorization")
         XCTAssertEqual(auth, "Bearer user-jwt")
@@ -103,8 +101,7 @@ final class SmooConfigTests: XCTestCase {
             try await config.refreshPublicValues()
             XCTFail("expected throw")
         } catch {}
-        let host = await config.publicValue(forKey: "supabaseHost")
-        XCTAssertEqual(host?.stringValue, "db.smoo.ai")
+        XCTAssertEqual(config.publicValue(forKey: "supabaseHost")?.stringValue, "db.smoo.ai")
     }
 
     // MARK: - Feature flags
@@ -146,5 +143,59 @@ final class SmooConfigTests: XCTestCase {
         let config = makeConfig()
         let value = await config.evaluateLimit("syncInterval", default: 30, min: 5, max: 120)
         XCTAssertEqual(value, 30)
+    }
+
+    func testLimitStepSnapsBeforeClamp() async {
+        // 118 with step 25 snaps to 125 first, THEN clamps to max 120 — the
+        // TS clampLimit / Rust clamp_limit order (ADR-066).
+        StubURLProtocol.handlers = [("/config/app/limits/syncInterval/evaluate", 200, #"{"value":118,"source":"rule"}"#)]
+        let config = makeConfig()
+        let clamped = await config.evaluateLimit("syncInterval", default: 30, min: 5, max: 120, step: 25)
+        XCTAssertEqual(clamped, 120)
+
+        // In-bounds snap: 47 with step 10 → 50.
+        StubURLProtocol.handlers = [("/config/app/limits/batchSize/evaluate", 200, #"{"value":47,"source":"raw"}"#)]
+        let snapped = await config.evaluateLimit("batchSize", default: 10, min: 0, max: 100, step: 10)
+        XCTAssertEqual(snapped, 50)
+    }
+
+    // MARK: - Typed evaluate errors
+
+    func testEvaluateThrowsTypedErrors() async {
+        StubURLProtocol.handlers = [
+            ("/config/app/feature-flags/missingFlag/evaluate", 404, "{}"),
+            ("/config/app/feature-flags/badContext/evaluate", 400, "{}"),
+            ("/config/app/limits/missingLimit/evaluate", 404, "{}"),
+            ("/config/app/limits/brokenLimit/evaluate", 503, "{}"),
+        ]
+        let config = makeConfig()
+
+        do {
+            _ = try await config.evaluateFlagValue("missingFlag")
+            XCTFail("expected throw")
+        } catch let error as SmooConfigError {
+            XCTAssertEqual(error, .featureFlagNotFound(key: "missingFlag"))
+        } catch { XCTFail("unexpected error \(error)") }
+
+        do {
+            _ = try await config.evaluateFlagValue("badContext")
+            XCTFail("expected throw")
+        } catch let error as SmooConfigError {
+            XCTAssertEqual(error, .featureFlagContext(key: "badContext"))
+        } catch { XCTFail("unexpected error \(error)") }
+
+        do {
+            _ = try await config.evaluateLimitValue("missingLimit")
+            XCTFail("expected throw")
+        } catch let error as SmooConfigError {
+            XCTAssertEqual(error, .limitNotFound(key: "missingLimit"))
+        } catch { XCTFail("unexpected error \(error)") }
+
+        do {
+            _ = try await config.evaluateLimitValue("brokenLimit")
+            XCTFail("expected throw")
+        } catch let error as SmooConfigError {
+            XCTAssertEqual(error, .limitEvaluation(key: "brokenLimit", statusCode: 503))
+        } catch { XCTFail("unexpected error \(error)") }
     }
 }

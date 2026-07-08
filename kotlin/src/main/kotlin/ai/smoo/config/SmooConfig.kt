@@ -14,7 +14,9 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
+import java.io.Closeable
 import java.io.File
+import kotlin.math.round
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -35,7 +37,31 @@ public data class EvaluationResult(
     val source: String,
 )
 
-public class SmooConfigException(message: String, public val statusCode: Int? = null) : Exception(message)
+public open class SmooConfigException(message: String, public val statusCode: Int? = null) : Exception(message)
+
+/**
+ * Base for flag-evaluation failures — subclasses let callers branch on 404
+ * (key not in schema) / 400 (bad context) / other without parsing messages,
+ * mirroring the TS `FeatureFlagEvaluationError` hierarchy.
+ */
+public open class FeatureFlagEvaluationException(public val key: String, statusCode: Int, detail: String? = null) :
+    SmooConfigException("Feature flag \"$key\" evaluation failed: HTTP $statusCode${detail?.let { " — $it" }.orEmpty()}", statusCode)
+
+/** Server returned 404 — the flag key is not defined in the schema. */
+public class FeatureFlagNotFoundException(key: String) : FeatureFlagEvaluationException(key, 404, "flag not defined in schema")
+
+/** Server returned 400 — invalid context or missing environment. */
+public class FeatureFlagContextException(key: String) : FeatureFlagEvaluationException(key, 400, "invalid context or missing environment")
+
+/** Base for limit-evaluation failures — the `Limit*` sibling of the flag hierarchy. */
+public open class LimitEvaluationException(public val key: String, statusCode: Int, detail: String? = null) :
+    SmooConfigException("Limit \"$key\" evaluation failed: HTTP $statusCode${detail?.let { " — $it" }.orEmpty()}", statusCode)
+
+/** Server returned 404 — the limit key is not defined in the schema. */
+public class LimitNotFoundException(key: String) : LimitEvaluationException(key, 404, "limit not defined in schema")
+
+/** Server returned 400 — invalid context or missing environment. */
+public class LimitContextException(key: String) : LimitEvaluationException(key, 400, "invalid context or missing environment")
 
 /**
  * Options for [SmooConfig] — the mobile runtime mode of @smooai/config
@@ -71,7 +97,7 @@ public class SmooConfigOptions(
  * pins the evaluation org to the platform master org and serves ONLY
  * public-tier values — there is no secret access on this path by design.
  */
-public class SmooConfig(private val options: SmooConfigOptions) {
+public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
     private val json = Json { ignoreUnknownKeys = true }
     private val client = HttpClient(options.engine)
     private val cache = DiskCache(options.cacheDir, json)
@@ -142,10 +168,14 @@ public class SmooConfig(private val options: SmooConfigOptions) {
         default: Double,
         min: Double? = null,
         max: Double? = null,
+        step: Double? = null,
     ): Double {
         var value = runCatching { evaluateLimitValue(key, context) }.getOrNull()?.value?.asDouble()
             ?: cache.evaluation("limit", key)?.value?.asDouble()
             ?: default
+        // step snaps to the nearest multiple BEFORE the [min, max] clamp — the
+        // same order as the TS clampLimit / Rust clamp_limit (ADR-066).
+        step?.takeIf { it > 0 }?.let { value = round(value / it) * it }
         min?.let { value = maxOf(value, it) }
         max?.let { value = minOf(value, it) }
         return value
@@ -159,9 +189,23 @@ public class SmooConfig(private val options: SmooConfigOptions) {
             bearer()
             setBody(json.encodeToString(EvaluateRequest.serializer(), EvaluateRequest(options.environment, context)))
         }
-        if (!response.status.isSuccess()) throw SmooConfigException("evaluate failed", response.status.value)
+        if (!response.status.isSuccess()) {
+            val status = response.status.value
+            val isFlag = kind == "feature-flags"
+            throw when {
+                isFlag && status == 404 -> FeatureFlagNotFoundException(key)
+                isFlag && status == 400 -> FeatureFlagContextException(key)
+                isFlag -> FeatureFlagEvaluationException(key, status)
+                status == 404 -> LimitNotFoundException(key)
+                status == 400 -> LimitContextException(key)
+                else -> LimitEvaluationException(key, status)
+            }
+        }
         return json.decodeFromString(EvaluationResult.serializer(), response.bodyAsText())
     }
+
+    /** Releases the underlying HTTP client. */
+    override fun close(): Unit = client.close()
 
     private suspend fun HttpRequestBuilder.bearer() {
         options.tokenProvider?.invoke()?.let { header(HttpHeaders.Authorization, "Bearer $it") }
