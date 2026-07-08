@@ -249,6 +249,7 @@ export async function main(): Promise<void> {
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
 
-    // Keep alive — the interval timer is unref'd, so hold the loop open explicitly.
+    // The ref'd interval (SMOODEV-1527) is what actually holds the event loop
+    // open; this pending promise only keeps main() from returning.
     await new Promise<never>(() => {});
 }
