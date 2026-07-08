@@ -1,12 +1,12 @@
 {
-  "": {
-    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/primary.swiftdeps"
-  },
-  "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift": {
-    "dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.d",
-    "object": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o",
-    "swiftmodule": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner~partial.swiftmodule",
-    "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swiftdeps",
-    "diagnostics": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.dia"
-  }
+    "": {
+        "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/primary.swiftdeps"
+    },
+    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift": {
+        "dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.d",
+        "object": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o",
+        "swiftmodule": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner~partial.swiftmodule",
+        "swift-dependencies": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swiftdeps",
+        "diagnostics": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.dia"
+    }
 }

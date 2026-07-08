@@ -1,640 +1,615 @@
 {
-  "builtTestProducts" : [
-    {
-      "binaryPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.xctest/Contents/MacOS/SmooAIConfigPackageTests",
-      "packagePath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption",
-      "productName" : "SmooAIConfigPackageTests"
-    }
-  ],
-  "copyCommands" : {
-
-  },
-  "explicitTargetDependencyImportCheckingMode" : {
-    "none" : {
-
-    }
-  },
-  "generatedSourceTargetSet" : [
-
-  ],
-  "pluginDescriptions" : [
-
-  ],
-  "swiftCommands" : {
-    "C.SmooAIConfig-arm64-apple-macosx-debug.module" : {
-      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "fileList" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources",
-      "importPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
-      "inputs" : [
+    "builtTestProducts": [
         {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources"
+            "binaryPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.xctest/Contents/MacOS/SmooAIConfigPackageTests",
+            "packagePath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption",
+            "productName": "SmooAIConfigPackageTests"
         }
-      ],
-      "isLibrary" : true,
-      "moduleName" : "SmooAIConfig",
-      "moduleOutputPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfig.swiftmodule",
-      "objects" : [
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o"
-      ],
-      "otherArguments" : [
-        "-target",
-        "arm64-apple-macosx13.0",
-        "-incremental",
-        "-enable-batch-mode",
-        "-serialize-diagnostics",
-        "-index-store-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
-        "-Onone",
-        "-enable-testing",
-        "-j12",
-        "-DSWIFT_PACKAGE",
-        "-DDEBUG",
-        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
-        "-module-cache-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
-        "-parseable-output",
-        "-parse-as-library",
-        "-emit-objc-header",
-        "-emit-objc-header-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/include/SmooAIConfig-Swift.h",
-        "-swift-version",
-        "5",
-        "-plugin-path",
-        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
-        "-sdk",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-        "-F",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-        "-I",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-        "-L",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-        "-g",
-        "-Xcc",
-        "-isysroot",
-        "-Xcc",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-        "-Xcc",
-        "-F",
-        "-Xcc",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-        "-Xcc",
-        "-fPIC",
-        "-Xcc",
-        "-g",
-        "-package-name",
-        "config_smoodev_2382_consumption"
-      ],
-      "outputFileMapPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/output-file-map.json",
-      "outputs" : [
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfig.swiftmodule"
-        }
-      ],
-      "prepareForIndexing" : false,
-      "sources" : [
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift"
-      ],
-      "tempsPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build",
-      "wholeModuleOptimization" : false
-    },
-    "C.SmooAIConfigPackageTests-arm64-apple-macosx-debug.module" : {
-      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "fileList" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources",
-      "importPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
-      "inputs" : [
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigTests.swiftmodule"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources"
-        }
-      ],
-      "isLibrary" : true,
-      "moduleName" : "SmooAIConfigPackageTests",
-      "moduleOutputPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigPackageTests.swiftmodule",
-      "objects" : [
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o"
-      ],
-      "otherArguments" : [
-        "-target",
-        "arm64-apple-macosx13.0",
-        "-incremental",
-        "-enable-batch-mode",
-        "-serialize-diagnostics",
-        "-index-store-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
-        "-Onone",
-        "-enable-testing",
-        "-Xfrontend",
-        "-enable-cross-import-overlays",
-        "-j12",
-        "-DSWIFT_PACKAGE",
-        "-DDEBUG",
-        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
-        "-module-cache-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
-        "-parseable-output",
-        "-parse-as-library",
-        "-emit-objc-header",
-        "-emit-objc-header-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/include/SmooAIConfigPackageTests-Swift.h",
-        "-plugin-path",
-        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
-        "-sdk",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-        "-F",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-        "-I",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-        "-L",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-        "-g",
-        "-Xcc",
-        "-isysroot",
-        "-Xcc",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-        "-Xcc",
-        "-F",
-        "-Xcc",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-        "-Xcc",
-        "-fPIC",
-        "-Xcc",
-        "-g",
-        "-package-name",
-        "config_smoodev_2382_consumption"
-      ],
-      "outputFileMapPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/output-file-map.json",
-      "outputs" : [
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigPackageTests.swiftmodule"
-        }
-      ],
-      "prepareForIndexing" : false,
-      "sources" : [
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
-      ],
-      "tempsPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build",
-      "wholeModuleOptimization" : false
-    },
-    "C.SmooAIConfigTests-arm64-apple-macosx-debug.module" : {
-      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "fileList" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources",
-      "importPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
-      "inputs" : [
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfig.swiftmodule"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources"
-        }
-      ],
-      "isLibrary" : true,
-      "moduleName" : "SmooAIConfigTests",
-      "moduleOutputPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigTests.swiftmodule",
-      "objects" : [
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o"
-      ],
-      "otherArguments" : [
-        "-target",
-        "arm64-apple-macosx14.0",
-        "-incremental",
-        "-enable-batch-mode",
-        "-serialize-diagnostics",
-        "-index-store-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
-        "-Onone",
-        "-enable-testing",
-        "-Xfrontend",
-        "-enable-cross-import-overlays",
-        "-j12",
-        "-DSWIFT_PACKAGE",
-        "-DDEBUG",
-        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
-        "-module-cache-path",
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
-        "-parseable-output",
-        "-parse-as-library",
-        "-swift-version",
-        "5",
-        "-plugin-path",
-        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
-        "-sdk",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-        "-F",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-        "-I",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-        "-L",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-        "-g",
-        "-Xcc",
-        "-isysroot",
-        "-Xcc",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-        "-Xcc",
-        "-F",
-        "-Xcc",
-        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-        "-Xcc",
-        "-fPIC",
-        "-Xcc",
-        "-g",
-        "-package-name",
-        "config_smoodev_2382_consumption"
-      ],
-      "outputFileMapPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/output-file-map.json",
-      "outputs" : [
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigTests.swiftmodule"
-        }
-      ],
-      "prepareForIndexing" : false,
-      "sources" : [
-        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift"
-      ],
-      "tempsPath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build",
-      "wholeModuleOptimization" : false
-    }
-  },
-  "swiftFrontendCommands" : {
-
-  },
-  "swiftTargetScanArgs" : {
-    "SmooAIConfig" : [
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "-module-name",
-      "SmooAIConfig",
-      "-package-name",
-      "config_smoodev_2382_consumption",
-      "-c",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift",
-      "-I",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
-      "-target",
-      "arm64-apple-macosx13.0",
-      "-incremental",
-      "-enable-batch-mode",
-      "-serialize-diagnostics",
-      "-index-store-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
-      "-Onone",
-      "-enable-testing",
-      "-j12",
-      "-DSWIFT_PACKAGE",
-      "-DDEBUG",
-      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
-      "-module-cache-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
-      "-parseable-output",
-      "-parse-as-library",
-      "-emit-objc-header",
-      "-emit-objc-header-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/include/SmooAIConfig-Swift.h",
-      "-swift-version",
-      "5",
-      "-plugin-path",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
-      "-sdk",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-      "-F",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-      "-I",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-      "-L",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-      "-g",
-      "-Xcc",
-      "-isysroot",
-      "-Xcc",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-      "-Xcc",
-      "-F",
-      "-Xcc",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-      "-Xcc",
-      "-fPIC",
-      "-Xcc",
-      "-g",
-      "-package-name",
-      "config_smoodev_2382_consumption",
-      "-driver-use-frontend-path",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
     ],
-    "SmooAIConfigPackageTests" : [
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "-module-name",
-      "SmooAIConfigPackageTests",
-      "-package-name",
-      "config_smoodev_2382_consumption",
-      "-c",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift",
-      "-I",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
-      "-target",
-      "arm64-apple-macosx13.0",
-      "-incremental",
-      "-enable-batch-mode",
-      "-serialize-diagnostics",
-      "-index-store-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
-      "-Onone",
-      "-enable-testing",
-      "-Xfrontend",
-      "-enable-cross-import-overlays",
-      "-j12",
-      "-DSWIFT_PACKAGE",
-      "-DDEBUG",
-      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
-      "-module-cache-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
-      "-parseable-output",
-      "-parse-as-library",
-      "-emit-objc-header",
-      "-emit-objc-header-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/include/SmooAIConfigPackageTests-Swift.h",
-      "-plugin-path",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
-      "-sdk",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-      "-F",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-      "-I",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-      "-L",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-      "-g",
-      "-Xcc",
-      "-isysroot",
-      "-Xcc",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-      "-Xcc",
-      "-F",
-      "-Xcc",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-      "-Xcc",
-      "-fPIC",
-      "-Xcc",
-      "-g",
-      "-package-name",
-      "config_smoodev_2382_consumption",
-      "-driver-use-frontend-path",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
-    ],
-    "SmooAIConfigTests" : [
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
-      "-module-name",
-      "SmooAIConfigTests",
-      "-package-name",
-      "config_smoodev_2382_consumption",
-      "-c",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift",
-      "-I",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
-      "-target",
-      "arm64-apple-macosx14.0",
-      "-incremental",
-      "-enable-batch-mode",
-      "-serialize-diagnostics",
-      "-index-store-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
-      "-Onone",
-      "-enable-testing",
-      "-Xfrontend",
-      "-enable-cross-import-overlays",
-      "-j12",
-      "-DSWIFT_PACKAGE",
-      "-DDEBUG",
-      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
-      "-module-cache-path",
-      "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
-      "-parseable-output",
-      "-parse-as-library",
-      "-swift-version",
-      "5",
-      "-plugin-path",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
-      "-sdk",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-      "-F",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-      "-I",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-      "-L",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
-      "-g",
-      "-Xcc",
-      "-isysroot",
-      "-Xcc",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
-      "-Xcc",
-      "-F",
-      "-Xcc",
-      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
-      "-Xcc",
-      "-fPIC",
-      "-Xcc",
-      "-g",
-      "-package-name",
-      "config_smoodev_2382_consumption",
-      "-driver-use-frontend-path",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
-    ]
-  },
-  "targetDependencyMap" : {
-    "SmooAIConfig" : [
-
-    ],
-    "SmooAIConfigPackageTests" : [
-      "SmooAIConfigTests",
-      "SmooAIConfig"
-    ],
-    "SmooAIConfigTests" : [
-      "SmooAIConfig"
-    ]
-  },
-  "testDiscoveryCommands" : {
-
-  },
-  "testEntryPointCommands" : {
-    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift" : {
-      "inputs" : [
-
-      ],
-      "outputs" : [
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
+    "copyCommands": {},
+    "explicitTargetDependencyImportCheckingMode": {
+        "none": {}
+    },
+    "generatedSourceTargetSet": [],
+    "pluginDescriptions": [],
+    "swiftCommands": {
+        "C.SmooAIConfig-arm64-apple-macosx-debug.module": {
+            "executable": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+            "fileList": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources",
+            "importPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
+            "inputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources"
+                }
+            ],
+            "isLibrary": true,
+            "moduleName": "SmooAIConfig",
+            "moduleOutputPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfig.swiftmodule",
+            "objects": [
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o"
+            ],
+            "otherArguments": [
+                "-target",
+                "arm64-apple-macosx13.0",
+                "-incremental",
+                "-enable-batch-mode",
+                "-serialize-diagnostics",
+                "-index-store-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
+                "-Onone",
+                "-enable-testing",
+                "-j12",
+                "-DSWIFT_PACKAGE",
+                "-DDEBUG",
+                "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+                "-module-cache-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
+                "-parseable-output",
+                "-parse-as-library",
+                "-emit-objc-header",
+                "-emit-objc-header-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/include/SmooAIConfig-Swift.h",
+                "-swift-version",
+                "5",
+                "-plugin-path",
+                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+                "-sdk",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+                "-F",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+                "-I",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+                "-L",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+                "-g",
+                "-Xcc",
+                "-isysroot",
+                "-Xcc",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+                "-Xcc",
+                "-F",
+                "-Xcc",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+                "-Xcc",
+                "-fPIC",
+                "-Xcc",
+                "-g",
+                "-package-name",
+                "config_smoodev_2382_consumption"
+            ],
+            "outputFileMapPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/output-file-map.json",
+            "outputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfig.swiftmodule"
+                }
+            ],
+            "prepareForIndexing": false,
+            "sources": [
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift"
+            ],
+            "tempsPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build",
+            "wholeModuleOptimization": false
+        },
+        "C.SmooAIConfigPackageTests-arm64-apple-macosx-debug.module": {
+            "executable": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+            "fileList": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources",
+            "importPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
+            "inputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigTests.swiftmodule"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources"
+                }
+            ],
+            "isLibrary": true,
+            "moduleName": "SmooAIConfigPackageTests",
+            "moduleOutputPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigPackageTests.swiftmodule",
+            "objects": [
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o"
+            ],
+            "otherArguments": [
+                "-target",
+                "arm64-apple-macosx13.0",
+                "-incremental",
+                "-enable-batch-mode",
+                "-serialize-diagnostics",
+                "-index-store-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
+                "-Onone",
+                "-enable-testing",
+                "-Xfrontend",
+                "-enable-cross-import-overlays",
+                "-j12",
+                "-DSWIFT_PACKAGE",
+                "-DDEBUG",
+                "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+                "-module-cache-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
+                "-parseable-output",
+                "-parse-as-library",
+                "-emit-objc-header",
+                "-emit-objc-header-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/include/SmooAIConfigPackageTests-Swift.h",
+                "-plugin-path",
+                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+                "-sdk",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+                "-F",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+                "-I",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+                "-L",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+                "-g",
+                "-Xcc",
+                "-isysroot",
+                "-Xcc",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+                "-Xcc",
+                "-F",
+                "-Xcc",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+                "-Xcc",
+                "-fPIC",
+                "-Xcc",
+                "-g",
+                "-package-name",
+                "config_smoodev_2382_consumption"
+            ],
+            "outputFileMapPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/output-file-map.json",
+            "outputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigPackageTests.swiftmodule"
+                }
+            ],
+            "prepareForIndexing": false,
+            "sources": [
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
+            ],
+            "tempsPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build",
+            "wholeModuleOptimization": false
+        },
+        "C.SmooAIConfigTests-arm64-apple-macosx-debug.module": {
+            "executable": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+            "fileList": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources",
+            "importPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
+            "inputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfig.swiftmodule"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources"
+                }
+            ],
+            "isLibrary": true,
+            "moduleName": "SmooAIConfigTests",
+            "moduleOutputPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigTests.swiftmodule",
+            "objects": [
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o"
+            ],
+            "otherArguments": [
+                "-target",
+                "arm64-apple-macosx14.0",
+                "-incremental",
+                "-enable-batch-mode",
+                "-serialize-diagnostics",
+                "-index-store-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
+                "-Onone",
+                "-enable-testing",
+                "-Xfrontend",
+                "-enable-cross-import-overlays",
+                "-j12",
+                "-DSWIFT_PACKAGE",
+                "-DDEBUG",
+                "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+                "-module-cache-path",
+                "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
+                "-parseable-output",
+                "-parse-as-library",
+                "-swift-version",
+                "5",
+                "-plugin-path",
+                "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+                "-sdk",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+                "-F",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+                "-I",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+                "-L",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+                "-g",
+                "-Xcc",
+                "-isysroot",
+                "-Xcc",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+                "-Xcc",
+                "-F",
+                "-Xcc",
+                "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+                "-Xcc",
+                "-fPIC",
+                "-Xcc",
+                "-g",
+                "-package-name",
+                "config_smoodev_2382_consumption"
+            ],
+            "outputFileMapPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/output-file-map.json",
+            "outputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules/SmooAIConfigTests.swiftmodule"
+                }
+            ],
+            "prepareForIndexing": false,
+            "sources": ["/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift"],
+            "tempsPath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build",
+            "wholeModuleOptimization": false
         }
-      ]
+    },
+    "swiftFrontendCommands": {},
+    "swiftTargetScanArgs": {
+        "SmooAIConfig": [
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+            "-module-name",
+            "SmooAIConfig",
+            "-package-name",
+            "config_smoodev_2382_consumption",
+            "-c",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift",
+            "-I",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
+            "-target",
+            "arm64-apple-macosx13.0",
+            "-incremental",
+            "-enable-batch-mode",
+            "-serialize-diagnostics",
+            "-index-store-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
+            "-Onone",
+            "-enable-testing",
+            "-j12",
+            "-DSWIFT_PACKAGE",
+            "-DDEBUG",
+            "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+            "-module-cache-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
+            "-parseable-output",
+            "-parse-as-library",
+            "-emit-objc-header",
+            "-emit-objc-header-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/include/SmooAIConfig-Swift.h",
+            "-swift-version",
+            "5",
+            "-plugin-path",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+            "-sdk",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+            "-F",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+            "-I",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+            "-L",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+            "-g",
+            "-Xcc",
+            "-isysroot",
+            "-Xcc",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+            "-Xcc",
+            "-F",
+            "-Xcc",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+            "-Xcc",
+            "-fPIC",
+            "-Xcc",
+            "-g",
+            "-package-name",
+            "config_smoodev_2382_consumption",
+            "-driver-use-frontend-path",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        ],
+        "SmooAIConfigPackageTests": [
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+            "-module-name",
+            "SmooAIConfigPackageTests",
+            "-package-name",
+            "config_smoodev_2382_consumption",
+            "-c",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift",
+            "-I",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
+            "-target",
+            "arm64-apple-macosx13.0",
+            "-incremental",
+            "-enable-batch-mode",
+            "-serialize-diagnostics",
+            "-index-store-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
+            "-Onone",
+            "-enable-testing",
+            "-Xfrontend",
+            "-enable-cross-import-overlays",
+            "-j12",
+            "-DSWIFT_PACKAGE",
+            "-DDEBUG",
+            "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+            "-module-cache-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
+            "-parseable-output",
+            "-parse-as-library",
+            "-emit-objc-header",
+            "-emit-objc-header-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/include/SmooAIConfigPackageTests-Swift.h",
+            "-plugin-path",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+            "-sdk",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+            "-F",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+            "-I",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+            "-L",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+            "-g",
+            "-Xcc",
+            "-isysroot",
+            "-Xcc",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+            "-Xcc",
+            "-F",
+            "-Xcc",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+            "-Xcc",
+            "-fPIC",
+            "-Xcc",
+            "-g",
+            "-package-name",
+            "config_smoodev_2382_consumption",
+            "-driver-use-frontend-path",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        ],
+        "SmooAIConfigTests": [
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+            "-module-name",
+            "SmooAIConfigTests",
+            "-package-name",
+            "config_smoodev_2382_consumption",
+            "-c",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift",
+            "-I",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/Modules",
+            "-target",
+            "arm64-apple-macosx14.0",
+            "-incremental",
+            "-enable-batch-mode",
+            "-serialize-diagnostics",
+            "-index-store-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/index/store",
+            "-Onone",
+            "-enable-testing",
+            "-Xfrontend",
+            "-enable-cross-import-overlays",
+            "-j12",
+            "-DSWIFT_PACKAGE",
+            "-DDEBUG",
+            "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+            "-module-cache-path",
+            "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/ModuleCache",
+            "-parseable-output",
+            "-parse-as-library",
+            "-swift-version",
+            "5",
+            "-plugin-path",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+            "-sdk",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+            "-F",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+            "-I",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+            "-L",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+            "-g",
+            "-Xcc",
+            "-isysroot",
+            "-Xcc",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+            "-Xcc",
+            "-F",
+            "-Xcc",
+            "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+            "-Xcc",
+            "-fPIC",
+            "-Xcc",
+            "-g",
+            "-package-name",
+            "config_smoodev_2382_consumption",
+            "-driver-use-frontend-path",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        ]
+    },
+    "targetDependencyMap": {
+        "SmooAIConfig": [],
+        "SmooAIConfigPackageTests": ["SmooAIConfigTests", "SmooAIConfig"],
+        "SmooAIConfigTests": ["SmooAIConfig"]
+    },
+    "testDiscoveryCommands": {},
+    "testEntryPointCommands": {
+        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift": {
+            "inputs": [],
+            "outputs": [
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
+                }
+            ]
+        }
+    },
+    "traitConfiguration": {
+        "default": {}
+    },
+    "writeCommands": {
+        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources": {
+            "alwaysOutOfDate": false,
+            "inputs": [
+                {
+                    "kind": "virtual",
+                    "name": "<sources-file-list>"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift"
+                }
+            ],
+            "outputFilePath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources"
+        },
+        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources": {
+            "alwaysOutOfDate": false,
+            "inputs": [
+                {
+                    "kind": "virtual",
+                    "name": "<sources-file-list>"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
+                }
+            ],
+            "outputFilePath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources"
+        },
+        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.product/Objects.LinkFileList": {
+            "alwaysOutOfDate": false,
+            "inputs": [
+                {
+                    "kind": "virtual",
+                    "name": "<link-file-list>"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o"
+                }
+            ],
+            "outputFilePath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.product/Objects.LinkFileList"
+        },
+        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources": {
+            "alwaysOutOfDate": false,
+            "inputs": [
+                {
+                    "kind": "virtual",
+                    "name": "<sources-file-list>"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift"
+                }
+            ],
+            "outputFilePath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources"
+        },
+        "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt": {
+            "alwaysOutOfDate": true,
+            "inputs": [
+                {
+                    "kind": "virtual",
+                    "name": "<swift-get-version>"
+                },
+                {
+                    "kind": "file",
+                    "name": "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+                }
+            ],
+            "outputFilePath": "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        }
     }
-  },
-  "traitConfiguration" : {
-    "default" : {
-
-    }
-  },
-  "writeCommands" : {
-    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources" : {
-      "alwaysOutOfDate" : false,
-      "inputs" : [
-        {
-          "kind" : "virtual",
-          "name" : "<sources-file-list>"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/DiskCache.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/JSONValue.swift"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Sources/SmooAIConfig/SmooConfig.swift"
-        }
-      ],
-      "outputFilePath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/sources"
-    },
-    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources" : {
-      "alwaysOutOfDate" : false,
-      "inputs" : [
-        {
-          "kind" : "virtual",
-          "name" : "<sources-file-list>"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.derived/runner.swift"
-        }
-      ],
-      "outputFilePath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/sources"
-    },
-    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.product/Objects.LinkFileList" : {
-      "alwaysOutOfDate" : false,
-      "inputs" : [
-        {
-          "kind" : "virtual",
-          "name" : "<link-file-list>"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/DiskCache.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/JSONValue.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfig.build/SmooConfig.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.build/runner.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/SmooConfigTests.swift.o"
-        }
-      ],
-      "outputFilePath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigPackageTests.product/Objects.LinkFileList"
-    },
-    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources" : {
-      "alwaysOutOfDate" : false,
-      "inputs" : [
-        {
-          "kind" : "virtual",
-          "name" : "<sources-file-list>"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/swift/Tests/SmooAIConfigTests/SmooConfigTests.swift"
-        }
-      ],
-      "outputFilePath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/SmooAIConfigTests.build/sources"
-    },
-    "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
-      "alwaysOutOfDate" : true,
-      "inputs" : [
-        {
-          "kind" : "virtual",
-          "name" : "<swift-get-version>"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
-        }
-      ],
-      "outputFilePath" : "/Users/brentrager/dev/smooai/config-SMOODEV-2382-consumption/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
-    }
-  }
 }
