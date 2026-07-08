@@ -9,14 +9,14 @@
 Mobile binaries are attacker-owned territory and can never hold M2M client
 credentials, so none of the existing tiers apply unchanged:
 
-| Existing mode | Why it doesn't fit |
-|---|---|
+| Existing mode                              | Why it doesn't fit                                      |
+| ------------------------------------------ | ------------------------------------------------------- |
 | Default chain (`blob → env → http → file`) | `env`/`file` don't exist on device; `http` requires M2M |
-| Container mode (`env → http`) | same |
+| Container mode (`env → http`)              | same                                                    |
 
 Mobile mode is defined by **two channels**, both scoped to the **platform
 (master) org** — the app is the platform's app; signed-in users belong to
-*their* orgs, which ride along only as evaluation context:
+_their_ orgs, which ride along only as evaluation context:
 
 1. **Baked public config** (build time): CI — which legitimately holds M2M
    creds — fetches the master org's values and ships the **public partition
@@ -48,18 +48,18 @@ structurally impossible on this surface.
 
 Every mobile SDK MUST implement, with tests proving each row:
 
-| # | Behavior |
-|---|---|
-| 1 | Load the baked bundle (`{"values": ...}`) from a caller-supplied location; missing bundle is not an error |
-| 2 | `publicValue(key)`: refreshed-or-cached map wins over bundle; bundle is the floor; resolves **synchronously, offline** |
-| 3 | `refreshPublicValues()`: GET the values endpoint, persist to the offline cache; failure throws and leaves prior values intact |
-| 4 | `evaluateFlag(key, context, default)`: live evaluate → last-cached value → caller default; **never throws** |
-| 5 | `evaluateLimit(key, context, default, min?, max?)`: same chain, then client-side clamp to `[min, max]` (ADR-066) |
-| 6 | Raw `evaluate*Value` variants that throw, for callers who need `source`/`matchedRuleId`/`rolloutBucket` |
-| 7 | Bearer token supplied by an async caller-provided provider; requests without a token still fire (server rejects; chain falls back) |
-| 8 | Offline cache: plain JSON (public data only), survives process restarts |
-| 9 | Zero third-party dependencies (platform HTTP stack: URLSession / Ktor-with-injected-engine) |
-| 10 | Transport injectable for tests (session/engine), mirroring the consuming apps' stub patterns |
+| #   | Behavior                                                                                                                           |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Load the baked bundle (`{"values": ...}`) from a caller-supplied location; missing bundle is not an error                          |
+| 2   | `publicValue(key)`: refreshed-or-cached map wins over bundle; bundle is the floor; resolves **synchronously, offline**             |
+| 3   | `refreshPublicValues()`: GET the values endpoint, persist to the offline cache; failure throws and leaves prior values intact      |
+| 4   | `evaluateFlag(key, context, default)`: live evaluate → last-cached value → caller default; **never throws**                        |
+| 5   | `evaluateLimit(key, context, default, min?, max?)`: same chain, then client-side clamp to `[min, max]` (ADR-066)                   |
+| 6   | Raw `evaluate*Value` variants that throw, for callers who need `source`/`matchedRuleId`/`rolloutBucket`                            |
+| 7   | Bearer token supplied by an async caller-provided provider; requests without a token still fire (server rejects; chain falls back) |
+| 8   | Offline cache: plain JSON (public data only), survives process restarts                                                            |
+| 9   | Zero third-party dependencies (platform HTTP stack: URLSession / Ktor-with-injected-engine)                                        |
+| 10  | Transport injectable for tests (session/engine), mirroring the consuming apps' stub patterns                                       |
 
 ## 4. Non-goals
 
@@ -71,7 +71,7 @@ Every mobile SDK MUST implement, with tests proving each row:
 
 ## 5. Implementations
 
-| Language | Path | Status |
-|---|---|---|
-| Swift | `/swift` (SPM `SmooAIConfig`) | SMOODEV-2380 |
-| Kotlin | `/kotlin` | SMOODEV-2381 |
+| Language | Path                          | Status       |
+| -------- | ----------------------------- | ------------ |
+| Swift    | `/swift` (SPM `SmooAIConfig`) | SMOODEV-2380 |
+| Kotlin   | `/kotlin`                     | SMOODEV-2381 |
