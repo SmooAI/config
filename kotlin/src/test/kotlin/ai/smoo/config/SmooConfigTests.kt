@@ -130,4 +130,42 @@ class SmooConfigTests {
         val config = makeConfig()
         assertEquals(30.0, config.evaluateLimit("syncInterval", default = 30.0, min = 5.0, max = 120.0))
     }
+
+    @Test
+    fun limitStepSnapsBeforeClamp() = runTest {
+        // 118 with step 25 snaps to 125 first, THEN clamps to max 120 — the
+        // TS clampLimit / Rust clamp_limit order (ADR-066).
+        handlers = listOf(Triple("/config/app/limits/syncInterval/evaluate", HttpStatusCode.OK, """{"value":118,"source":"rule"}"""))
+        val config = makeConfig()
+        assertEquals(120.0, config.evaluateLimit("syncInterval", default = 30.0, min = 5.0, max = 120.0, step = 25.0))
+
+        // In-bounds snap: 47 with step 10 → 50.
+        handlers = listOf(Triple("/config/app/limits/batchSize/evaluate", HttpStatusCode.OK, """{"value":47,"source":"raw"}"""))
+        assertEquals(50.0, config.evaluateLimit("batchSize", default = 10.0, min = 0.0, max = 100.0, step = 10.0))
+    }
+
+    // ── Typed evaluate errors ──
+
+    @Test
+    fun evaluateThrowsTypedExceptions() = runTest {
+        handlers = listOf(
+            Triple("/config/app/feature-flags/missingFlag/evaluate", HttpStatusCode.NotFound, "{}"),
+            Triple("/config/app/feature-flags/badContext/evaluate", HttpStatusCode.BadRequest, "{}"),
+            Triple("/config/app/limits/missingLimit/evaluate", HttpStatusCode.NotFound, "{}"),
+            Triple("/config/app/limits/brokenLimit/evaluate", HttpStatusCode.ServiceUnavailable, "{}"),
+        )
+        val config = makeConfig()
+
+        assertEquals("missingFlag", assertFailsWith<FeatureFlagNotFoundException> { config.evaluateFlagValue("missingFlag") }.key)
+        assertEquals("badContext", assertFailsWith<FeatureFlagContextException> { config.evaluateFlagValue("badContext") }.key)
+        assertEquals("missingLimit", assertFailsWith<LimitNotFoundException> { config.evaluateLimitValue("missingLimit") }.key)
+        val broken = assertFailsWith<LimitEvaluationException> { config.evaluateLimitValue("brokenLimit") }
+        assertEquals(503, broken.statusCode)
+    }
+
+    @Test
+    fun closeReleasesClient() {
+        // Closeable contract (twin nit: the Ktor client used to leak).
+        makeConfig().close()
+    }
 }

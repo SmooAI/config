@@ -79,3 +79,6 @@ swift/.build/
 # Kotlin build artifacts
 kotlin/build/
 kotlin/.gradle/
+
+# Root SPM build artifacts (root manifest, SMOODEV-2382)
+.build/
