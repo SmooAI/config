@@ -7,4 +7,4 @@
 jdk:
     - openjdk17
 install:
-    - cd kotlin && gradle publishToMavenLocal -Pversion=$VERSION --console=plain
+    - cd kotlin && ./gradlew publishToMavenLocal -Pversion=$VERSION --console=plain
