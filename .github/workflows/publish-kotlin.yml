@@ -1,0 +1,39 @@
+# SMOODEV-2386: manual publish of the Kotlin SDK to Maven Central (ai.smoo).
+# Prereqs (one-time, Brent): Sonatype Central account + ai.smoo namespace
+# verification (smoo.ai DNS TXT), then repo secrets OSSRH_USERNAME /
+# OSSRH_PASSWORD (portal token) / MAVEN_SIGNING_KEY (ASCII-armored PGP
+# private key) / MAVEN_SIGNING_PASSWORD.
+name: Publish Kotlin SDK
+on:
+    workflow_dispatch:
+        inputs:
+            version:
+                description: Version to publish (e.g. 0.1.0)
+                required: true
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '17'
+            - name: Guard secrets
+              env:
+                  U: ${{ secrets.OSSRH_USERNAME }}
+                  K: ${{ secrets.MAVEN_SIGNING_KEY }}
+              run: |
+                  if [ -z "$U" ] || [ -z "$K" ]; then
+                      echo "::error::Maven Central secrets not configured — see SMOODEV-2386 prereqs in this workflow's header"; exit 1
+                  fi
+            - name: Test + publish
+              working-directory: kotlin
+              env:
+                  OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+                  OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+                  MAVEN_SIGNING_KEY: ${{ secrets.MAVEN_SIGNING_KEY }}
+                  MAVEN_SIGNING_PASSWORD: ${{ secrets.MAVEN_SIGNING_PASSWORD }}
+              run: |
+                  ./gradlew test publish -Pversion=${{ inputs.version }} --console=plain
