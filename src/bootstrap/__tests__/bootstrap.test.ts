@@ -183,6 +183,23 @@ describe('bootstrapFetch', () => {
         await expect(bootstrapFetch('k')).rejects.toThrow(/OAuth token exchange failed: HTTP 401 invalid_client/);
     });
 
+    it('retries a transient 429 on the token exchange, then succeeds', async () => {
+        const fetchMock = mockFetchResponses([
+            { ok: false, status: 429, body: {}, text: 'Rate Exceeded' },
+            { body: { access_token: 'TOKEN' } },
+            { body: { values: { databaseUrl: 'postgres://ok' } } },
+        ]);
+        expect(await bootstrapFetch('databaseUrl')).toBe('postgres://ok');
+        // token attempt #1 (429) + token attempt #2 (200) + values GET = 3
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not retry a permanent 401 (fails fast, single attempt)', async () => {
+        const fetchMock = mockFetchResponses([{ ok: false, status: 401, body: {}, text: 'invalid_client' }]);
+        await expect(bootstrapFetch('k')).rejects.toThrow(/HTTP 401 invalid_client/);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('throws a clear error when the values call fails', async () => {
         mockFetchResponses([{ body: { access_token: 'TOKEN' } }, { ok: false, status: 500, body: {}, text: 'boom' }]);
         await expect(bootstrapFetch('k')).rejects.toThrow(/GET \/config\/values failed: HTTP 500 boom/);
