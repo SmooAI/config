@@ -68,27 +68,49 @@ function readCreds(): BootstrapCreds {
     return { apiUrl, authUrl, clientId, clientSecret, orgId };
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// The token endpoint (AuthIssuer) runs under a reserved-concurrency cap, so
+// concurrent cold starts — e.g. the parallel Docker image builds in CI — can
+// transiently 429 (ReservedFunctionConcurrentInvocationLimitExceeded) or hit a
+// brief 5xx. A single throttle must not fail the whole build, so retry those
+// transient statuses with exponential backoff + jitter. Real auth failures
+// (4xx other than 429, e.g. 401 invalid_client) are permanent and fail fast.
+// ponytail: 5 attempts, ~0.4→6.4s backoff; zero-dep, Node built-ins only.
+const MINT_MAX_ATTEMPTS = 5;
+const MINT_BASE_DELAY_MS = 400;
+
 async function mintAccessToken(creds: BootstrapCreds): Promise<string> {
     const trimmedAuth = creds.authUrl.replace(/\/+$/, '');
-    const res = await fetch(`${trimmedAuth}/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-            grant_type: 'client_credentials',
-            provider: 'client_credentials',
-            client_id: creds.clientId,
-            client_secret: creds.clientSecret,
-        }).toString(),
-    });
-    if (!res.ok) {
-        const body = await res.text().catch(() => '<unreadable>');
-        throw new Error(`[@smooai/config/bootstrap] OAuth token exchange failed: HTTP ${res.status} ${body}`);
+    const requestBody = new URLSearchParams({
+        grant_type: 'client_credentials',
+        provider: 'client_credentials',
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+    }).toString();
+
+    let lastStatus = 0;
+    let lastBody = '<unreadable>';
+    for (let attempt = 0; attempt < MINT_MAX_ATTEMPTS; attempt++) {
+        const res = await fetch(`${trimmedAuth}/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: requestBody,
+        });
+        if (res.ok) {
+            const body = (await res.json()) as { access_token?: string };
+            if (!body.access_token) {
+                throw new Error('[@smooai/config/bootstrap] OAuth token endpoint returned no access_token');
+            }
+            return body.access_token;
+        }
+        lastStatus = res.status;
+        lastBody = await res.text().catch(() => '<unreadable>');
+        const transient = res.status === 429 || res.status >= 500;
+        if (!transient || attempt === MINT_MAX_ATTEMPTS - 1) break;
+        await sleep(MINT_BASE_DELAY_MS * 2 ** attempt + Math.floor(Math.random() * MINT_BASE_DELAY_MS));
     }
-    const body = (await res.json()) as { access_token?: string };
-    if (!body.access_token) {
-        throw new Error('[@smooai/config/bootstrap] OAuth token endpoint returned no access_token');
-    }
-    return body.access_token;
+    throw new Error(`[@smooai/config/bootstrap] OAuth token exchange failed: HTTP ${lastStatus} ${lastBody}`);
 }
 
 function resolveEnv(environment?: string): string {
