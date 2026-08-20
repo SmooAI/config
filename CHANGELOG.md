@@ -1,5 +1,11 @@
 # @smooai/library-template
 
+## 6.11.4
+
+### Patch Changes
+
+- 3d61a62: Bootstrap token exchange now retries transient 429/5xx responses with exponential backoff + jitter (5 attempts), so CI image builds survive AuthIssuer throttling (ReservedFunctionConcurrentInvocationLimitExceeded). Permanent 4xx (e.g. 401 invalid_client) still fail fast.
+
 ## 6.11.3
 
 ### Patch Changes
