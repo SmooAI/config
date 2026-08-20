@@ -1,4 +1,4 @@
 package config
 
 // Version is the current version of the smooai-config Go package.
-const Version = "6.11.7"
+const Version = "6.12.0"
