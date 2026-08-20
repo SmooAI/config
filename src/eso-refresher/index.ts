@@ -18,7 +18,7 @@ import { TokenProvider } from '@/platform/TokenProvider';
  * This sidecar closes that gap: it re-mints a fresh access token on a short
  * interval (well under the JWT TTL) using the **same** `TokenProvider` the
  * runtime SDK uses, and writes it into the bootstrap Secret. ESO then always
- * reads a fresh bearer, so a `th config set …` becomes live on ESO's next
+ * reads a fresh bearer, so a `smoo config set …` becomes live on ESO's next
  * `refreshInterval` + a `kubectl rollout restart` — no platform deploy.
  *
  * ## Env contract (mirrors container mode §1, minus orgId/env)
