@@ -1,0 +1,82 @@
+# Without this file every ecosystem here was invisible to Dependabot's update
+# runs, so 155 advisories accumulated on main with nothing opening a PR.
+# Grouped so a weekly run produces ~8 PRs, not ~150.
+version: 2
+updates:
+    - package-ecosystem: npm
+      directory: /
+      schedule:
+          interval: weekly
+      open-pull-requests-limit: 10
+      groups:
+          npm-security:
+              applies-to: security-updates
+              patterns: ['*']
+          npm-dev:
+              applies-to: version-updates
+              dependency-type: development
+              patterns: ['*']
+          npm-prod:
+              applies-to: version-updates
+              dependency-type: production
+              patterns: ['*']
+
+    - package-ecosystem: uv
+      directory: /python
+      schedule:
+          interval: weekly
+      groups:
+          python-security:
+              applies-to: security-updates
+              patterns: ['*']
+          python-all:
+              applies-to: version-updates
+              patterns: ['*']
+
+    - package-ecosystem: cargo
+      directory: /rust/config
+      schedule:
+          interval: weekly
+      groups:
+          rust-all:
+              patterns: ['*']
+
+    - package-ecosystem: gomod
+      directory: /go/config
+      schedule:
+          interval: weekly
+      groups:
+          go-all:
+              patterns: ['*']
+
+    - package-ecosystem: nuget
+      directory: /dotnet
+      schedule:
+          interval: weekly
+      groups:
+          dotnet-all:
+              patterns: ['*']
+
+    - package-ecosystem: gradle
+      directory: /kotlin
+      schedule:
+          interval: weekly
+      groups:
+          kotlin-all:
+              patterns: ['*']
+
+    - package-ecosystem: swift
+      directory: /
+      schedule:
+          interval: weekly
+      groups:
+          swift-all:
+              patterns: ['*']
+
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      groups:
+          actions-all:
+              patterns: ['*']
