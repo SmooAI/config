@@ -159,18 +159,6 @@ jobs:
                       --source https://api.nuget.org/v3/index.json \
                       --skip-duplicate
 
-            # Every step above is gated on `steps.changesets.outputs.published`,
-            # which is set by parsing the publish script's stdout. When that
-            # parsing broke, all four steps SKIPPED and this job still reported
-            # success — 6.11.6, 6.11.7 and 6.12.0 reached npm alone. This asserts
-            # the lockstep the repo actually promises, and fails loudly.
-            # Deliberately NOT gated on `published` — conditioning this on the
-            # flag that broke would skip it in exactly the failure case. It
-            # anchors on npm's own latest instead, so a run that legitimately
-            # published nothing asserts nothing and cannot false-fire.
-            - name: Verify all five registries are in lockstep
-              run: pnpm registry:check
-
             - name: Auto-Merge Changeset PR
               run: |
                   PR_NUMBER=$(gh pr list --state open --head changeset-release/main --json number --jq '.[0].number')
@@ -184,3 +172,22 @@ jobs:
                   fi
               env:
                   GH_TOKEN: ${{ secrets.GH_PAT }}
+
+            # Every publish step above is gated on `steps.changesets.outputs.published`,
+            # which the action sets by parsing the publish script's stdout. When that
+            # parsing broke, all four SKIPPED and the job still reported success —
+            # 6.11.6, 6.11.7 and 6.12.0 reached npm alone. This asserts the lockstep
+            # the repo actually promises, and fails loudly.
+            #
+            # LAST step, and `always()`. Placed before Auto-Merge in the first
+            # cut, which deadlocked recovery: the guard failed on a divergence,
+            # the auto-merge step was skipped, the changeset PR never merged, so
+            # nothing new published and the divergence persisted. A guard must
+            # never be able to block the thing that fixes what it is guarding.
+            #
+            # Not gated on `published` either — conditioning it on the flag that
+            # broke would skip it in exactly the failure case. It anchors on
+            # npm's own latest, so a run that published nothing asserts nothing.
+            - name: Verify all five registries are in lockstep
+              if: always()
+              run: pnpm registry:check
