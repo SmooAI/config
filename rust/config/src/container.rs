@@ -341,7 +341,7 @@ pub struct InitContainerConfigOptions {
 
 /// Blank-aware presence: a set-but-whitespace value counts as missing.
 fn non_blank(v: Option<String>) -> Option<String> {
-    v.and_then(|s| if s.trim().is_empty() { None } else { Some(s) })
+    v.filter(|s| !s.trim().is_empty())
 }
 
 fn env_var(name: &str) -> Option<String> {
