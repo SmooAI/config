@@ -76,21 +76,25 @@ jobs:
             - name: Lint
               run: pnpm lint
 
+            # `pnpm format:check`, `test` and `build` now each fan out to all
+            # seven languages. Kotlin and Swift are declared skips here because
+            # they have dedicated jobs below (JDK setup / macOS runner) —
+            # scripts/with-toolchain.mjs fails the job on any UNDECLARED missing
+            # toolchain, so a language can never silently drop out of CI again.
             - name: Format check
-              run: pnpm format:check && pnpm python:format:check && pnpm rust:fmt:check && pnpm go:fmt:check
+              run: pnpm format:check
+              env:
+                  SMOOAI_SKIP_TOOLCHAINS: swift,java
 
             - name: Test
               run: pnpm test
+              env:
+                  SMOOAI_SKIP_TOOLCHAINS: swift,java
 
             - name: Build
               run: pnpm build
-
-            - name: .NET restore + build + test
-              working-directory: dotnet
-              run: |
-                  dotnet restore
-                  dotnet build -c Release --no-restore
-                  dotnet test -c Release --no-build --verbosity normal
+              env:
+                  SMOOAI_SKIP_TOOLCHAINS: swift,java
 
     # Swift needs a macOS runner (SMOODEV-2380) — the linux Swift toolchain's
     # FoundationNetworking URLSession diverges from the Darwin one the SDK's
@@ -104,6 +108,8 @@ jobs:
             # and validates what SPM consumers actually resolve.
             - name: Swift build + test
               run: swift test
+            - name: Swift format check
+              run: swift format lint --strict --recursive --configuration .swift-format swift/Sources swift/Tests
 
     kotlin_checks:
         runs-on: ubuntu-latest
@@ -117,4 +123,7 @@ jobs:
             - uses: gradle/actions/setup-gradle@v4
             - name: Kotlin build + test
               working-directory: kotlin
-              run: gradle test --console=plain
+              run: ./gradlew test --console=plain
+            - name: Kotlin format check (ktlint)
+              working-directory: kotlin
+              run: ./gradlew ktlintCheck --console=plain
