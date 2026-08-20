@@ -64,6 +64,12 @@ jobs:
               run: uv sync --group dev
               working-directory: python
 
+            # Fails loudly if any of the seven language manifests has fallen off
+            # the release train — Kotlin sat at the default 0.1.0 for months
+            # because nothing asserted this.
+            - name: Version consistency (all 7 languages)
+              run: pnpm version:check
+
             - name: Typecheck
               run: pnpm typecheck
 

@@ -73,6 +73,9 @@ jobs:
               run: uv sync --group dev
               working-directory: python
 
+            - name: Version consistency (all 7 languages)
+              run: pnpm version:check
+
             - name: Typecheck
               run: pnpm typecheck
 
@@ -117,7 +120,10 @@ jobs:
 
             - name: Publish smooai-config to crates.io
               if: steps.changesets.outputs.published == 'true'
-              run: cargo publish --manifest-path rust/config/Cargo.toml
+              # --locked: publish exactly the dependency set CI tested. If this
+              # fails the lockfile is genuinely stale — refresh and commit it,
+              # do not drop the flag.
+              run: cargo publish --locked --manifest-path rust/config/Cargo.toml
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.SMOOAI_CARGO_REGISTRY_TOKEN }}
 
