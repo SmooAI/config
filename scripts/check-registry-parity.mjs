@@ -59,32 +59,46 @@ async function hasVersion(registry, version) {
     }
 }
 
-const version = await npmLatest();
+const REGISTRIES = ['PyPI', 'crates.io', 'NuGet', 'Go module tag'];
+const ATTEMPTS = 6;
+const BACKOFF_MS = 20_000;
 
-if (!version) {
-    console.error('❌ Could not read the latest @smooai/config version from npm.');
-    process.exit(1);
-}
+let version;
+let missing = REGISTRIES;
 
-console.log(`npm latest is ${version} — checking the other four registries.\n`);
-
-const missing = [];
-
-for (const registry of ['PyPI', 'crates.io', 'NuGet', 'Go module tag']) {
-    // Registries index asynchronously after a publish, so give each a few
-    // attempts before calling it missing.
-    let found = false;
-    for (let attempt = 1; attempt <= 5 && !found; attempt++) {
-        try {
-            found = await hasVersion(registry, version);
-        } catch (error) {
-            console.log(`  … ${registry} lookup failed (attempt ${attempt}): ${error.message}`);
-        }
-        if (!found && attempt < 5) await new Promise((resolve) => setTimeout(resolve, 15_000));
+// npm's own metadata is read INSIDE the loop, not once up front. It is served
+// from a CDN and lags its own publish by seconds — the first run of this guard
+// failed a green release because it read `latest` as the previous version and
+// then dutifully reported four registries "missing" a version nobody had
+// published. Re-reading makes a stale read self-correcting instead of fatal.
+for (let attempt = 1; attempt <= ATTEMPTS && missing.length > 0; attempt++) {
+    try {
+        version = await npmLatest();
+    } catch (error) {
+        console.log(`… npm lookup failed (attempt ${attempt}): ${error.message}`);
+        await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS));
+        continue;
     }
 
-    console.log(`  ${found ? '✅' : '❌'} ${registry}`);
-    if (!found) missing.push(registry);
+    if (!version) {
+        console.error('❌ Could not read the latest @smooai/config version from npm.');
+        process.exit(1);
+    }
+
+    const stillMissing = [];
+    for (const registry of missing) {
+        try {
+            if (!(await hasVersion(registry, version))) stillMissing.push(registry);
+        } catch (error) {
+            console.log(`… ${registry} lookup failed (attempt ${attempt}): ${error.message}`);
+            stillMissing.push(registry);
+        }
+    }
+    missing = stillMissing;
+
+    console.log(`attempt ${attempt}: npm latest ${version} — missing from ${missing.length > 0 ? missing.join(', ') : 'nothing'}`);
+
+    if (missing.length > 0 && attempt < ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS));
 }
 
 if (missing.length > 0) {
