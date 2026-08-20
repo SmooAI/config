@@ -268,6 +268,7 @@
         "swift:format:check": "node scripts/with-toolchain.mjs swift swift format lint --strict --recursive --configuration .swift-format swift/Sources swift/Tests",
         "version:sync": "node scripts/sync-versions.mjs",
         "version:check": "node scripts/sync-versions.mjs --check",
+        "registry:check": "node scripts/check-registry-parity.mjs",
         "version:bump": "pnpm changeset version && pnpm run version:sync",
         "ts:format": "oxfmt --write .",
         "ts:format:check": "oxfmt --check .",
@@ -300,7 +301,7 @@
         "valibot": "^1.4.2"
     },
     "devDependencies": {
-        "@changesets/cli": "^3.0.1",
+        "@changesets/cli": "^2.31.1",
         "@smooai/config-typescript": "^1.0.16",
         "@testing-library/react": "^16.3.2",
         "@types/lodash.snakecase": "^4.1.9",
