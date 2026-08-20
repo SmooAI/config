@@ -1,0 +1,12 @@
+# ktlint reads its rule configuration from .editorconfig. Scoped to kotlin/ so
+# it cannot collide with the oxfmt/ruff/gofmt settings governing the other SDKs.
+# 4 spaces / 160 columns matches the house style the rest of the repo formats to.
+root = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+max_line_length = 160
+insert_final_newline = true
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true

@@ -189,7 +189,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             var callsAfterInit = handler.Requests.Count;
@@ -220,7 +220,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             var err = await Assert.ThrowsAsync<ConfigKeyUnresolvedException>(() => handle.SecretConfig.GetAsync("stripeApiKey"));
@@ -269,7 +269,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             Assert.Throws<ConfigKeyUnresolvedException>(() => handle.SecretConfig.GetSync("stripeApiKey"));
@@ -291,7 +291,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             Assert.Equal("sk_cached", handle.SecretConfig.GetSync("stripeApiKey"));
@@ -335,7 +335,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             // stripeApiKey is a secret, not a public key.
@@ -366,7 +366,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             var v = await handle.SecretConfig.GetAsync("stripeApiKey");
@@ -397,7 +397,7 @@ public class ContainerConfigTests
                 Schema = Schema(),
                 Environment = TestEnv,
                 ConfigClient = client,
-            GetEnv = EmptyEnv(),
+                GetEnv = EmptyEnv(),
             });
 
             Assert.True(handle.Health().IsHealthy);

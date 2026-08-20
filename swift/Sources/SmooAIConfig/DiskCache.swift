@@ -18,8 +18,9 @@ struct DiskCache {
         let dir = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
         self.fileURL = dir?.appendingPathComponent("smooai-config-cache.json")
         if let url = fileURL,
-           let data = try? Data(contentsOf: url),
-           let decoded = try? JSONDecoder().decode(Payload.self, from: data) {
+            let data = try? Data(contentsOf: url),
+            let decoded = try? JSONDecoder().decode(Payload.self, from: data)
+        {
             self.payload = decoded
         } else {
             self.payload = Payload()

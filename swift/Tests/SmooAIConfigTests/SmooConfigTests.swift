@@ -1,7 +1,9 @@
 import XCTest
+
 @testable import SmooAIConfig
+
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 
 /// URLProtocol stub — canned responses keyed by path suffix, mirroring the
@@ -63,14 +65,15 @@ final class SmooConfigTests: XCTestCase {
 
     private func makeConfig(bundle: String? = nil, token: String? = "user-jwt") -> SmooConfig {
         let bundleURL = bundle.map { writeBundle($0) }
-        return SmooConfig(options: SmooConfigOptions(
-            apiURL: URL(string: "https://api.example.test")!,
-            environment: "production",
-            bundledConfigURL: bundleURL,
-            tokenProvider: token.map { jwt in { jwt } },
-            session: StubURLProtocol.session(),
-            cacheDirectory: tempDir
-        ))
+        return SmooConfig(
+            options: SmooConfigOptions(
+                apiURL: URL(string: "https://api.example.test")!,
+                environment: "production",
+                bundledConfigURL: bundleURL,
+                tokenProvider: token.map { jwt in { jwt } },
+                session: StubURLProtocol.session(),
+                cacheDirectory: tempDir
+            ))
     }
 
     // MARK: - Public config

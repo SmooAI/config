@@ -1,0 +1,16 @@
+{
+    "version": 1,
+    "lineLength": 160,
+    "indentation": {
+        "spaces": 4
+    },
+    "respectsExistingLineBreaks": true,
+    "prioritizeKeepingFunctionOutputTogether": true,
+    "rules": {
+        "AlwaysUseLowerCamelCase": true,
+        "DoNotUseSemicolons": true,
+        "NoParensAroundConditions": true,
+        "OrderedImports": true,
+        "UseShorthandTypeNames": true
+    }
+}

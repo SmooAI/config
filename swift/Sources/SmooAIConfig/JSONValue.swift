@@ -42,9 +42,24 @@ public enum JSONValue: Sendable, Equatable, Codable {
     }
 
     // Typed accessors — nil when the value is a different JSON type.
-    public var stringValue: String? { if case .string(let value) = self { return value }; return nil }
-    public var numberValue: Double? { if case .number(let value) = self { return value }; return nil }
-    public var boolValue: Bool? { if case .bool(let value) = self { return value }; return nil }
-    public var objectValue: [String: JSONValue]? { if case .object(let value) = self { return value }; return nil }
-    public var arrayValue: [JSONValue]? { if case .array(let value) = self { return value }; return nil }
+    public var stringValue: String? {
+        if case .string(let value) = self { return value }
+        return nil
+    }
+    public var numberValue: Double? {
+        if case .number(let value) = self { return value }
+        return nil
+    }
+    public var boolValue: Bool? {
+        if case .bool(let value) = self { return value }
+        return nil
+    }
+    public var objectValue: [String: JSONValue]? {
+        if case .object(let value) = self { return value }
+        return nil
+    }
+    public var arrayValue: [JSONValue]? {
+        if case .array(let value) = self { return value }
+        return nil
+    }
 }

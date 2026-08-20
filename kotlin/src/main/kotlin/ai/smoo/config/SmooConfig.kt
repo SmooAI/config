@@ -14,9 +14,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
-import java.io.Closeable
-import java.io.File
-import kotlin.math.round
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -24,6 +21,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import java.io.Closeable
+import java.io.File
+import kotlin.math.round
 
 /**
  * Result of a server-side flag/limit evaluation — mirrors
@@ -129,10 +129,11 @@ public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
      * Failures throw; prior values remain intact.
      */
     public suspend fun refreshPublicValues() {
-        val response = client.get("${options.apiUrl}/config/app/values") {
-            parameter("environment", options.environment)
-            bearer()
-        }
+        val response =
+            client.get("${options.apiUrl}/config/app/values") {
+                parameter("environment", options.environment)
+                bearer()
+            }
         if (!response.status.isSuccess()) throw SmooConfigException("refresh failed", response.status.value)
         val decoded = json.decodeFromString<ValuesResponse>(response.bodyAsText())
         refreshedValues = decoded.values
@@ -142,11 +143,17 @@ public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
     // ── Feature flags ────────────────────────────────────────────────────────
 
     /** Full evaluation result; throws on network/auth failure. */
-    public suspend fun evaluateFlagValue(key: String, context: Map<String, JsonElement> = emptyMap()): EvaluationResult =
-        evaluate("feature-flags", key, context).also { cache.storeEvaluation("flag", key, it) }
+    public suspend fun evaluateFlagValue(
+        key: String,
+        context: Map<String, JsonElement> = emptyMap(),
+    ): EvaluationResult = evaluate("feature-flags", key, context).also { cache.storeEvaluation("flag", key, it) }
 
     /** Offline-safe boolean read: live → last cached → default. Never throws. */
-    public suspend fun evaluateFlag(key: String, context: Map<String, JsonElement> = emptyMap(), default: Boolean): Boolean {
+    public suspend fun evaluateFlag(
+        key: String,
+        context: Map<String, JsonElement> = emptyMap(),
+        default: Boolean,
+    ): Boolean {
         runCatching { evaluateFlagValue(key, context) }.getOrNull()?.value?.asBoolean()?.let { return it }
         cache.evaluation("flag", key)?.value?.asBoolean()?.let { return it }
         return default
@@ -155,8 +162,10 @@ public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
     // ── Limits ───────────────────────────────────────────────────────────────
 
     /** Full limit evaluation (raw number, pre-clamp); throws on failure. */
-    public suspend fun evaluateLimitValue(key: String, context: Map<String, JsonElement> = emptyMap()): EvaluationResult =
-        evaluate("limits", key, context).also { cache.storeEvaluation("limit", key, it) }
+    public suspend fun evaluateLimitValue(
+        key: String,
+        context: Map<String, JsonElement> = emptyMap(),
+    ): EvaluationResult = evaluate("limits", key, context).also { cache.storeEvaluation("limit", key, it) }
 
     /**
      * Offline-safe clamped read: live → cached → default, clamped to
@@ -170,9 +179,10 @@ public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
         max: Double? = null,
         step: Double? = null,
     ): Double {
-        var value = runCatching { evaluateLimitValue(key, context) }.getOrNull()?.value?.asDouble()
-            ?: cache.evaluation("limit", key)?.value?.asDouble()
-            ?: default
+        var value =
+            runCatching { evaluateLimitValue(key, context) }.getOrNull()?.value?.asDouble()
+                ?: cache.evaluation("limit", key)?.value?.asDouble()
+                ?: default
         // step snaps to the nearest multiple BEFORE the [min, max] clamp — the
         // same order as the TS clampLimit / Rust clamp_limit (ADR-066).
         step?.takeIf { it > 0 }?.let { value = round(value / it) * it }
@@ -183,12 +193,17 @@ public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
 
     // ── HTTP ─────────────────────────────────────────────────────────────────
 
-    private suspend fun evaluate(kind: String, key: String, context: Map<String, JsonElement>): EvaluationResult {
-        val response = client.post("${options.apiUrl}/config/app/$kind/${key.encodeURLPathPart()}/evaluate") {
-            contentType(ContentType.Application.Json)
-            bearer()
-            setBody(json.encodeToString(EvaluateRequest.serializer(), EvaluateRequest(options.environment, context)))
-        }
+    private suspend fun evaluate(
+        kind: String,
+        key: String,
+        context: Map<String, JsonElement>,
+    ): EvaluationResult {
+        val response =
+            client.post("${options.apiUrl}/config/app/$kind/${key.encodeURLPathPart()}/evaluate") {
+                contentType(ContentType.Application.Json)
+                bearer()
+                setBody(json.encodeToString(EvaluateRequest.serializer(), EvaluateRequest(options.environment, context)))
+            }
         if (!response.status.isSuccess()) {
             val status = response.status.value
             val isFlag = kind == "feature-flags"
@@ -212,6 +227,7 @@ public class SmooConfig(private val options: SmooConfigOptions) : Closeable {
     }
 
     private fun JsonElement.asBoolean(): Boolean? = runCatching { jsonPrimitive.booleanOrNull }.getOrNull()
+
     private fun JsonElement.asDouble(): Double? = runCatching { jsonPrimitive.doubleOrNull }.getOrNull()
 }
 
@@ -241,10 +257,17 @@ internal class DiskCache(directory: File?, private val json: Json) {
         persist()
     }
 
-    fun evaluation(kind: String, key: String): EvaluationResult? = payload.evaluations["$kind:$key"]
+    fun evaluation(
+        kind: String,
+        key: String,
+    ): EvaluationResult? = payload.evaluations["$kind:$key"]
 
     @Synchronized
-    fun storeEvaluation(kind: String, key: String, result: EvaluationResult) {
+    fun storeEvaluation(
+        kind: String,
+        key: String,
+        result: EvaluationResult,
+    ) {
         payload.evaluations["$kind:$key"] = result
         persist()
     }

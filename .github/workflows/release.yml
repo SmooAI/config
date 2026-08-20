@@ -82,21 +82,25 @@ jobs:
             - name: Lint
               run: pnpm lint
 
+            # `pnpm test`/`build`/`format` fan out to all seven languages. This
+            # job runs on ubuntu with no Swift toolchain and no JDK setup, so
+            # both are declared skips — PR checks gate them on their own runners
+            # before anything reaches main. with-toolchain.mjs fails on any
+            # UNDECLARED missing toolchain.
             - name: Test
               run: pnpm test
+              env:
+                  SMOOAI_SKIP_TOOLCHAINS: swift,java
 
             - name: Build
               run: pnpm build
-
-            - name: .NET restore + build + test
-              working-directory: dotnet
-              run: |
-                  dotnet restore
-                  dotnet build -c Release --no-restore
-                  dotnet test -c Release --no-build --verbosity normal
+              env:
+                  SMOOAI_SKIP_TOOLCHAINS: swift,java
 
             - name: Format
               run: pnpm format
+              env:
+                  SMOOAI_SKIP_TOOLCHAINS: swift,java
 
             - name: Version Update 🦋
               id: changesets

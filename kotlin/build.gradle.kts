@@ -5,6 +5,9 @@
 plugins {
     kotlin("jvm") version "2.1.20"
     kotlin("plugin.serialization") version "2.1.20"
+    // Kotlin had no formatter at all until SMOODEV-2975 — `pnpm format:check`
+    // covered TS/Python/Rust/Go only, so this source tree was never verified.
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
     `maven-publish`
     signing
 }
