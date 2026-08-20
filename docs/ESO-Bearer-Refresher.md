@@ -15,7 +15,7 @@ A small sidecar/Deployment that, on a short interval (default 15m, well under th
 1. Re-mints a fresh access token using the same `TokenProvider` the runtime SDK uses (`invalidate()` then `getAccessToken()` so the token always has a near-full TTL ahead).
 2. Patches `bearer-token` in the bootstrap Secret via a JSON merge-patch.
 
-ESO then always reads a fresh bearer. A `th config set <key> <value> --environment=production` becomes live on ESO's next `refreshInterval` plus a `kubectl rollout restart` of the consuming workload — **no platform deploy**.
+ESO then always reads a fresh bearer. A `smoo config set <key> <value> --environment=production` becomes live on ESO's next `refreshInterval` plus a `kubectl rollout restart` of the consuming workload — **no platform deploy**.
 
 The initial mint+write is awaited at startup and **fails loud** (non-zero exit → visible crash-loop) on misconfiguration. Later loop failures are logged and retried on the next tick — the existing Secret token is still valid for the remainder of its TTL.
 

@@ -29,7 +29,7 @@
 
 > Define your config once with Zod (or Valibot, ArkType, Effect), and read it with full type inference everywhere — public config, server-only secrets, and live feature flags. Rename a key and every call site is a compile error, not a 3 AM page. Native clients in TypeScript, Python, Rust, Go, and .NET all read from the same source of truth.
 
-> 📣 **The CLI moved.** Use `th config` from the [smooth repo](https://github.com/SmooAI/smooth) for all operator commands (login, get, set, list, push, pull, diff, init, etc.). The standalone `smooai-config` CLI that used to live in this repo is deprecated and being deleted (SMOODEV-1411). **The runtime library `@smooai/config` (TypeScript / Python / Rust / Go / .NET, consumed via `secretConfig.get(...)` / `publicConfig.get(...)` / `featureFlag.get(...)`) is unchanged** — only the operator CLI surface moved to Rust in the smooth repo.
+> 📣 **The CLI moved.** Use `smoo config` from the [smooth repo](https://github.com/SmooAI/smooth) for all operator commands (login, get, set, list, push, pull, diff, init, etc.). The standalone `smooai-config` CLI that used to live in this repo is deprecated and being deleted (SMOODEV-1411). **The runtime library `@smooai/config` (TypeScript / Python / Rust / Go / .NET, consumed via `secretConfig.get(...)` / `publicConfig.get(...)` / `featureFlag.get(...)`) is unchanged** — only the operator CLI surface moved to Rust in the smooth repo. (`smoo …` is the th binary's platform namespace; `th smoo …` and the old `th config …` spelling also work.)
 
 ## ✨ Features
 
@@ -666,7 +666,7 @@ Supports Zod, Valibot, ArkType, Effect Schema, and built-in schema types. See [S
 
 - 🚀 **Config on the platform** — [smoo.ai/platform/config](https://smoo.ai/platform/config)
 - 🧰 **More open source from Smoo AI** — [smoo.ai/open-source](https://smoo.ai/open-source)
-- 🧩 **Sibling packages** — [@smooai/logger](https://github.com/SmooAI/logger), [@smooai/fetch](https://github.com/SmooAI/fetch), [@smooai/config-typescript](https://github.com/SmooAI/config-typescript), [smooth](https://github.com/SmooAI/smooth) (home of the `th config` CLI)
+- 🧩 **Sibling packages** — [@smooai/logger](https://github.com/SmooAI/logger), [@smooai/fetch](https://github.com/SmooAI/fetch), [@smooai/config-typescript](https://github.com/SmooAI/config-typescript), [smooth](https://github.com/SmooAI/smooth) (home of the `smoo config` CLI)
 
 ## 🤝 Contributing
 
