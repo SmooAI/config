@@ -1,5 +1,52 @@
 # @smooai/library-template
 
+## 6.11.6
+
+### Patch Changes
+
+- ab3cbd1: Security: close all 155 open Dependabot advisories across npm, PyPI and Go.
+
+    The secrets library had no `.github/dependabot.yml` and automated security fixes
+    switched off, so nothing ever opened an update PR and advisories accumulated
+    unchecked. Bumped the direct dependencies carrying the transitive vulnerabilities
+    (`@kubernetes/client-node`, `@smooai/{fetch,logger,utils}`, `effect`, `valibot`,
+    `ajv`, `ink`, `vite`, `vitest`, `jsdom`, `tsup`, `@changesets/cli`), pinned the
+    three remaining transitives via `pnpm.overrides` (`esbuild`, `next`, `uuid`),
+    upgraded `python/uv.lock` (`cryptography` 46 → 50, `idna`, `pytest`, `pygments`)
+    and `github.com/buger/jsonparser` 1.1.1 → 1.6.1. Added a grouped `dependabot.yml`
+    covering all eight ecosystems so this cannot silently re-accumulate.
+
+- f7c6d86: Make `check-all` actually mean full CI parity, and add the three missing formatters.
+
+    `pnpm test` / `build` / `check-all` covered only TypeScript, Python, Rust and Go,
+    so the script CLAUDE.md called "full CI parity" missed 3 of the 7 language SDKs.
+    `.NET`, Kotlin and Swift are now wired into `build`, `test`, `format` and
+    `format:check`, each via `scripts/with-toolchain.mjs`: a missing toolchain is an
+    explicit skip locally, and a **hard failure under CI** unless the workflow named
+    it in `SMOOAI_SKIP_TOOLCHAINS`.
+
+    There was also no `dotnet format`, no ktlint and no swift-format anywhere in the
+    repo, so three languages' formatting had never been verified once. All three are
+    added and the drift they surfaced is fixed: 30 ktlint violations across the
+    Kotlin source and tests, 28 swift-format violations, and whitespace in one .NET
+    test file. `.swift-format` and `kotlin/.editorconfig` pin 4-space / 160-column to
+    match the house style the other four languages already format to.
+
+- e716f4d: Put Kotlin and Swift on the shared release train, and add a fail-loud version guard.
+
+    `scripts/sync-versions.mjs` covered Python, Rust, .NET and Go but not Kotlin or
+    Swift, so those two silently stayed behind forever — Kotlin's `build.gradle.kts`
+    still read the default `0.1.0` while every other language rode 6.11.x, and Swift
+    had no version-bearing token at all. Kotlin is now synced, Swift gains a
+    `SmooAIConfigVersion.version` constant (mirroring `go/config/version.go`, since
+    SPM takes its version from the git tag and `Package.swift` has no field to sync).
+
+    The syncer gained a `--check` mode sharing the same target list, wired into
+    `check-all` and both CI workflows, so the checker cannot drift from the syncer.
+    It fails on version mismatch _and_ on a pattern that no longer matches its file —
+    the second is what let Kotlin rot, since a no-op sync is indistinguishable from
+    an already-synced one. `cargo publish` now runs `--locked`.
+
 ## 6.11.5
 
 ### Patch Changes
