@@ -213,8 +213,7 @@ TS (vitest), Rust (cargo), Python (pytest), Go (go test), .NET (xunit).
    yet emit those keys, so `getLimit()` currently returns the clamped schema
    `default`. That's the correct sync fallback (limits are live-evaluated); a
    follow-up can bake per-org defaults if a purely-offline default is needed.
-4. **React `useLimitEvaluation`.** Skipped — the parallel
-   `useFeatureFlagEvaluation` hook was designed in `DESIGN-segment-context.md`
-   but never landed (only `useFeatureFlag` via `getValue` exists). Add
-   `useLimitEvaluation` when/if `useFeatureFlagEvaluation` lands, so both stay
-   symmetric.
+4. **React `useLimitEvaluation`.** ~~Skipped~~ — SHIPPED 2026-08-20. Both
+   `useFeatureFlagEvaluation` (the hook `DESIGN-segment-context.md` designed but
+   never landed) and its `useLimitEvaluation` sibling now live in
+   `src/react/hooks.ts`, sharing one engine so they cannot drift.
