@@ -627,13 +627,13 @@ Honest asymmetries between the SDKs, so you can pick with your eyes open:
 | Capability                                                                                                                                | TS  | Python | Rust | Go  | .NET |    Kotlin / Swift     |
 | ----------------------------------------------------------------------------------------------------------------------------------------- | :-: | :----: | :--: | :-: | :--: | :-------------------: |
 | Encrypted baked bundle + config API reads                                                                                                 | ✅  |   ✅   |  ✅  | ✅  |  ✅  | 📱 public-only bundle |
-| Local config-file workflow (`LocalConfigManager` in Py/Rust/Go; the file tier in TS)                                                      | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
-| Cloud-region resolution                                                                                                                   | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
-| Deferred values / `merge_replace_arrays` semantics                                                                                        | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
-| Shared schema-validation conformance fixture ([`test-fixtures/schema-validation-cases.json`](test-fixtures/schema-validation-cases.json)) | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
+| Local config-file workflow (`LocalConfigManager` in Py/Rust/Go/.NET; the file tier in TS)                                                 | ✅  |   ✅   |  ✅  | ✅  |  ✅  |           —           |
+| Cloud-region resolution                                                                                                                   | ✅  |   ✅   |  ✅  | ✅  |  ✅  |           —           |
+| Deferred values / `merge_replace_arrays` semantics                                                                                        | ✅  |   ✅   |  ✅  | ✅  |  ✅  |           —           |
+| Shared schema-validation conformance fixture ([`test-fixtures/schema-validation-cases.json`](test-fixtures/schema-validation-cases.json)) | ✅  |   ✅   |  ✅  | ✅  |  ✅  |           —           |
 | Live feature flags                                                                                                                        | ✅  |   ✅   |  ✅  | ✅  |  ✅  |     ✅ (+ limits)     |
 
-The .NET SDK is a thinner **runtime-read** client: typed keys, the AES-GCM baked bundle, OAuth2 live values and flags — wire-compatible for those paths, but without the local-config/cloud-region/deferred-value machinery or the shared validation fixture the other four server SDKs run. Cross-language schema-validation parity is a **TS/Python/Rust/Go** guarantee today.
+The .NET SDK reached parity with the other four server SDKs in 6.11.x: `LocalConfigManager`, cloud-region resolution, deferred values and `MergeReplaceArrays` all landed, and its schema validator is held to the same [`test-fixtures/schema-validation-cases.json`](test-fixtures/schema-validation-cases.json) corpus. Cross-language schema-validation parity is now a **TS/Python/Rust/Go/.NET** guarantee. Kotlin and Swift stay outside it by design — there is no schema surface on device (ADR-074).
 
 ## 📖 Development
 
