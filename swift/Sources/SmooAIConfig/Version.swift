@@ -5,5 +5,5 @@
 /// Swift SDK, and it is what `scripts/sync-versions.mjs` keeps on the release
 /// train with the other six languages. Mirrors `go/config/version.go`.
 public enum SmooAIConfigVersion {
-    public static let version = "6.11.6"
+    public static let version = "6.11.7"
 }
