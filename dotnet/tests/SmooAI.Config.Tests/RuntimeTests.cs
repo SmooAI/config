@@ -6,6 +6,11 @@ using SmooAI.Config.Runtime;
 
 namespace SmooAI.Config.Tests;
 
+// Mutates the process-global SMOO_CONFIG_KEY / SMOO_CONFIG_KEY_FILE, so it has
+// to share the serial collection with the other env-mutating classes. Being
+// outside it meant xunit ran this in parallel with them and the key could be
+// swapped mid-decrypt.
+[Collection("EnvSerial")]
 public class RuntimeTests : IDisposable
 {
     public RuntimeTests()

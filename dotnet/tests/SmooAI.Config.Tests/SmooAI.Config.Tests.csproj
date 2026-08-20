@@ -25,4 +25,15 @@
     <ProjectReference Include="..\..\src\SmooAI.Config\SmooAI.Config.csproj" />
   </ItemGroup>
 
+  <!--
+    The cross-language schema corpus. TypeScript, Python, Rust and Go all load
+    this same file; .NET reads the copy placed next to the test assembly so the
+    path resolves identically under `dotnet test`, an IDE, and CI.
+  -->
+  <ItemGroup>
+    <None Include="..\..\..\test-fixtures\schema-validation-cases.json"
+          Link="test-fixtures\schema-validation-cases.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
