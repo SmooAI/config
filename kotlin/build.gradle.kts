@@ -11,7 +11,7 @@ plugins {
 
 group = "ai.smoo"
 // JitPack passes -Pversion=<tag/sha> (see /jitpack.yml); default for local dev.
-version = (findProperty("version") as String?)?.takeIf { it != "unspecified" } ?: "0.1.0"
+version = (findProperty("version") as String?)?.takeIf { it != "unspecified" } ?: "6.11.5"
 
 repositories {
     mavenCentral()

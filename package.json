@@ -224,7 +224,7 @@
         "build:lib": "pnpm build:sync-worker && pnpm tsup",
         "build:sync-worker": "node scripts/build-sync-worker.mjs",
         "build:cli": "tsup --config tsup.cli.config.ts",
-        "check-all": "pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run python:typecheck && pnpm run python:lint && pnpm run python:format:check && pnpm run rust:fmt:check && pnpm run rust:lint && pnpm run rust:test && pnpm run go:fmt:check && pnpm run go:lint && pnpm run go:test && pnpm run build",
+        "check-all": "pnpm run version:check && pnpm run typecheck && pnpm run lint && pnpm run format:check && pnpm run test && pnpm run python:typecheck && pnpm run python:lint && pnpm run python:format:check && pnpm run rust:fmt:check && pnpm run rust:lint && pnpm run rust:test && pnpm run go:fmt:check && pnpm run go:lint && pnpm run go:test && pnpm run build",
         "ci:publish": "pnpm build && pnpm changeset publish",
         "format": "oxfmt --write . && pnpm run python:format && pnpm run rust:fmt && pnpm run go:fmt",
         "lint": "oxlint --ignore-pattern .sst --ignore-pattern .pulumi . && pnpm run python:lint && pnpm run rust:lint && pnpm run go:lint",
@@ -255,6 +255,7 @@
         "go:lint": "(cd go/config && go vet ./...)",
         "go:test": "(cd go/config && go test -v ./...)",
         "version:sync": "node scripts/sync-versions.mjs",
+        "version:check": "node scripts/sync-versions.mjs --check",
         "version:bump": "pnpm changeset version && pnpm run version:sync",
         "format:check": "oxfmt --check ."
     },
