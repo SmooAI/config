@@ -101,7 +101,17 @@ Keep values JSON-serializable. Server hashes `bucketBy` values by their
 string representation, so numbers and booleans bucket stably across
 client rebuilds.
 
-## Language parity (blocked by TS design ratification)
+## Language parity (SHIPPED — all seven languages)
+
+> Status, 2026-08-20: this section is no longer a plan. `evaluate_feature_flag`
+> landed in TypeScript (`ba11618`) and in Python/Rust/Go (`cc25963`), and the
+> .NET, Kotlin and Swift SDKs since added the same call. The wire contract
+> (`value` / `matchedRuleId` / `rolloutBucket` / `source`) is identical across
+> all seven. Two deviations from what is written below, both deliberate: Python
+> landed **sync** rather than `async def` (it wraps a sync `httpx.Client`), and
+> Rust returns a `FeatureFlagEvaluationError` enum rather than a
+> `SmooaiConfigError` hierarchy. Every language also takes a third
+> `environment` argument the signatures below omit.
 
 ### Python
 
@@ -163,3 +173,13 @@ types, hard to mirror in Python/Rust/Go, magic behavior confuses readers.
 
 Each language lands independently; nothing breaks existing callers since
 the new method is purely additive.
+
+> Status, 2026-08-20: steps 1–4 are done (2–4 landed as one PR, not three).
+> The React hook that step 1 called for was the one piece that never landed —
+> it is now `useFeatureFlagEvaluation` in `src/react/hooks.ts`, along with the
+> `useLimitEvaluation` sibling that `DESIGN-limits.md` had deferred behind it.
+>
+> **Step 5 is still open.** `packages/backend/e2e/config-sdk.e2e.test.ts` exists
+> in the smooai monorepo but exercises only `getValue`/`getAllValues` — there is
+> no seeded cohort-enabled flag and no `evaluate` call anywhere in it. That work
+> lives in the consumer repo, not here.

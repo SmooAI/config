@@ -311,6 +311,15 @@ export function buildClientConfig<Schema extends ReturnType<typeof defineConfig>
                 const v = getClientFeatureFlag(key as string);
                 return v as unknown as ConfigType[K] | undefined;
             },
+            /**
+             * Live segment-resolved read, mirroring `limit.evaluateLimit`. `get`
+             * and `getSync` return the flag's stored value; this runs the org's
+             * rules and rollout for `context` and reports which branch answered.
+             */
+            evaluate: async (key: FlagKey, context?: Record<string, unknown>, environment?: string): Promise<EvaluateFeatureFlagResponse> => {
+                assertClientKeyDefined(key, 'featureFlag');
+                return httpClient.evaluateFeatureFlag(key as string, context ?? {}, environment);
+            },
         },
         /**
          * Limits (SMOODEV-2306). `getLimit` is the sync fallback (baked env or
