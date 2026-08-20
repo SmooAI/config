@@ -45,15 +45,15 @@
 
 Pick the SDK that matches your service. Every **server** client reads the same schema, the same encrypted bundle, and the same config API — so a key renamed in one language ripples through all of them. The two **mobile** SDKs (📱) speak a deliberately narrower, public-only surface — no secrets ever ship to a device.
 
-| SDK            | One-liner                                                                                               | README                                              |
-| -------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| **TypeScript** | Primary SDK. Schema definition, Next.js / Vite plugins, server runtime, React hooks.                    | [`README.md` (this file)](#-quick-start-typescript) |
-| **Python**     | Pydantic-validated schemas, sync `ConfigClient`, `LocalConfigManager` + `ConfigManager`, baked runtime. | [`python/README.md`](python/README.md)              |
-| **Go**         | Native struct schemas, thread-safe `ConfigClient` / `ConfigManager`, baked-blob runtime.                | [`go/config/README.md`](go/config/README.md)        |
-| **Rust**       | `JsonSchema`-derived schemas, async `ConfigClient`, sync `ConfigManager`, baked-blob runtime.           | [`rust/config/README.md`](rust/config/README.md)    |
-| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`. Thinner surface than the other server SDKs — see [the capability notes](#sdk-capability-notes). | [`dotnet/README.md`](dotnet/README.md)              |
-| **Kotlin** 📱  | Mobile runtime mode (ADR-074): baked public bundle + live flag/limit evaluation, offline-safe, **no secrets on device**. Ships via JitPack commit pin — not on Maven Central yet. | [`kotlin/`](kotlin/) · [spec](docs/Mobile-Runtime-Mode-Spec.md) |
-| **Swift** 📱   | Mobile runtime mode (ADR-074): same surface as Kotlin (`publicValue`, `evaluateFlag`, `evaluateLimit`). Consumed via SPM pinned to a revision — no version tag yet. | [`swift/`](swift/Sources/SmooAIConfig/) · [spec](docs/Mobile-Runtime-Mode-Spec.md) |
+| SDK            | One-liner                                                                                                                                                                                   | README                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| **TypeScript** | Primary SDK. Schema definition, Next.js / Vite plugins, server runtime, React hooks.                                                                                                        | [`README.md` (this file)](#-quick-start-typescript)                                |
+| **Python**     | Pydantic-validated schemas, sync `ConfigClient`, `LocalConfigManager` + `ConfigManager`, baked runtime.                                                                                     | [`python/README.md`](python/README.md)                                             |
+| **Go**         | Native struct schemas, thread-safe `ConfigClient` / `ConfigManager`, baked-blob runtime.                                                                                                    | [`go/config/README.md`](go/config/README.md)                                       |
+| **Rust**       | `JsonSchema`-derived schemas, async `ConfigClient`, sync `ConfigManager`, baked-blob runtime.                                                                                               | [`rust/config/README.md`](rust/config/README.md)                                   |
+| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`. Thinner surface than the other server SDKs — see [the capability notes](#sdk-capability-notes). | [`dotnet/README.md`](dotnet/README.md)                                             |
+| **Kotlin** 📱  | Mobile runtime mode (ADR-074): baked public bundle + live flag/limit evaluation, offline-safe, **no secrets on device**. Ships via JitPack commit pin — not on Maven Central yet.           | [`kotlin/`](kotlin/) · [spec](docs/Mobile-Runtime-Mode-Spec.md)                    |
+| **Swift** 📱   | Mobile runtime mode (ADR-074): same surface as Kotlin (`publicValue`, `evaluateFlag`, `evaluateLimit`). Consumed via SPM pinned to a revision — no version tag yet.                         | [`swift/`](swift/Sources/SmooAIConfig/) · [spec](docs/Mobile-Runtime-Mode-Spec.md) |
 
 The five server SDKs release in **version lockstep** — v6.11.3 on npm, PyPI, crates.io, and NuGet, with the matching `v6.11.3` git tag for the Go module, all cut from the same commit (verified against each registry 2026-08-20). The mobile SDKs version separately (commit-pinned; see below).
 
@@ -624,14 +624,14 @@ Mobile binaries are attacker-owned territory, so the mobile SDKs speak only the 
 
 Honest asymmetries between the SDKs, so you can pick with your eyes open:
 
-| Capability | TS | Python | Rust | Go | .NET | Kotlin / Swift |
-| --- | :-: | :-: | :-: | :-: | :-: | :-: |
-| Encrypted baked bundle + config API reads | ✅ | ✅ | ✅ | ✅ | ✅ | 📱 public-only bundle |
-| Local config-file workflow (`LocalConfigManager` in Py/Rust/Go; the file tier in TS) | ✅ | ✅ | ✅ | ✅ | — | — |
-| Cloud-region resolution | ✅ | ✅ | ✅ | ✅ | — | — |
-| Deferred values / `merge_replace_arrays` semantics | ✅ | ✅ | ✅ | ✅ | — | — |
-| Shared schema-validation conformance fixture ([`test-fixtures/schema-validation-cases.json`](test-fixtures/schema-validation-cases.json)) | ✅ | ✅ | ✅ | ✅ | — | — |
-| Live feature flags | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (+ limits) |
+| Capability                                                                                                                                | TS  | Python | Rust | Go  | .NET |    Kotlin / Swift     |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | :-: | :----: | :--: | :-: | :--: | :-------------------: |
+| Encrypted baked bundle + config API reads                                                                                                 | ✅  |   ✅   |  ✅  | ✅  |  ✅  | 📱 public-only bundle |
+| Local config-file workflow (`LocalConfigManager` in Py/Rust/Go; the file tier in TS)                                                      | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
+| Cloud-region resolution                                                                                                                   | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
+| Deferred values / `merge_replace_arrays` semantics                                                                                        | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
+| Shared schema-validation conformance fixture ([`test-fixtures/schema-validation-cases.json`](test-fixtures/schema-validation-cases.json)) | ✅  |   ✅   |  ✅  | ✅  |  —   |           —           |
+| Live feature flags                                                                                                                        | ✅  |   ✅   |  ✅  | ✅  |  ✅  |     ✅ (+ limits)     |
 
 The .NET SDK is a thinner **runtime-read** client: typed keys, the AES-GCM baked bundle, OAuth2 live values and flags — wire-compatible for those paths, but without the local-config/cloud-region/deferred-value machinery or the shared validation fixture the other four server SDKs run. Cross-language schema-validation parity is a **TS/Python/Rust/Go** guarantee today.
 
