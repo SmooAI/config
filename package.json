@@ -275,7 +275,7 @@
         "format:check": "pnpm run ts:format:check && pnpm run python:format:check && pnpm run rust:fmt:check && pnpm run go:fmt:check && pnpm run dotnet:format:check && pnpm run kotlin:format:check && pnpm run swift:format:check"
     },
     "dependencies": {
-        "@isaacs/ttlcache": "^1.4.1",
+        "@isaacs/ttlcache": "^2.1.5",
         "@kubernetes/client-node": "^2.0.0",
         "@smooai/fetch": "^3.4.0",
         "@smooai/logger": "^4.3.0",
@@ -284,9 +284,9 @@
         "@valibot/to-json-schema": "^1.7.1",
         "ajv": "^8.20.0",
         "arktype": "^2.1.20",
-        "commander": "^13.0.0",
+        "commander": "^15.0.0",
         "effect": "^3.22.1",
-        "empathic": "^1.1.0",
+        "empathic": "^2.0.1",
         "esm-utils": "^4.3.0",
         "ink": "^7.1.1",
         "ink-big-text": "^2.0.0",
