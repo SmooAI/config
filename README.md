@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust">
   <img src="https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go">
   <img src="https://img.shields.io/badge/.NET-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET">
+  <img src="https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin">
+  <img src="https://img.shields.io/badge/Swift-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift">
 </p>
 
 <p align="center">
@@ -37,11 +39,11 @@
 - **Zero-latency cold starts** — values are baked into the bundle as env vars (Next.js, Vite) or resolved in-memory from a local runtime (server). No network round-trip on the hot path.
 - **Browser, server, framework-native** — the same typed keys read cleanly from React client components, Server Components, Next.js, Vite, or plain Node.
 - **Live feature flags** — toggled from the dashboard without a redeploy, but still typed.
-- **Native clients in every language** — TypeScript, Python, Rust, Go, and .NET (C#) all read from the same source of truth.
+- **Native clients in every language** — TypeScript, Python, Rust, Go, and .NET (C#) server SDKs all read from the same source of truth, plus Kotlin and Swift mobile SDKs for the public-only app surface ([ADR-074 mobile runtime mode](docs/Mobile-Runtime-Mode-Spec.md)).
 
 ## Languages / SDKs
 
-Pick the SDK that matches your service. Every client reads the same schema, the same encrypted bundle, and the same config API — so a key renamed in one language ripples through all of them.
+Pick the SDK that matches your service. Every **server** client reads the same schema, the same encrypted bundle, and the same config API — so a key renamed in one language ripples through all of them. The two **mobile** SDKs (📱) speak a deliberately narrower, public-only surface — no secrets ever ship to a device.
 
 | SDK            | One-liner                                                                                               | README                                              |
 | -------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -49,7 +51,11 @@ Pick the SDK that matches your service. Every client reads the same schema, the 
 | **Python**     | Pydantic-validated schemas, sync `ConfigClient`, `LocalConfigManager` + `ConfigManager`, baked runtime. | [`python/README.md`](python/README.md)              |
 | **Go**         | Native struct schemas, thread-safe `ConfigClient` / `ConfigManager`, baked-blob runtime.                | [`go/config/README.md`](go/config/README.md)        |
 | **Rust**       | `JsonSchema`-derived schemas, async `ConfigClient`, sync `ConfigManager`, baked-blob runtime.           | [`rust/config/README.md`](rust/config/README.md)    |
-| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`.             | [`dotnet/README.md`](dotnet/README.md)              |
+| **.NET**       | Roslyn source-generated typed keys, OAuth2 `SmooConfigClient`, AES-GCM `SmooConfigRuntime`. Thinner surface than the other server SDKs — see [the capability notes](#sdk-capability-notes). | [`dotnet/README.md`](dotnet/README.md)              |
+| **Kotlin** 📱  | Mobile runtime mode (ADR-074): baked public bundle + live flag/limit evaluation, offline-safe, **no secrets on device**. Ships via JitPack commit pin — not on Maven Central yet. | [`kotlin/`](kotlin/) · [spec](docs/Mobile-Runtime-Mode-Spec.md) |
+| **Swift** 📱   | Mobile runtime mode (ADR-074): same surface as Kotlin (`publicValue`, `evaluateFlag`, `evaluateLimit`). Consumed via SPM pinned to a revision — no version tag yet. | [`swift/`](swift/Sources/SmooAIConfig/) · [spec](docs/Mobile-Runtime-Mode-Spec.md) |
+
+The five server SDKs release in **version lockstep** — v6.11.3 on npm, PyPI, crates.io, and NuGet, with the matching `v6.11.3` git tag for the Go module, all cut from the same commit (verified against each registry 2026-08-20). The mobile SDKs version separately (commit-pinned; see below).
 
 ## 📦 Install
 
@@ -518,7 +524,7 @@ Env contract (identical in every SDK): `SMOOAI_CONFIG_API_URL`, `SMOOAI_CONFIG_C
 
 ## 📖 Multi-Language Support
 
-`@smooai/config` has native implementations in Python, Rust, Go, and .NET (C#) alongside the primary TypeScript package. Every client reads the same encrypted bundle, the same schema, and the same config API. See the per-SDK READMEs linked above for full usage docs — the snippets below are five-line orientation only.
+`@smooai/config` has native **server** implementations in Python, Rust, Go, and .NET (C#) alongside the primary TypeScript package, plus **mobile** SDKs in Kotlin and Swift (a deliberately different, public-only surface — see below). Every server client reads the same encrypted bundle, the same schema, and the same config API. See the per-SDK READMEs linked above for full usage docs — the snippets below are five-line orientation only.
 
 ### Python — see [`python/README.md`](python/README.md)
 
@@ -575,6 +581,59 @@ var runtime = SmooConfigRuntime.Load();  // reads SMOO_CONFIG_KEY_FILE + SMOO_CO
 using var client = new SmooConfigClient(options);
 var apiUrl = await Public.ApiUrl.ResolveAsync(runtime, client);
 ```
+
+### Kotlin (mobile) — see [`docs/Mobile-Runtime-Mode-Spec.md`](docs/Mobile-Runtime-Mode-Spec.md)
+
+Ships via [JitPack](https://jitpack.io) pinned to a commit (Maven Central under `ai.smoo` is the planned follow-up — the in-repo Gradle version is a dev default, so don't pin a version, pin a SHA):
+
+```kotlin
+// settings.gradle.kts / build.gradle.kts
+repositories { maven("https://jitpack.io") }
+dependencies { implementation("com.github.SmooAI:config:<commit-sha>") }
+```
+
+```kotlin
+import ai.smoo.config.SmooConfig
+import ai.smoo.config.SmooConfigOptions
+
+val config = SmooConfig(SmooConfigOptions(environment = "production", engine = engine, bundledConfigFile = bakedBundle))
+val apiUrl = config.publicValue("API_BASE_URL")                       // baked bundle → refreshed cache, offline-safe
+val newUi = config.evaluateFlag("ENABLE_NEW_UI", default = false)     // http → disk cache → default
+```
+
+### Swift (mobile) — see [`docs/Mobile-Runtime-Mode-Spec.md`](docs/Mobile-Runtime-Mode-Spec.md)
+
+Consumed via Swift Package Manager pinned to a **revision** (there is no SPM version tag yet; the root [`Package.swift`](Package.swift) exists so SPM can resolve the repo URL directly):
+
+```swift
+// Package.swift
+.package(url: "https://github.com/SmooAI/config", revision: "<commit-sha>")
+```
+
+```swift
+import SmooAIConfig
+
+let config = SmooConfig(options: SmooConfigOptions(environment: "production", bundledConfigURL: bakedBundleURL))
+let apiUrl = config.publicValue(forKey: "API_BASE_URL")
+let newUi = await config.evaluateFlag("ENABLE_NEW_UI", default: false)
+```
+
+Mobile binaries are attacker-owned territory, so the mobile SDKs speak only the public app-config surface (`/config/app/...`): a **baked public bundle** (plaintext — it never contains secrets) plus live **feature-flag / limit evaluation** with an offline disk cache. There is no secret tier, no M2M credential, and no schema/`LocalConfigManager` surface on device — by design, per ADR-074.
+
+### SDK capability notes
+
+Honest asymmetries between the SDKs, so you can pick with your eyes open:
+
+| Capability | TS | Python | Rust | Go | .NET | Kotlin / Swift |
+| --- | :-: | :-: | :-: | :-: | :-: | :-: |
+| Encrypted baked bundle + config API reads | ✅ | ✅ | ✅ | ✅ | ✅ | 📱 public-only bundle |
+| Local config-file workflow (`LocalConfigManager` in Py/Rust/Go; the file tier in TS) | ✅ | ✅ | ✅ | ✅ | — | — |
+| Cloud-region resolution | ✅ | ✅ | ✅ | ✅ | — | — |
+| Deferred values / `merge_replace_arrays` semantics | ✅ | ✅ | ✅ | ✅ | — | — |
+| Shared schema-validation conformance fixture ([`test-fixtures/schema-validation-cases.json`](test-fixtures/schema-validation-cases.json)) | ✅ | ✅ | ✅ | ✅ | — | — |
+| Live feature flags | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (+ limits) |
+
+The .NET SDK is a thinner **runtime-read** client: typed keys, the AES-GCM baked bundle, OAuth2 live values and flags — wire-compatible for those paths, but without the local-config/cloud-region/deferred-value machinery or the shared validation fixture the other four server SDKs run. Cross-language schema-validation parity is a **TS/Python/Rust/Go** guarantee today.
 
 ## 📖 Development
 

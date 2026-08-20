@@ -22,7 +22,7 @@ dotnet add package SmooAI.Config
 - **Zero-latency cold starts** — values are baked into an encrypted bundle shipped with your deploy, so reads are in-memory with no network hop.
 - **Per-environment** — same keys, different values by stage (`development`, `staging`, `production`) with no code changes.
 - **Live feature flags** — flags fall through to the runtime client so you can flip them without a redeploy.
-- **Cross-language parity** — wire-compatible with the TypeScript, Python, Rust, and Go clients.
+- **Cross-language wire compatibility (runtime reads)** — the encrypted bundle and the config/flags API decode identically to the TypeScript, Python, Rust, and Go clients. The .NET SDK is deliberately a thinner runtime-read client: it does not carry those SDKs' local-config (`LocalConfigManager`), cloud-region, or deferred-value/`merge_replace_arrays` machinery, and does not run the shared schema-validation conformance fixture — see the [root README capability notes](../../../README.md#sdk-capability-notes).
 
 ## Quickstart
 
