@@ -3,11 +3,11 @@
 // caller-injected Ktor engine, mirroring the consuming app's :core module.
 // Versions match apps/mobile/android/core (Kotlin 2.1.20, Ktor 3.2.3).
 plugins {
-    kotlin("jvm") version "2.1.20"
-    kotlin("plugin.serialization") version "2.1.20"
+    kotlin("jvm") version "2.4.10"
+    kotlin("plugin.serialization") version "2.4.10"
     // Kotlin had no formatter at all until SMOODEV-2975 — `pnpm format:check`
     // covered TS/Python/Rust/Go only, so this source tree was never verified.
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.2"
+    id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     `maven-publish`
     signing
 }
@@ -31,13 +31,13 @@ java {
 }
 
 dependencies {
-    api("io.ktor:ktor-client-core:3.2.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    api("io.ktor:ktor-client-core:3.5.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     testImplementation(kotlin("test"))
-    testImplementation("io.ktor:ktor-client-mock:3.2.3")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+    testImplementation("io.ktor:ktor-client-mock:3.5.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
 }
 
 tasks.test {
