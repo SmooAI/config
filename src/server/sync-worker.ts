@@ -15,7 +15,7 @@
  * diagnostic map never sees sync reads.
  */
 import { runAsWorker } from 'synckit';
-import { buildConfigAsync } from './internal';
+import { buildConfigAsync, GetOptions } from './internal';
 
 type Tier = 'public' | 'secret' | 'flag';
 type Source = 'blob' | 'env' | 'http' | 'file' | undefined;
@@ -24,12 +24,16 @@ runAsWorker(async function serverSyncWorker(...args: any[]): Promise<{ value: un
     const schema = args[0];
     const tier = args[1] as Tier;
     const key = args[2] as string;
+    // 4th arg is the optional GetOptions added in SMOODEV-1136. Older
+    // callers (and the generated worker source baked into older releases)
+    // pass exactly 3 args, so default to undefined.
+    const getOptions = args[3] as GetOptions | undefined;
 
     const cfg = buildConfigAsync(schema);
     let value: unknown;
-    if (tier === 'public') value = await cfg.publicConfig.get(key as never);
-    else if (tier === 'secret') value = await cfg.secretConfig.get(key as never);
-    else if (tier === 'flag') value = await cfg.featureFlag.get(key as never);
+    if (tier === 'public') value = await cfg.publicConfig.get(key as never, getOptions);
+    else if (tier === 'secret') value = await cfg.secretConfig.get(key as never, getOptions);
+    else if (tier === 'flag') value = await cfg.featureFlag.get(key as never, getOptions);
     else throw new Error(`[server sync-worker] unknown tier: ${tier}`);
 
     return { value, source: cfg.getSource(key) };

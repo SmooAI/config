@@ -23,6 +23,15 @@ import { ConfigClient, ConfigClientOptions } from './client';
  * Blob layout: `nonce (12 random bytes) || ciphertext || authTag (16 bytes)`.
  * Random nonce means re-baking under the same key is safe — though every
  * `buildBundle` call generates a new key anyway, so that's belt-and-braces.
+ *
+ * Plaintext payload shape: `{ public, secret, bakedEnvironment }`. The
+ * `bakedEnvironment` field (SMOODEV-1136) records which environment the
+ * blob was baked against (e.g. "production", "development"). At read time
+ * the server SDK compares it to the active `SMOOAI_CONFIG_ENV` and skips
+ * the blob tier on a mismatch — so a dev-baked blob sitting on a laptop
+ * can no longer silently serve dev values to a prod-targeting script.
+ * Older blobs without the field are treated as "development" for
+ * back-compat.
  */
 
 export interface BuildBundleOptions extends ConfigClientOptions {
@@ -56,9 +65,9 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
     const client = new ConfigClient(clientOptions);
     const all = await client.getAllValues(clientOptions.environment);
 
-    const partitioned = {
-        public: {} as Record<string, unknown>,
-        secret: {} as Record<string, unknown>,
+    const partitioned: { public: Record<string, unknown>; secret: Record<string, unknown>; bakedEnvironment?: string } = {
+        public: {},
+        secret: {},
     };
     let skippedCount = 0;
     for (const [k, v] of Object.entries(all)) {
@@ -69,6 +78,12 @@ export async function buildBundle(options: BuildBundleOptions): Promise<BuildBun
         }
         partitioned[section][k] = v;
     }
+    // SMOODEV-1136: Persist the environment we're baking against so the
+    // server SDK can detect dev-baked-blob-leaking-into-prod-script bugs
+    // at read time. ConfigClient applies the same default fallback chain
+    // (constructor option → SMOOAI_CONFIG_ENV → 'development'), so use the
+    // resolved value the client just used to fetch values.
+    partitioned.bakedEnvironment = client.getDefaultEnvironment(clientOptions.environment);
 
     const plaintext = Buffer.from(JSON.stringify(partitioned), 'utf8');
     const key = crypto.randomBytes(32);

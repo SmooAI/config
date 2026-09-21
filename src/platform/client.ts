@@ -108,6 +108,17 @@ export class ConfigClient {
         return this.cacheTtlMs > 0 ? Date.now() + this.cacheTtlMs : 0;
     }
 
+    /**
+     * Resolve the environment string the client will use for a request.
+     * Mirrors the precedence used inside every fetch method: explicit
+     * argument → constructor option → `SMOOAI_CONFIG_ENV` → `'development'`.
+     * Exposed so the deploy-time baker can record the *exact* environment
+     * the blob was baked against (SMOODEV-1136).
+     */
+    getDefaultEnvironment(override?: string): string {
+        return override ?? this.defaultEnvironment;
+    }
+
     private getCached(cacheKey: string): unknown | undefined {
         const entry = this.cache.get(cacheKey);
         if (!entry) return undefined;
