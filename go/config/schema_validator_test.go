@@ -27,6 +27,12 @@ type testFixtures struct {
 	Invalid []invalidCase `json:"invalid"`
 }
 
+// loadFixtures reads the cross-language corpus from OUTSIDE this package dir.
+// Go's test cache keys on package inputs, so it does not notice when that file
+// changes: `go test ./...` will happily serve `ok (cached)` against a corpus
+// that has been edited out from under it. Verified — a deliberately corrupted
+// fixture stayed green here while TypeScript, Python, Rust and .NET all went
+// red. That is why `go:test` in package.json passes `-count=1`; do not drop it.
 func loadFixtures(t *testing.T) testFixtures {
 	t.Helper()
 	_, filename, _, _ := runtime.Caller(0)

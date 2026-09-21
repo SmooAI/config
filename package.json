@@ -253,7 +253,7 @@
         "go:fmt": "(cd go/config && gofmt -w .)",
         "go:fmt:check": "(cd go/config && test -z \"$(gofmt -l .)\")",
         "go:lint": "(cd go/config && go vet ./...)",
-        "go:test": "(cd go/config && go test -v ./...)",
+        "go:test": "(cd go/config && go test -count=1 -v ./...)",
         "dotnet:build": "(cd dotnet && node ../scripts/with-toolchain.mjs dotnet dotnet build -c Release)",
         "dotnet:test": "(cd dotnet && node ../scripts/with-toolchain.mjs dotnet dotnet test -c Release)",
         "dotnet:format": "(cd dotnet && node ../scripts/with-toolchain.mjs dotnet dotnet format)",
