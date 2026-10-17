@@ -14,6 +14,7 @@ import { defineConfig, InferConfigTypes } from '@/config/config';
 import { findAndProcessFileConfig } from '@/config/findAndProcessFileConfig';
 import { generateZodSchemas, parseConfigKey } from '@/config/parseConfigSchema';
 import { ConfigClient, ConfigClientOptions } from '@/platform/client';
+import { isConfigFilesNotFoundError } from '@/utils';
 import TTLCache from '@isaacs/ttlcache';
 import Logger from '@smooai/logger/Logger';
 
@@ -90,7 +91,12 @@ async function loadFileDefaults<Schema extends ReturnType<typeof defineConfig>>(
             const r = await findAndProcessFileConfig(schema);
             fileDefaultsCache = r.config as Record<string, unknown>;
         } catch (err) {
-            logger.warn({ err }, 'No local .smooai-config/ defaults; tier skipped');
+            if (isConfigFilesNotFoundError(err)) {
+                // Expected in container / baked-blob mode, where there is no .smooai-config/ on disk.
+                logger.info('No local .smooai-config/ defaults; tier skipped');
+            } else {
+                logger.warn({ err }, 'Failed to load local .smooai-config/ defaults; tier skipped');
+            }
             fileDefaultsCache = null;
         }
     }

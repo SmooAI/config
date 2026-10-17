@@ -1,6 +1,6 @@
 import { join } from 'path';
 import { PublicConfigKey } from '@/config/PublicConfigKey';
-import { initEsmUtils, SmooaiConfigError, envToUse } from '@/utils';
+import { initEsmUtils, SmooaiConfigError, SmooaiConfigFilesNotFoundError, envToUse, isConfigFilesNotFoundError } from '@/utils';
 import { directoryExists, importFile } from '@/utils/fs';
 import { mergeReplaceArrays } from '@/utils/mergeReplaceArrays';
 import TTLCache from '@isaacs/ttlcache';
@@ -93,7 +93,7 @@ export async function findConfigDirectory(
         return upDirFound;
     }
 
-    throw new SmooaiConfigError(`Could not find the directory where the config files are located. Tried ${levelsUpLimit} levels up from ${cwd}.`);
+    throw new SmooaiConfigFilesNotFoundError(`Could not find the directory where the config files are located. Tried ${levelsUpLimit} levels up from ${cwd}.`);
 }
 
 async function processConfigFileFeatures(
@@ -191,11 +191,9 @@ export async function findAndProcessFileConfig<Schema extends ReturnType<typeof 
                 absolute: true,
             });
 
-            // If default.ts not found, throw an error
+            // If default.ts not found, throw an error (not logged here; see the catch below)
             if (fileName === 'default.ts' && matchedPaths.length === 0) {
-                const error = new Error(`Could not find required default config file in ${configDir}: "${fileName}"`);
-                logger.error(error, `Could not find required default config file in ${configDir}: "${fileName}"`);
-                throw error;
+                throw new SmooaiConfigFilesNotFoundError(`Could not find required default config file in ${configDir}: "${fileName}"`);
             }
 
             for (const filePath of matchedPaths) {
@@ -218,7 +216,14 @@ export async function findAndProcessFileConfig<Schema extends ReturnType<typeof 
             isLocal,
         });
     } catch (err) {
-        logger.error('Error finding and processing config:', err);
+        // No config directory / no default.ts is expected in container (baked-blob) mode, and
+        // callers that treat the file tier as optional skip it. Throw without logging at ERROR
+        // so it doesn't pollute error tracking; genuine import/parse failures stay loud.
+        if (isConfigFilesNotFoundError(err)) {
+            logger.debug(`No config files found: ${err.message}`);
+        } else {
+            logger.error('Error finding and processing config:', err);
+        }
         throw err;
     }
 

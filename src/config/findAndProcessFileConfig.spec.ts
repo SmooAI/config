@@ -1,12 +1,13 @@
 import * as fs from 'fs/promises';
 import { join } from 'path';
-import { envToUse } from '@/utils';
+import { envToUse, isConfigFilesNotFoundError } from '@/utils';
 import { directoryExists, importFile } from '@/utils/fs';
 import { any as findAny } from 'empathic/find';
 import { glob } from 'tinyglobby';
 /* eslint-disable @typescript-eslint/no-explicit-any -- ok */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { z } from 'zod';
+import Logger from '@smooai/logger/Logger';
 import { defineConfig, StringSchema } from './config';
 import { findConfigDirectory, findAndProcessFileConfig } from './findAndProcessFileConfig';
 
@@ -187,6 +188,59 @@ describe('findAndProcessConfig', () => {
         vi.mocked(importFile).mockRejectedValue(new Error('Syntax error in default.ts'));
 
         await expect(findAndProcessFileConfig(configSchema)).rejects.toThrow('Syntax error in default.ts');
+    });
+
+    describe('ERROR logging', () => {
+        // The module-level logger is an automocked Logger, so its methods live on the prototype.
+        const loggerError = () => vi.mocked(Logger.prototype.error);
+
+        it('does not log at ERROR when no config directory exists (container / baked-blob mode)', async () => {
+            vi.mocked(directoryExists).mockResolvedValue(false);
+            vi.mocked(findAny).mockResolvedValueOnce(undefined);
+
+            const err = await findAndProcessFileConfig(configSchema).catch((e: unknown) => e);
+
+            expect(isConfigFilesNotFoundError(err)).toBe(true);
+            expect((err as Error).message).toMatch(/Could not find the directory where the config files are located/);
+            expect(loggerError()).not.toHaveBeenCalled();
+        });
+
+        it('does not log at ERROR when the config directory has no default.ts', async () => {
+            vi.mocked(directoryExists).mockResolvedValue(true);
+            vi.mocked(findAny).mockResolvedValueOnce('/app/.smooai-config');
+            vi.mocked(glob).mockResolvedValue([]);
+
+            const err = await findAndProcessFileConfig(configSchema).catch((e: unknown) => e);
+
+            expect(isConfigFilesNotFoundError(err)).toBe(true);
+            expect((err as Error).message).toMatch(/Could not find required default config file in/);
+            expect(loggerError()).not.toHaveBeenCalled();
+        });
+
+        it('still logs at ERROR when a config file exists but fails to import', async () => {
+            vi.mocked(directoryExists).mockResolvedValue(true);
+            vi.mocked(findAny).mockResolvedValueOnce('/some/config');
+            vi.mocked(glob).mockImplementation(async (pattern) => {
+                if ((pattern as any) === 'default.ts') return ['/some/config/default.ts'];
+                return [];
+            });
+            vi.mocked(importFile).mockRejectedValue(new Error('Syntax error in default.ts'));
+
+            const err = await findAndProcessFileConfig(configSchema).catch((e: unknown) => e);
+
+            expect(isConfigFilesNotFoundError(err)).toBe(false);
+            expect(loggerError()).toHaveBeenCalled();
+        });
+
+        it('still logs at ERROR when SMOOAI_ENV_CONFIG_DIR points at a missing directory', async () => {
+            vi.mocked(envToUse).mockReturnValue({ SMOOAI_ENV_CONFIG_DIR: '/does/not/exist' });
+            vi.mocked(directoryExists).mockResolvedValue(false);
+
+            const err = await findAndProcessFileConfig(configSchema).catch((e: unknown) => e);
+
+            expect(isConfigFilesNotFoundError(err)).toBe(false);
+            expect(loggerError()).toHaveBeenCalled();
+        });
     });
 
     it('merges config files in the correct order (happy path)', async () => {
