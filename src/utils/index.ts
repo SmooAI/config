@@ -45,6 +45,23 @@ export class SmooaiConfigError extends Error {
     }
 }
 
+/**
+ * Thrown when there is no `.smooai-config/` directory, or it has no `default.ts`.
+ *
+ * In container / baked-blob mode that is the expected state (values come from
+ * the blob), so callers that treat the file tier as optional catch this and
+ * skip the tier. `findAndProcessFileConfig` therefore does not log it at ERROR;
+ * a config file that exists but fails to import or parse still does.
+ */
+export class SmooaiConfigFilesNotFoundError extends SmooaiConfigError {
+    readonly code = 'SMOOAI_CONFIG_FILES_NOT_FOUND';
+}
+
+/** Matches by `code` as well as class, so it holds across duplicated bundle chunks. */
+export function isConfigFilesNotFoundError(err: unknown): err is SmooaiConfigFilesNotFoundError {
+    return err instanceof SmooaiConfigFilesNotFoundError || (err instanceof Error && (err as { code?: unknown }).code === 'SMOOAI_CONFIG_FILES_NOT_FOUND');
+}
+
 // ——— helper: single-char step, always recursing into SnakeCase<> ———
 type _SnakeCaseChar<S extends string> = S extends `${infer First}${infer Rest}`
     ? First extends '_' | ' '
